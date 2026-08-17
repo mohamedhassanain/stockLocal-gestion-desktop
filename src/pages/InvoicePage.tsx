@@ -199,7 +199,7 @@ const NewDocumentModal: React.FC<{
 
 // ─── Détail d'un document ─────────────────────────────────────────────────────
 
-const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number, method: string) => void; onConvert?: () => void }> = ({ doc, onPayment, onConvert }) => {
+const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number, method: string) => void; onConvert?: () => void; onPrint: () => void }> = ({ doc, onPayment, onConvert, onPrint }) => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('CASH');
   const remaining = doc.total_incl_tax - (doc.amount_paid ?? 0);
@@ -283,13 +283,19 @@ const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number,
         </div>
       )}
 
-      {/* Bouton conversion BL → Facture */}
-      {doc.type === 'DELIVERY_NOTE' && onConvert && (
-        <button onClick={onConvert}
-          style={{ padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-          📄 Convertir en Facture
+      {/* Boutons d'action */}
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <button onClick={onPrint}
+          style={{ flex: 1, padding: '14px', background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+          🖨️ Imprimer / Export PDF
         </button>
-      )}
+        {doc.type === 'DELIVERY_NOTE' && onConvert && (
+          <button onClick={onConvert}
+            style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+            📄 Convertir en Facture
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -325,6 +331,16 @@ export const InvoicePage: React.FC = () => {
     try {
       await convertBL(selectedDocument.id);
       alert('Bon de livraison converti en facture avec succès !');
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!selectedDocument) return;
+    try {
+      const result = await window.api.documents.exportPdf(selectedDocument.id);
+      if (!result.success) throw new Error(result.error);
     } catch (e: any) {
       alert(e.message);
     }
@@ -402,6 +418,7 @@ export const InvoicePage: React.FC = () => {
               doc={selectedDocument}
               onPayment={handlePayment}
               onConvert={selectedDocument.type === 'DELIVERY_NOTE' ? handleConvert : undefined}
+              onPrint={handlePrint}
             />
           )}
         </div>

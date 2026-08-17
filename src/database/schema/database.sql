@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS products (
     subcategory_id TEXT,
     barcode TEXT UNIQUE,
     image_path TEXT,
+    unit TEXT NOT NULL DEFAULT 'PIÈCE',
     purchase_price REAL NOT NULL DEFAULT 0.0,
     selling_price REAL NOT NULL DEFAULT 0.0,
     wholesale_price REAL NOT NULL DEFAULT 0.0,
@@ -207,4 +208,3 @@ CREATE INDEX IF NOT EXISTS idx_client_credits_type ON client_credits (type);
 CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers (name);
 CREATE INDEX IF NOT EXISTS idx_supplier_credits_supplier ON supplier_credits (supplier_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_credits_date ON supplier_credits (date);
-

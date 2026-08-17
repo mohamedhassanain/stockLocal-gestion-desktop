@@ -15,12 +15,7 @@ export class StockService {
         date: new Date().toISOString()
       };
 
-      // 1. Enregistrer le mouvement
       StockMovementRepository.create(movement);
-
-      // 2. Mettre à jour le prix d'achat moyen pondéré (PAMP) du produit si nécessaire (logique métier)
-      // ProductRepository.updatePurchasePrice(data.product_id, data.unit_price);
-
       return movement;
     });
   }
@@ -30,7 +25,6 @@ export class StockService {
    */
   static addStockExit(data: Omit<StockMovement, 'id' | 'type'>): StockMovement {
     return runInTransaction(() => {
-      // 1. Vérifier si le stock est suffisant
       const currentStock = StockMovementRepository.getStockLevel(data.product_id);
       if (currentStock < data.quantity) {
         throw new Error(`Stock insuffisant. Stock actuel : ${currentStock}`);
@@ -40,6 +34,37 @@ export class StockService {
         ...data,
         id: randomUUID(),
         type: 'OUT',
+        date: new Date().toISOString()
+      };
+
+      StockMovementRepository.create(movement);
+      return movement;
+    });
+  }
+
+  /**
+   * Enregistre un ajustement d'inventaire.
+   * @param data Les données du mouvement à créer
+   * @param actualCount La quantité réellement comptée en magasin
+   */
+  static addInventory(data: Omit<StockMovement, 'id' | 'type' | 'quantity'>, actualCount: number): StockMovement {
+    return runInTransaction(() => {
+      const currentStock = StockMovementRepository.getStockLevel(data.product_id);
+      const difference = actualCount - currentStock;
+
+      // Aucun écart → rien à enregistrer
+      if (difference === 0) {
+        throw new Error(`Aucun écart d'inventaire pour ce produit (stock identique à ${currentStock}).`);
+      }
+
+      const movement: StockMovement = {
+        ...data,
+        id: randomUUID(),
+        type: 'INVENTORY',
+        quantity: Math.abs(difference),
+        notes: difference > 0
+          ? `${data.notes ? data.notes + ' · ' : ''}Inventaire : +${difference} (compté ${actualCount})`
+          : `${data.notes ? data.notes + ' · ' : ''}Inventaire : ${difference} (compté ${actualCount})`,
         date: new Date().toISOString()
       };
 

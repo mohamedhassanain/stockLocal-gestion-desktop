@@ -53,6 +53,7 @@ function migrateColumns(): void {
   addColumnIfMissing('documents', 'due_date', 'DATETIME');
   addColumnIfMissing('documents', 'notes', 'TEXT');
   addColumnIfMissing('customers', 'category', "TEXT NOT NULL DEFAULT 'DÉTAIL'");
+  addColumnIfMissing('products', 'unit', "TEXT NOT NULL DEFAULT 'PIÈCE'");
 }
 
 function seedDefaultUser(): void {

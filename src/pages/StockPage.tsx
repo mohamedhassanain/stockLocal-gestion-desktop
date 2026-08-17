@@ -3,27 +3,31 @@ import { useStockStore } from '../stores/useStockStore';
 import { useProductStore } from '../stores/useProductStore';
 
 export const StockPage: React.FC = () => {
-  const { currentProductStock, loadProductStock, addEntry, addExit } = useStockStore();
-  const { products, searchProducts, searchQuery, setSearchQuery } = useProductStore((state) => ({
+  const { currentProductStock, stockHistory, loadProductStock, addEntry, addExit, addInventory } = useStockStore();
+  const { products, searchQuery, setSearchQuery, loadProducts } = useProductStore((state) => ({
     products: state.products,
-    searchProducts: state.loadProducts, // assuming loadProducts uses searchQuery
     searchQuery: state.searchQuery,
-    setSearchQuery: state.setSearchQuery
+    setSearchQuery: state.setSearchQuery,
+    loadProducts: state.loadProducts,
   }));
 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [qty, setQty] = useState<number>(1);
   const [price, setPrice] = useState<number>(0);
+  const [actualCount, setActualCount] = useState<number>(0);
+  const [notes, setNotes] = useState('');
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      searchProducts();
+      loadProducts();
     }
   };
 
   const handleSelectProduct = (productId: string) => {
     setSelectedProductId(productId);
     loadProductStock(productId);
+    const p = products.find(pr => pr.id === productId);
+    if (p) setActualCount(p.current_stock ?? 0);
   };
 
   const handleAddEntry = async () => {
@@ -33,10 +37,14 @@ export const StockPage: React.FC = () => {
         product_id: selectedProductId,
         quantity: qty,
         unit_price: price,
-        user_id: 'user_1' // Mock utilisateur connecté
+        user_id: 'user_1',
+        notes: notes || undefined,
       });
       alert('Entrée ajoutée avec succès !');
       setQty(1);
+      setNotes('');
+      loadProductStock(selectedProductId);
+      loadProducts();
     } catch (e: any) {
       alert(e.message);
     }
@@ -48,24 +56,46 @@ export const StockPage: React.FC = () => {
       await addExit({
         product_id: selectedProductId,
         quantity: qty,
-        unit_price: price, // Souvent 0 pour la casse, ou prix de vente pour vente
-        user_id: 'user_1'
+        unit_price: price,
+        user_id: 'user_1',
+        notes: notes || undefined,
       });
       alert('Sortie effectuée avec succès !');
       setQty(1);
+      setNotes('');
+      loadProductStock(selectedProductId);
+      loadProducts();
     } catch (e: any) {
       alert(e.message);
     }
   };
+
+  const handleInventory = async () => {
+    if (!selectedProductId) return;
+    try {
+      await addInventory({
+        product_id: selectedProductId,
+        unit_price: 0,
+        user_id: 'user_1',
+      }, actualCount);
+      alert('Inventaire enregistré (écart ajusté).');
+      loadProductStock(selectedProductId);
+      loadProducts();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const selectedProduct = products.find(p => p.id === selectedProductId);
 
   return (
     <div style={{ padding: '30px', flex: 1, backgroundColor: '#f8fafc', height: '100vh', overflowY: 'auto' }}>
       <h1 style={{ fontSize: '32px', color: '#0f172a', marginBottom: '30px' }}>Gestion des Mouvements de Stock</h1>
 
       <div style={{ display: 'flex', gap: '20px', marginBottom: '30px' }}>
-        <input 
-          type="text" 
-          placeholder="Scanner le code-barres ou taper la référence... (Entrée pour chercher)" 
+        <input
+          type="text"
+          placeholder="Scanner le code-barres ou taper la référence... (Entrée pour chercher)"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearch}
@@ -80,18 +110,21 @@ export const StockPage: React.FC = () => {
           <h2 style={{ marginTop: 0 }}>Résultats</h2>
           <ul style={{ listStyle: 'none', padding: 0 }}>
             {products.map(p => (
-              <li 
-                key={p.id} 
+              <li
+                key={p.id}
                 onClick={() => handleSelectProduct(p.id)}
-                style={{ 
-                  padding: '15px', 
-                  borderBottom: '1px solid #f1f5f9', 
+                style={{
+                  padding: '15px',
+                  borderBottom: '1px solid #f1f5f9',
                   cursor: 'pointer',
                   backgroundColor: selectedProductId === p.id ? '#eff6ff' : 'transparent',
                   fontWeight: selectedProductId === p.id ? 'bold' : 'normal'
                 }}
               >
                 {p.reference} - {p.designation}
+                <span style={{ float: 'right', color: (p.current_stock ?? 0) <= p.min_stock ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>
+                  {p.current_stock ?? 0} {p.unit || 'PIÈCE'}
+                </span>
               </li>
             ))}
           </ul>
@@ -99,16 +132,23 @@ export const StockPage: React.FC = () => {
 
         {/* Actions sur le produit sélectionné */}
         {selectedProductId && (
-          <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
-            <h2 style={{ marginTop: 0 }}>Actions Rapides</h2>
+          <div style={{ flex: 1.4, backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
+            {selectedProduct && (
+              <div style={{ fontSize: '15px', color: '#6b7280', marginBottom: '12px' }}>
+                {selectedProduct.reference} — {selectedProduct.designation} ({selectedProduct.unit || 'PIÈCE'})
+              </div>
+            )}
             <div style={{ fontSize: '24px', marginBottom: '20px' }}>
               Stock Actuel : <strong style={{ color: currentProductStock > 0 ? '#10b981' : '#ef4444' }}>{currentProductStock}</strong>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <input type="number" value={qty} onChange={e => setQty(Number(e.target.value))} placeholder="Quantité" style={{ padding: '15px', fontSize: '18px' }} />
-              <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))} placeholder="Prix unitaire" style={{ padding: '15px', fontSize: '18px' }} />
-              
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input type="number" value={qty} onChange={e => setQty(Number(e.target.value))} placeholder="Quantité" style={{ flex: 1, padding: '15px', fontSize: '18px' }} />
+                <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))} placeholder="Prix unitaire" style={{ flex: 1, padding: '15px', fontSize: '18px' }} />
+              </div>
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optionnel)" style={{ padding: '12px', fontSize: '15px' }} />
+
               <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
                 <button onClick={handleAddEntry} style={{ flex: 1, padding: '20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
                   + ENTREE (Achat)
@@ -117,6 +157,52 @@ export const StockPage: React.FC = () => {
                   - SORTIE (Casse/Vente)
                 </button>
               </div>
+
+              {/* Inventaire */}
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '15px', marginTop: '5px' }}>
+                <h3 style={{ margin: '0 0 10px', fontSize: '16px', color: '#0f172a' }}>📋 Inventaire (comptage physique)</h3>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="number"
+                    value={actualCount}
+                    onChange={e => setActualCount(Number(e.target.value))}
+                    placeholder="Quantité comptée"
+                    style={{ flex: 1, padding: '15px', fontSize: '18px' }}
+                  />
+                  <button onClick={handleInventory} style={{ flex: 1, padding: '15px', backgroundColor: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    ✓ Valider l'inventaire
+                  </button>
+                </div>
+              </div>
+
+              {/* Historique */}
+              {stockHistory.length > 0 && (
+                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '15px' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '16px', color: '#0f172a' }}>🕘 Historique des mouvements</h3>
+                  <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                    {stockHistory.map(h => (
+                      <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: '14px' }}>
+                        <span>
+                          <span style={{
+                            fontWeight: 'bold',
+                            padding: '2px 8px',
+                            borderRadius: '10px',
+                            fontSize: '12px',
+                            background: h.type === 'IN' ? '#dcfce7' : h.type === 'OUT' ? '#fee2e2' : '#ede9fe',
+                            color: h.type === 'IN' ? '#166534' : h.type === 'OUT' ? '#991b1b' : '#5b21b6',
+                          }}>
+                            {h.type === 'IN' ? 'ENTRÉE' : h.type === 'OUT' ? 'SORTIE' : 'INVENTAIRE'}
+                          </span>{' '}
+                          {h.notes ? h.notes.substring(0, 50) : `Qté: ${h.quantity}`}
+                        </span>
+                        <span style={{ color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                          {new Date(h.date ?? Date.now()).toLocaleDateString('fr-MA')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

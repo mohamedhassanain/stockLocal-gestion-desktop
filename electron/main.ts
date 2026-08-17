@@ -74,6 +74,32 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('products:update', async (_, { id, data }: { id: string; data: any }) => {
+    try {
+      return { success: true, data: ProductService.updateProduct(id, data) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('products:archive', async (_, id: string) => {
+    try {
+      ProductService.archiveProduct(id);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('products:activate', async (_, id: string) => {
+    try {
+      ProductService.activateProduct(id);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   // Stock
   ipcMain.handle('stock:getHistory', async (_, productId: string) => {
     return StockMovementRepository.getHistory(productId);
@@ -94,6 +120,14 @@ app.whenReady().then(() => {
   ipcMain.handle('stock:addExit', async (_, data: any) => {
     try {
       return { success: true, data: StockService.addStockExit(data) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('stock:addInventory', async (_, { data, actualCount }: { data: any; actualCount: number }) => {
+    try {
+      return { success: true, data: StockService.addInventory(data, actualCount) };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -249,6 +283,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle('documents:getPayments', async (_, documentId: string) => {
     return DocumentService.getPayments(documentId);
+  });
+
+  ipcMain.handle('documents:exportPdf', async (_, documentId: string) => {
+    try {
+      const doc = DocumentService.getDocument(documentId);
+      if (!doc) throw new Error('Document introuvable.');
+      const filePath = await PDFService.generateDocument(doc);
+
+      const { shell } = require('electron');
+      shell.openPath(filePath);
+
+      return { success: true, filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   });
 
   // ─── Dashboard ────────────────────────────────────────────────────────────

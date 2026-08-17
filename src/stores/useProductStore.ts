@@ -1,16 +1,18 @@
 import { create } from 'zustand';
-import type { Product } from '../repositories/ProductRepository';
+import type { Product, ProductInput } from '../repositories/ProductRepository';
 
 interface ProductState {
   products: Product[];
   isLoading: boolean;
   searchQuery: string;
   error: string | null;
-  
+
   setSearchQuery: (query: string) => void;
   loadProducts: () => Promise<void>;
-  addProduct: (productData: Omit<Product, 'id'>) => Promise<void>;
+  addProduct: (productData: ProductInput) => Promise<void>;
+  updateProduct: (id: string, productData: ProductInput) => Promise<void>;
   archiveProduct: (id: string) => Promise<void>;
+  activateProduct: (id: string) => Promise<void>;
 }
 
 export const useProductStore = create<ProductState>((set, get) => ({
@@ -21,7 +23,7 @@ export const useProductStore = create<ProductState>((set, get) => ({
 
   setSearchQuery: (query: string) => {
     set({ searchQuery: query });
-    // Appel direct via IPC pour faire la recherche SQLite ultra-rapide
+    // Recherche directe via IPC SQLite (ultra-rapide)
     get().loadProducts();
   },
 
@@ -29,7 +31,6 @@ export const useProductStore = create<ProductState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const query = get().searchQuery;
-      // Appel réel vers SQLite via le processus Main d'Electron
       const data: Product[] = await window.api.products.search(query);
       set({ products: data, isLoading: false });
     } catch (err: any) {
@@ -44,7 +45,21 @@ export const useProductStore = create<ProductState>((set, get) => ({
       if (!result.success) {
         throw new Error(result.error);
       }
-      await get().loadProducts(); 
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  updateProduct: async (id, productData) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.products.update(id, productData);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
       throw err;
@@ -52,7 +67,30 @@ export const useProductStore = create<ProductState>((set, get) => ({
   },
 
   archiveProduct: async (id) => {
-    // Non implémenté dans le Main pour la démo, mais c'est le même principe
-    console.log("Archive:", id);
+    set({ error: null });
+    try {
+      const result = await window.api.products.archive(id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+
+  activateProduct: async (id) => {
+    set({ error: null });
+    try {
+      const result = await window.api.products.activate(id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message });
+      throw err;
+    }
   }
 }));

@@ -5,12 +5,16 @@ export const api = {
   products: {
     search: (query: string) => ipcRenderer.invoke('products:search', query),
     create: (data: any) => ipcRenderer.invoke('products:create', data),
+    update: (id: string, data: any) => ipcRenderer.invoke('products:update', { id, data }),
+    archive: (id: string) => ipcRenderer.invoke('products:archive', id),
+    activate: (id: string) => ipcRenderer.invoke('products:activate', id),
   },
   stock: {
     getHistory: (productId: string) => ipcRenderer.invoke('stock:getHistory', productId),
     getLevel: (productId: string) => ipcRenderer.invoke('stock:getLevel', productId),
     addEntry: (data: any) => ipcRenderer.invoke('stock:addEntry', data),
     addExit: (data: any) => ipcRenderer.invoke('stock:addExit', data),
+    addInventory: (data: any, actualCount: number) => ipcRenderer.invoke('stock:addInventory', { data, actualCount }),
   },
   clients: {
     search: (query: string) => ipcRenderer.invoke('clients:search', query),
@@ -41,6 +45,7 @@ export const api = {
     addPayment: (data: any) => ipcRenderer.invoke('documents:addPayment', data),
     convertBL: (deliveryNoteId: string) => ipcRenderer.invoke('documents:convertBL', deliveryNoteId),
     getPayments: (documentId: string) => ipcRenderer.invoke('documents:getPayments', documentId),
+    exportPdf: (documentId: string) => ipcRenderer.invoke('documents:exportPdf', documentId),
   },
   dashboard: {
     getStats: () => ipcRenderer.invoke('dashboard:getStats'),

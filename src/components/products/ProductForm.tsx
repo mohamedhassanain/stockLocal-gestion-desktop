@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { z } from 'zod';
 import { useProductStore } from '../../stores/useProductStore';
+import type { Product } from '../../repositories/ProductRepository';
+
+const UNITS = ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'];
 
 const productSchema = z.object({
   reference: z.string().min(1, 'La référence est requise'),
   designation: z.string().min(1, 'La désignation est requise'),
   barcode: z.string().optional(),
+  unit: z.string().min(1, "L'unité est requise"),
   purchase_price: z.number().min(0, 'Le prix d\'achat doit être positif'),
   selling_price: z.number().min(0, 'Le prix de vente doit être positif'),
   wholesale_price: z.number().min(0, 'Le prix de gros doit être positif'),
@@ -17,22 +21,25 @@ const productSchema = z.object({
 
 interface ProductFormProps {
   onClose: () => void;
+  editingProduct?: Product;
 }
 
-export const ProductForm: React.FC<ProductFormProps> = ({ onClose }) => {
+export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduct }) => {
   const addProduct = useProductStore(state => state.addProduct);
+  const updateProduct = useProductStore(state => state.updateProduct);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
-    reference: '',
-    designation: '',
-    barcode: '',
-    purchase_price: 0,
-    selling_price: 0,
-    wholesale_price: 0,
-    min_stock: 5,
+    reference: editingProduct?.reference ?? '',
+    designation: editingProduct?.designation ?? '',
+    barcode: editingProduct?.barcode ?? '',
+    unit: editingProduct?.unit ?? 'PIÈCE',
+    purchase_price: editingProduct?.purchase_price ?? 0,
+    selling_price: editingProduct?.selling_price ?? 0,
+    wholesale_price: editingProduct?.wholesale_price ?? 0,
+    min_stock: editingProduct?.min_stock ?? 5,
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -43,13 +50,16 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-    
+
     try {
       // Validation Zod
       const validatedData = productSchema.parse(formData);
-      
-      // Appel de la création
-      await addProduct({ ...validatedData, status: 'ACTIVE' });
+
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, { ...validatedData, status: editingProduct.status });
+      } else {
+        await addProduct({ ...validatedData, status: 'ACTIVE' });
+      }
       onClose();
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -100,12 +110,12 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose }) => {
         backgroundColor: 'white',
         padding: '30px',
         borderRadius: '8px',
-        width: '500px',
+        width: '520px',
         maxHeight: '90vh',
         overflowY: 'auto'
       }}>
-        <h2 style={{ marginTop: 0, marginBottom: '20px' }}>Nouveau Produit</h2>
-        
+        <h2 style={{ marginTop: 0, marginBottom: '20px' }}>{editingProduct ? 'Modifier le Produit' : 'Nouveau Produit'}</h2>
+
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '15px' }}>
             <label style={labelStyle}>Référence *</label>
@@ -119,10 +129,19 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose }) => {
             {errors.designation && <span style={errorStyle}>{errors.designation}</span>}
           </div>
 
-          <div style={{ marginBottom: '15px' }}>
-            <label style={labelStyle}>Code-barres</label>
-            <input type="text" name="barcode" value={formData.barcode} onChange={handleChange} style={inputStyle} />
-            {errors.barcode && <span style={errorStyle}>{errors.barcode}</span>}
+          <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Code-barres</label>
+              <input type="text" name="barcode" value={formData.barcode} onChange={handleChange} style={inputStyle} />
+              {errors.barcode && <span style={errorStyle}>{errors.barcode}</span>}
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Unité *</label>
+              <select name="unit" value={formData.unit} onChange={handleChange} style={inputStyle}>
+                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+              {errors.unit && <span style={errorStyle}>{errors.unit}</span>}
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
@@ -157,7 +176,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose }) => {
             }}>Annuler</button>
             <button type="submit" style={{
               padding: '10px 20px', borderRadius: '4px', border: 'none', backgroundColor: '#2563eb', color: 'white', fontWeight: 'bold', cursor: 'pointer'
-            }}>Enregistrer</button>
+            }}>{editingProduct ? 'Enregistrer les modifications' : 'Enregistrer'}</button>
           </div>
         </form>
       </div>
