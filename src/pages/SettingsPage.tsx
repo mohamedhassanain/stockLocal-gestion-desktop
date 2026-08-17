@@ -56,7 +56,7 @@ export const SettingsPage: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
 
   // Entreprise
-  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', address: '', phone: '', email: '' });
+  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', address: '', phone: '', email: '', logo_path: '' });
 
   // Catégories
   const [categories, setCategories] = useState<Category[]>([]);

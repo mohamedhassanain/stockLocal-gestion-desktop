@@ -9,6 +9,7 @@ export interface CompanySettings {
   address: string;
   phone: string;
   email: string;
+  logo_path: string;
 }
 
 const DEFAULTS: CompanySettings = {
@@ -20,6 +21,7 @@ const DEFAULTS: CompanySettings = {
   address: '',
   phone: '',
   email: '',
+  logo_path: '',
 };
 
 const stmtGet = db.prepare('SELECT key, value FROM company_settings');
@@ -33,32 +35,34 @@ export const CompanySettingsService = {
     for (const row of rows) map[row.key] = row.value;
 
     return {
-      name: map.name ?? DEFAULTS.name,
-      tagline: map.tagline ?? DEFAULTS.tagline,
-      ice: map.ice ?? DEFAULTS.ice,
-      rc: map.rc ?? DEFAULTS.rc,
-      if_: map.if_ ?? DEFAULTS.if_,
-      address: map.address ?? DEFAULTS.address,
-      phone: map.phone ?? DEFAULTS.phone,
-      email: map.email ?? DEFAULTS.email,
+      name: map['name'] ?? DEFAULTS.name,
+      tagline: map['tagline'] ?? DEFAULTS.tagline,
+      ice: map['ice'] ?? DEFAULTS.ice,
+      rc: map['rc'] ?? DEFAULTS.rc,
+      if_: map['if_'] ?? DEFAULTS.if_,
+      address: map['address'] ?? DEFAULTS.address,
+      phone: map['phone'] ?? DEFAULTS.phone,
+      email: map['email'] ?? DEFAULTS.email,
+      logo_path: map['logo_path'] ?? DEFAULTS.logo_path,
     };
   },
 
   /** Enregistre les paramètres (mise à jour partielle acceptée). */
   save(settings: Partial<CompanySettings>): CompanySettings {
-    const entries: Array<[string, string]> = [
-      ['name', settings.name ?? ''],
-      ['tagline', settings.tagline ?? ''],
-      ['ice', settings.ice ?? ''],
-      ['rc', settings.rc ?? ''],
-      ['if_', settings.if_ ?? ''],
-      ['address', settings.address ?? ''],
-      ['phone', settings.phone ?? ''],
-      ['email', settings.email ?? ''],
+    const entries: Array<[string, string | undefined]> = [
+      ['name', settings.name],
+      ['tagline', settings.tagline],
+      ['ice', settings.ice],
+      ['rc', settings.rc],
+      ['if_', settings.if_],
+      ['address', settings.address],
+      ['phone', settings.phone],
+      ['email', settings.email],
+      ['logo_path', settings.logo_path],
     ];
     const txn = db.transaction(() => {
       for (const [key, value] of entries) {
-        if (value !== '') stmtSet.run(key, value);
+        if (value !== undefined && value !== '') stmtSet.run(key, value);
       }
     });
     txn();

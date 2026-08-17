@@ -14,6 +14,7 @@ function truncate(text: string, max: number): string {
 
 export const PDFService = {
   async generateClientStatement(client: Customer, history: ClientCredit[]): Promise<string> {
+    const settings = CompanySettingsService.getAll();
     const pdfDoc = await PDFDocument.create();
     let page = pdfDoc.addPage();
     const { height } = page.getSize();
@@ -21,6 +22,9 @@ export const PDFService = {
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     let y = height - 50;
+
+    page.drawText(settings.name || 'StockLocal', { x: 50, y, size: 14, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 24;
 
     page.drawText('Relevé de Compte (نسيئة)', { x: 50, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 40;
@@ -76,7 +80,7 @@ export const PDFService = {
 
   /**
    * Génère un PDF pour un document commercial (Devis, BL, Facture, Avoir)
-   * avec les mentions légales marocaines (ICE, RC, IF) et les paramètres entreprise.
+   * avec logo (optionnel), mentions légales marocaines (ICE, RC, IF) et paramètres entreprise.
    */
   async generateDocument(doc: Document): Promise<string> {
     const settings = CompanySettingsService.getAll();
@@ -96,22 +100,39 @@ export const PDFService = {
 
     let y = height - 50;
 
+    // ── Logo entreprise (si configuré) ──
+    let headerX = 50;
+    if (settings.logo_path && fs.existsSync(settings.logo_path)) {
+      try {
+        const logoBytes = fs.readFileSync(settings.logo_path);
+        const ext = path.extname(settings.logo_path).toLowerCase();
+        const logoImage = ext === '.png'
+          ? await pdfDoc.embedPng(logoBytes)
+          : await pdfDoc.embedJpg(logoBytes);
+        page.drawImage(logoImage, { x: 50, y: height - 70, width: 90, height: 45 });
+        headerX = 160;
+        y = height - 50;
+      } catch {
+        // Logo illisible : on ignore silencieusement
+      }
+    }
+
     // ── En-tête : entreprise + numéro ──
-    page.drawText(settings.name || 'StockLocal', { x: 50, y, size: 22, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 22, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     page.drawText(title, { x: width - 300, y: y + 4, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 15;
     if (settings.address) {
-      page.drawText(settings.address, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText(settings.address, { x: headerX, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
       y -= 12;
     }
     if (settings.phone || settings.email) {
-      page.drawText([settings.phone, settings.email].filter(Boolean).join(' · '), { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+      page.drawText([settings.phone, settings.email].filter(Boolean).join(' · '), { x: headerX, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
       y -= 12;
     }
-    page.drawText(settings.tagline || 'Gestion commerciale - Grossiste', { x: 50, y, size: 10, font });
+    page.drawText(settings.tagline || 'Gestion commerciale - Grossiste', { x: headerX, y, size: 10, font });
     page.drawText(doc.document_number, { x: width - 300, y, size: 12, font: boldFont });
     y -= 15;
-    page.drawText(`ICE : ${settings.ice}  ·  RC : ${settings.rc}  ·  IF : ${settings.if_}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+    page.drawText(`ICE : ${settings.ice}  ·  RC : ${settings.rc}  ·  IF : ${settings.if_}`, { x: headerX, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 15;
     page.drawText(`Date : ${new Date(doc.date).toLocaleDateString('fr-MA')}`, { x: width - 300, y, size: 10, font });
     if (doc.due_date) {
