@@ -4,14 +4,26 @@ import { ProductForm } from '../components/products/ProductForm';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Product } from '../repositories/ProductRepository';
 
+interface CategoryOption {
+  id: string;
+  name: string;
+}
+
 export const ProductsPage: React.FC = () => {
   const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('');
+
+  // Filtre par catégorie (cahier des charges §3)
+  const filteredProducts = categoryFilter
+    ? products.filter(p => p.category_id === categoryFilter)
+    : products;
 
   const rowVirtualizer = useVirtualizer({
-    count: products.length,
+    count: filteredProducts.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 61,
     overscan: 5,
@@ -19,6 +31,9 @@ export const ProductsPage: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
+    window.api.categories.getAll().then((cats: Array<{ id: string; name: string }>) => {
+      setCategories((cats ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+    }).catch(() => {});
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F' && e.ctrlKey) {
@@ -67,12 +82,12 @@ export const ProductsPage: React.FC = () => {
   };
 
   const handlePrintLabels = async () => {
-    if (products.length === 0) {
+    if (filteredProducts.length === 0) {
       alert('Aucun produit à imprimer. Effectuez d\'abord une recherche.');
       return;
     }
     try {
-      const result = await window.api.products.printLabels(products.map(p => p.id));
+      const result = await window.api.products.printLabels(filteredProducts.map(p => p.id));
       if (!result.success) throw new Error(result.error);
     } catch (e: any) {
       alert(e.message);
@@ -100,7 +115,7 @@ export const ProductsPage: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', alignItems: 'stretch' }}>
         <input
           id="product-search"
           type="text"
@@ -108,7 +123,7 @@ export const ProductsPage: React.FC = () => {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{
-            flex: 1,
+            flex: 2,
             padding: '18px',
             fontSize: '18px',
             borderRadius: '8px',
@@ -116,6 +131,22 @@ export const ProductsPage: React.FC = () => {
             outline: 'none'
           }}
         />
+        <select
+          value={categoryFilter}
+          onChange={e => setCategoryFilter(e.target.value)}
+          style={{
+            flex: 1,
+            padding: '18px',
+            fontSize: '16px',
+            borderRadius: '8px',
+            border: '2px solid #cbd5e1',
+            outline: 'none',
+            background: 'white'
+          }}
+        >
+          <option value="">🏷️ Toutes les catégories</option>
+          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
         <button onClick={handlePrintLabels}
           style={{
             padding: '15px 30px',
@@ -125,7 +156,8 @@ export const ProductsPage: React.FC = () => {
             borderRadius: '8px',
             fontSize: '18px',
             fontWeight: 'bold',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
           }}>
           🖨️ Imprimer Étiquettes
         </button>
@@ -151,12 +183,12 @@ export const ProductsPage: React.FC = () => {
         >
           {isLoading ? (
             <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px' }}>Chargement ultra-rapide en cours...</div>
-          ) : products.length === 0 ? (
+          ) : filteredProducts.length === 0 ? (
             <div style={{ padding: '40px', textAlign: 'center', fontSize: '18px', color: '#94a3b8' }}>Aucun produit trouvé</div>
           ) : (
             <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
               {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                const p = products[virtualRow.index];
+                const p = filteredProducts[virtualRow.index];
                 const stock = p.current_stock ?? 0;
                 return (
                   <div
