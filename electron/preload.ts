@@ -4,10 +4,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 export const api = {
   products: {
     search: (query: string) => ipcRenderer.invoke('products:search', query),
+    getAll: () => ipcRenderer.invoke('products:getAll'),
     create: (data: any) => ipcRenderer.invoke('products:create', data),
     update: (id: string, data: any) => ipcRenderer.invoke('products:update', { id, data }),
     archive: (id: string) => ipcRenderer.invoke('products:archive', id),
     activate: (id: string) => ipcRenderer.invoke('products:activate', id),
+    importCsv: (filePath: string) => ipcRenderer.invoke('products:importCsv', filePath),
+    printLabels: (productIds: string[]) => ipcRenderer.invoke('products:printLabels', productIds),
   },
   stock: {
     getHistory: (productId: string) => ipcRenderer.invoke('stock:getHistory', productId),
@@ -15,6 +18,31 @@ export const api = {
     addEntry: (data: any) => ipcRenderer.invoke('stock:addEntry', data),
     addExit: (data: any) => ipcRenderer.invoke('stock:addExit', data),
     addInventory: (data: any, actualCount: number) => ipcRenderer.invoke('stock:addInventory', { data, actualCount }),
+  },
+  categories: {
+    getAll: () => ipcRenderer.invoke('categories:getAll'),
+    create: (data: any) => ipcRenderer.invoke('categories:create', data),
+    update: (id: string, data: any) => ipcRenderer.invoke('categories:update', { id, data }),
+    delete: (id: string) => ipcRenderer.invoke('categories:delete', id),
+    addSub: (categoryId: string, data: any) => ipcRenderer.invoke('categories:addSub', { categoryId, data }),
+    updateSub: (id: string, data: any) => ipcRenderer.invoke('categories:updateSub', { id, data }),
+    deleteSub: (id: string) => ipcRenderer.invoke('categories:deleteSub', id),
+  },
+  discounts: {
+    getAll: () => ipcRenderer.invoke('discounts:getAll'),
+    create: (data: any) => ipcRenderer.invoke('discounts:create', data),
+    update: (id: string, data: any) => ipcRenderer.invoke('discounts:update', { id, data }),
+    delete: (id: string) => ipcRenderer.invoke('discounts:delete', id),
+  },
+  company: {
+    get: () => ipcRenderer.invoke('company:get'),
+    save: (settings: any) => ipcRenderer.invoke('company:save', settings),
+  },
+  audit: {
+    getLogs: (limit?: number) => ipcRenderer.invoke('audit:getLogs', limit),
+  },
+  reports: {
+    generate: (month?: string) => ipcRenderer.invoke('reports:generate', month),
   },
   clients: {
     search: (query: string) => ipcRenderer.invoke('clients:search', query),
@@ -44,6 +72,7 @@ export const api = {
     create: (data: any) => ipcRenderer.invoke('documents:create', data),
     addPayment: (data: any) => ipcRenderer.invoke('documents:addPayment', data),
     convertBL: (deliveryNoteId: string) => ipcRenderer.invoke('documents:convertBL', deliveryNoteId),
+    createCreditNote: (invoiceId: string, reason?: string) => ipcRenderer.invoke('documents:createCreditNote', { invoiceId, reason }),
     getPayments: (documentId: string) => ipcRenderer.invoke('documents:getPayments', documentId),
     exportPdf: (documentId: string) => ipcRenderer.invoke('documents:exportPdf', documentId),
   },

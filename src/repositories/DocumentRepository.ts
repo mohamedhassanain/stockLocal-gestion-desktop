@@ -201,6 +201,11 @@ export const DocumentRepository = {
     return stmtGetPayments.all(documentId) as Payment[];
   },
 
+  // Annulation d'un document (pour la création d'avoir)
+  cancelDocument(documentId: string): void {
+    db.prepare(`UPDATE documents SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(documentId);
+  },
+
   // Conversion BL → Facture
   convertToInvoice(deliveryNoteId: string): Document {
     const bl = this.getById(deliveryNoteId);

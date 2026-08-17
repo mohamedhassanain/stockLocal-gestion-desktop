@@ -1,4 +1,6 @@
 import { DocumentRepository, type Document, type DocumentType, type PaymentMethod } from '../repositories/DocumentRepository';
+import { db } from '../database/config/connection';
+import { AuditService } from './AuditService';
 
 export const DocumentService = {
 
@@ -42,11 +44,43 @@ export const DocumentService = {
       throw new Error(`Le paiement (${data.amount} MAD) dépasse le reste dû (${remaining.toFixed(2)} MAD).`);
     }
 
-    DocumentRepository.addPayment(data);
+    const txn = db.transaction(() => {
+      DocumentRepository.addPayment(data);
+      AuditService.log('DOCUMENT_PAYMENT', 'document', data.document_id, `Paiement ${data.amount} MAD`);
+    });
+    txn();
   },
 
   convertBLToInvoice(deliveryNoteId: string): Document {
     return DocumentRepository.convertToInvoice(deliveryNoteId);
+  },
+
+  /**
+   * Crée un avoir à partir d'une facture (cahier des charges §7).
+   * L'ancienne facture est marquée CANCELLED et un avoir AV-YYYY-NNN est généré.
+   */
+  createCreditNote(invoiceId: string, reason: string = 'Retour marchandise'): Document {
+    const invoice = DocumentRepository.getById(invoiceId);
+    if (!invoice) throw new Error('Facture introuvable.');
+    if (invoice.type !== 'INVOICE') throw new Error('Seules les factures peuvent générer un avoir.');
+
+    const creditNote = DocumentRepository.create({
+      type: 'CREDIT_NOTE',
+      entity_id: invoice.entity_id,
+      date: new Date().toISOString().split('T')[0],
+      notes: `Avoir pour ${invoice.document_number} — ${reason}`,
+      items: (invoice.items ?? []).map(i => ({
+        product_id: i.product_id,
+        quantity: i.quantity,
+        unit_price: -Math.abs(i.unit_price),  // négatif : retour de marchandise
+        discount: i.discount
+      }))
+    });
+
+    // Marquer la facture originale comme annulée
+    DocumentRepository.cancelDocument(invoiceId);
+
+    return creditNote;
   },
 
   getPayments(documentId: string) {

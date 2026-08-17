@@ -57,6 +57,19 @@ export const ProductsPage: React.FC = () => {
     }
   };
 
+  const handlePrintLabels = async () => {
+    if (products.length === 0) {
+      alert('Aucun produit à imprimer. Effectuez d\'abord une recherche.');
+      return;
+    }
+    try {
+      const result = await window.api.products.printLabels(products.map(p => p.id));
+      if (!result.success) throw new Error(result.error);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   return (
     <div style={{ padding: '30px', flex: 1, backgroundColor: '#f8fafc', height: '100vh', overflowY: 'auto', position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
@@ -94,16 +107,17 @@ export const ProductsPage: React.FC = () => {
             outline: 'none'
           }}
         />
-        <button style={{
-          padding: '15px 30px',
-          backgroundColor: '#10b981',
-          color: 'white',
-          border: 'none',
-          borderRadius: '8px',
-          fontSize: '18px',
-          fontWeight: 'bold',
-          cursor: 'pointer'
-        }}>
+        <button onClick={handlePrintLabels}
+          style={{
+            padding: '15px 30px',
+            backgroundColor: '#10b981',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '18px',
+            fontWeight: 'bold',
+            cursor: 'pointer'
+          }}>
           🖨️ Imprimer Étiquettes
         </button>
       </div>

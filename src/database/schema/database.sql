@@ -166,6 +166,23 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
+-- Paramètres de l'entreprise (assistant de configuration)
+CREATE TABLE IF NOT EXISTS company_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- Remises par volume (tarification)
+CREATE TABLE IF NOT EXISTS volume_discounts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    min_qty REAL NOT NULL DEFAULT 1,
+    max_qty REAL,
+    discount_pct REAL NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Étape 4 : Création des index pour garantir des performances ultra-rapides (< 100ms)
 
 -- Index pour la recherche des produits
@@ -208,3 +225,6 @@ CREATE INDEX IF NOT EXISTS idx_client_credits_type ON client_credits (type);
 CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers (name);
 CREATE INDEX IF NOT EXISTS idx_supplier_credits_supplier ON supplier_credits (supplier_id);
 CREATE INDEX IF NOT EXISTS idx_supplier_credits_date ON supplier_credits (date);
+
+-- Index pour les remises par volume
+CREATE INDEX IF NOT EXISTS idx_volume_discounts_qty ON volume_discounts (min_qty);

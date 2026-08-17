@@ -72,6 +72,15 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleReport = async () => {
+    try {
+      const result = await window.api.reports.generate();
+      if (!result.success) throw new Error(result.error);
+    } catch (e: any) {
+      alert(`❌ Erreur : ${e.message}`);
+    }
+  };
+
   if (isLoading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
@@ -96,6 +105,10 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             {lastBackup && <div style={{ fontSize: '12px', color: '#64748b', background: '#1e293b', padding: '6px 12px', borderRadius: '8px' }}>💾 Dernière sauvegarde : {lastBackup}</div>}
+            <button onClick={handleReport}
+              style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              📄 Rapport PDF
+            </button>
             <button onClick={handleBackupNow}
               style={{ padding: '10px 20px', background: '#22c55e', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
               💾 Sauvegarder maintenant

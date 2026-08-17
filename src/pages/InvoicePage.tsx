@@ -199,7 +199,7 @@ const NewDocumentModal: React.FC<{
 
 // ─── Détail d'un document ─────────────────────────────────────────────────────
 
-const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number, method: string) => void; onConvert?: () => void; onPrint: () => void }> = ({ doc, onPayment, onConvert, onPrint }) => {
+const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number, method: string) => void; onConvert?: () => void; onPrint: () => void; onCreditNote?: () => void }> = ({ doc, onPayment, onConvert, onPrint, onCreditNote }) => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('CASH');
   const remaining = doc.total_incl_tax - (doc.amount_paid ?? 0);
@@ -295,6 +295,12 @@ const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number,
             📄 Convertir en Facture
           </button>
         )}
+        {doc.type === 'INVOICE' && doc.status !== 'CANCELLED' && onCreditNote && (
+          <button onClick={onCreditNote}
+            style={{ flex: 1, padding: '14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+            ↩️ Créer un Avoir
+          </button>
+        )}
       </div>
     </div>
   );
@@ -341,6 +347,21 @@ export const InvoicePage: React.FC = () => {
     try {
       const result = await window.api.documents.exportPdf(selectedDocument.id);
       if (!result.success) throw new Error(result.error);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleCreditNote = async () => {
+    if (!selectedDocument) return;
+    const reason = prompt('Motif de l\'avoir (retour, annulation...) :', 'Retour marchandise') ?? 'Retour marchandise';
+    if (reason === null) return;
+    if (!confirm(`Créer un avoir pour ${selectedDocument.document_number} ? La facture sera annulée.`)) return;
+    try {
+      const result = await window.api.documents.createCreditNote(selectedDocument.id, reason);
+      if (!result.success) throw new Error(result.error);
+      alert(`Avoir ${result.data.document_number} créé avec succès !`);
+      loadDocuments();
     } catch (e: any) {
       alert(e.message);
     }
@@ -419,6 +440,7 @@ export const InvoicePage: React.FC = () => {
               onPayment={handlePayment}
               onConvert={selectedDocument.type === 'DELIVERY_NOTE' ? handleConvert : undefined}
               onPrint={handlePrint}
+              onCreditNote={selectedDocument.type === 'INVOICE' ? handleCreditNote : undefined}
             />
           )}
         </div>

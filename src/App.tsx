@@ -6,8 +6,9 @@ import { StockPage } from './pages/StockPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { InvoicePage } from './pages/InvoicePage';
+import { SettingsPage } from './pages/SettingsPage';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'settings';
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
   F1: 'dashboard',
@@ -16,6 +17,7 @@ const PAGE_SHORTCUTS: Record<string, Page> = {
   F4: 'clients',
   F5: 'suppliers',
   F6: 'invoices',
+  F7: 'settings',
 };
 
 export const App: React.FC = () => {
@@ -42,6 +44,7 @@ export const App: React.FC = () => {
       {currentPage === 'clients' && <ClientsPage />}
       {currentPage === 'suppliers' && <SuppliersPage />}
       {currentPage === 'invoices' && <InvoicePage />}
+      {currentPage === 'settings' && <SettingsPage />}
     </div>
   );
 };
