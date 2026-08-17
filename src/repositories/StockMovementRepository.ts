@@ -11,6 +11,7 @@ export interface StockMovement {
   supplier_id?: string;
   user_id: string;
   notes?: string;
+  username?: string;
 }
 
 export class StockMovementRepository {
@@ -35,6 +36,17 @@ export class StockMovementRepository {
 
   static getHistory(productId: string, limit: number = 50, offset: number = 0): StockMovement[] {
     return this.stmts.findByProduct.all(productId, limit, offset) as StockMovement[];
+  }
+
+  static getHistoryWithUser(productId: string, limit: number = 50, offset: number = 0): Array<StockMovement & { username: string }> {
+    return db.prepare(`
+      SELECT sm.*, COALESCE(u.username, 'inconnu') AS username
+      FROM stock_movements sm
+      LEFT JOIN users u ON u.id = sm.user_id
+      WHERE sm.product_id = ?
+      ORDER BY sm.date DESC
+      LIMIT ? OFFSET ?
+    `).all(productId, limit, offset) as Array<StockMovement & { username: string }>;
   }
 
   static getStockLevel(productId: string): number {

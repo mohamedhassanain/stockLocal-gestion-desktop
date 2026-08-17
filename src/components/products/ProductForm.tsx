@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { useProductStore } from '../../stores/useProductStore';
 import type { Product } from '../../repositories/ProductRepository';
@@ -8,8 +8,11 @@ const UNITS = ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'];
 const productSchema = z.object({
   reference: z.string().min(1, 'La référence est requise'),
   designation: z.string().min(1, 'La désignation est requise'),
+  description: z.string().optional(),
   barcode: z.string().optional(),
   unit: z.string().min(1, "L'unité est requise"),
+  category_id: z.string().optional(),
+  subcategory_id: z.string().optional(),
   purchase_price: z.number().min(0, 'Le prix d\'achat doit être positif'),
   selling_price: z.number().min(0, 'Le prix de vente doit être positif'),
   wholesale_price: z.number().min(0, 'Le prix de gros doit être positif'),
@@ -18,6 +21,12 @@ const productSchema = z.object({
   message: "Le prix de vente ne peut pas être inférieur au prix d'achat",
   path: ['selling_price']
 });
+
+interface Category {
+  id: string;
+  name: string;
+  subcategories?: Array<{ id: string; category_id: string; name: string }>;
+}
 
 interface ProductFormProps {
   onClose: () => void;
@@ -28,18 +37,29 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
   const addProduct = useProductStore(state => state.addProduct);
   const updateProduct = useProductStore(state => state.updateProduct);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState({
     reference: editingProduct?.reference ?? '',
     designation: editingProduct?.designation ?? '',
+    description: editingProduct?.description ?? '',
     barcode: editingProduct?.barcode ?? '',
     unit: editingProduct?.unit ?? 'PIÈCE',
+    category_id: editingProduct?.category_id ?? '',
+    subcategory_id: editingProduct?.subcategory_id ?? '',
     purchase_price: editingProduct?.purchase_price ?? 0,
     selling_price: editingProduct?.selling_price ?? 0,
     wholesale_price: editingProduct?.wholesale_price ?? 0,
     min_stock: editingProduct?.min_stock ?? 5,
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  useEffect(() => {
+    window.api.categories.getAll().then(setCategories).catch(() => {});
+  }, []);
+
+  const selectedCategory = categories.find(c => c.id === formData.category_id);
+  const selectedSubs = selectedCategory?.subcategories ?? [];
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -47,12 +67,15 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     }));
   };
 
+  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData(prev => ({ ...prev, category_id: e.target.value, subcategory_id: '' }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
 
     try {
-      // Validation Zod
       const validatedData = productSchema.parse(formData);
 
       if (editingProduct) {
@@ -110,7 +133,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
         backgroundColor: 'white',
         padding: '30px',
         borderRadius: '8px',
-        width: '520px',
+        width: '560px',
         maxHeight: '90vh',
         overflowY: 'auto'
       }}>
@@ -129,6 +152,12 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
             {errors.designation && <span style={errorStyle}>{errors.designation}</span>}
           </div>
 
+          <div style={{ marginBottom: '15px' }}>
+            <label style={labelStyle}>Description</label>
+            <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Description du produit (optionnel)"
+              style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} />
+          </div>
+
           <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Code-barres</label>
@@ -141,6 +170,23 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
                 {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
               {errors.unit && <span style={errorStyle}>{errors.unit}</span>}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Catégorie</label>
+              <select name="category_id" value={formData.category_id} onChange={handleCategoryChange} style={inputStyle}>
+                <option value="">— Aucune —</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Sous-catégorie</label>
+              <select name="subcategory_id" value={formData.subcategory_id} onChange={handleChange} style={inputStyle} disabled={selectedSubs.length === 0}>
+                <option value="">— Aucune —</option>
+                {selectedSubs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </div>
           </div>
 

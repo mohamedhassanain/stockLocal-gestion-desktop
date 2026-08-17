@@ -9,8 +9,8 @@ interface StockState {
   error: string | null;
 
   loadProductStock: (productId: string) => Promise<void>;
-  addEntry: (data: Omit<StockMovement, 'id' | 'type'>) => Promise<void>;
-  addExit: (data: Omit<StockMovement, 'id' | 'type'>) => Promise<void>;
+  addEntry: (data: Omit<StockMovement, 'id' | 'type' | 'notes'> & { reference_doc?: string; notes?: string }) => Promise<void>;
+  addExit: (data: Omit<StockMovement, 'id' | 'type'> & { exitType?: 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR'; reference_doc?: string }) => Promise<void>;
   addInventory: (data: Omit<StockMovement, 'id' | 'type' | 'quantity'>, actualCount: number) => Promise<void>;
 }
 

@@ -67,6 +67,14 @@ const NewDocumentModal: React.FC<{
 
   const total = items.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - it.discount / 100), 0);
 
+  // Application automatique des remises par volume (tarification §6)
+  const applyVolumeDiscount = (item: { product_id: string; quantity: number }, idx: number) => {
+    const product = products.find(p => p.id === item.product_id);
+    if (!product) return;
+    const volumePrice = item.quantity >= 10 ? product.wholesale_price : item.quantity >= 3 ? (product.selling_price * 0.95) : product.selling_price;
+    updateLine(idx, 'unit_price', Math.round(volumePrice * 100) / 100);
+  };
+
   const handleSave = () => {
     onSave({ type, entity_id: entityId, date, due_date: dueDate || undefined, notes, items: items.map(({ _name, ...rest }) => rest) });
   };
@@ -153,7 +161,7 @@ const NewDocumentModal: React.FC<{
                       <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '8px 10px' }}>{item._name}</td>
                         <td style={{ padding: '4px 8px' }}>
-                          <input type="number" min="1" value={item.quantity} onChange={e => updateLine(idx, 'quantity', Number(e.target.value))}
+                          <input type="number" min="1" value={item.quantity} onChange={e => { updateLine(idx, 'quantity', Number(e.target.value)); applyVolumeDiscount(item, idx); }}
                             style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px' }} />
                         </td>
                         <td style={{ padding: '4px 8px' }}>

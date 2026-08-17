@@ -4,7 +4,7 @@ import type { Customer } from '../repositories/ClientRepository';
 
 // ─── Sous-composant : Formulaire de création client ──────────────────────────
 const ClientFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => void }> = ({ onClose, onSave }) => {
-  const [form, setForm] = useState({ name: '', phone: '', address: '', ice: '', credit_limit: 0, category: 'DÉTAIL' });
+  const [form, setForm] = useState({ name: '', phone: '', address: '', ice: '', payment_conditions: 'Comptant', credit_limit: 0, category: 'DÉTAIL' });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '480px', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
@@ -20,6 +20,22 @@ const ClientFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => vo
             <option value="DÉTAIL">Détail</option>
             <option value="GROSSISTE">Grossiste</option>
             <option value="VIP">VIP</option>
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#374151' }}>Conditions de paiement</label>
+          <select
+            value={form.payment_conditions}
+            onChange={e => setForm({ ...form, payment_conditions: e.target.value })}
+            style={{ width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }}
+          >
+            <option value="Comptant">Comptant</option>
+            <option value="7 jours">7 jours</option>
+            <option value="15 jours">15 jours</option>
+            <option value="30 jours">30 jours</option>
+            <option value="45 jours">45 jours</option>
+            <option value="60 jours">60 jours</option>
           </select>
         </div>
 
