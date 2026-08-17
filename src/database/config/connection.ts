@@ -52,6 +52,7 @@ function addColumnIfMissing(table: string, column: string, definition: string): 
 function migrateColumns(): void {
   addColumnIfMissing('documents', 'due_date', 'DATETIME');
   addColumnIfMissing('documents', 'notes', 'TEXT');
+  addColumnIfMissing('customers', 'category', "TEXT NOT NULL DEFAULT 'DÉTAIL'");
 }
 
 function seedDefaultUser(): void {

@@ -24,8 +24,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
 
         <NavSection label="COMMERCIAL" />
         <NavItem icon="🤝" label="Clients" shortcut="F4" active={currentPage === 'clients'} onClick={() => onNavigate('clients')} />
-        <NavItem icon="🏭" label="Fournisseurs" shortcut="" active={false} onClick={() => {}} />
-        <NavItem icon="📄" label="Facturation" shortcut="F5" active={currentPage === 'invoices'} onClick={() => onNavigate('invoices')} />
+        <NavItem icon="🏭" label="Fournisseurs" shortcut="F5" active={currentPage === 'suppliers'} onClick={() => onNavigate('suppliers')} />
+        <NavItem icon="📄" label="Facturation" shortcut="F6" active={currentPage === 'invoices'} onClick={() => onNavigate('invoices')} />
       </nav>
 
       {/* Footer */}

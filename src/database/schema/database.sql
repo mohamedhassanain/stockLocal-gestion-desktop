@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS customers (
     ice TEXT,
     payment_conditions TEXT,
     credit_limit REAL DEFAULT 0.0,
+    category TEXT NOT NULL DEFAULT 'DÉTAIL',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -100,6 +101,19 @@ CREATE TABLE IF NOT EXISTS client_credits (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
 );
 
+
+CREATE TABLE IF NOT EXISTS supplier_credits (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT NOT NULL,
+    type TEXT NOT NULL,            -- 'DEBT' (on doit de l'argent) ou 'PAYMENT' (on a payé)
+    amount REAL NOT NULL,
+    description TEXT,
+    date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
+);
 
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
@@ -188,3 +202,9 @@ CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers (phone);
 CREATE INDEX IF NOT EXISTS idx_client_credits_customer ON client_credits (customer_id);
 CREATE INDEX IF NOT EXISTS idx_client_credits_date ON client_credits (date);
 CREATE INDEX IF NOT EXISTS idx_client_credits_type ON client_credits (type);
+
+-- Index pour les fournisseurs et crédits fournisseurs
+CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers (name);
+CREATE INDEX IF NOT EXISTS idx_supplier_credits_supplier ON supplier_credits (supplier_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_credits_date ON supplier_credits (date);
+

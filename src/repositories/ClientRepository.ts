@@ -9,6 +9,7 @@ export interface Customer {
   ice?: string;
   payment_conditions?: string;
   credit_limit: number;
+  category: 'DÉTAIL' | 'GROSSISTE' | 'VIP';
   created_at?: string;
   updated_at?: string;
   // Calculé dynamiquement
@@ -61,13 +62,13 @@ const stmtGetById = db.prepare<[string]>(`
   WHERE c.id = ?
 `);
 
-const stmtInsert = db.prepare<[string, string, string | null, string | null, string | null, string | null, number]>(`
-  INSERT INTO customers (id, name, phone, address, ice, payment_conditions, credit_limit)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+const stmtInsert = db.prepare<[string, string, string | null, string | null, string | null, string | null, number, string]>(`
+  INSERT INTO customers (id, name, phone, address, ice, payment_conditions, credit_limit, category)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
-const stmtUpdate = db.prepare<[string, string | null, string | null, string | null, string | null, number, string]>(`
-  UPDATE customers SET name=?, phone=?, address=?, ice=?, payment_conditions=?, credit_limit=?, updated_at=CURRENT_TIMESTAMP
+const stmtUpdate = db.prepare<[string, string | null, string | null, string | null, string | null, number, string, string]>(`
+  UPDATE customers SET name=?, phone=?, address=?, ice=?, payment_conditions=?, credit_limit=?, category=?, updated_at=CURRENT_TIMESTAMP
   WHERE id=?
 `);
 
@@ -111,7 +112,8 @@ export const ClientRepository = {
       data.address ?? null,
       data.ice ?? null,
       data.payment_conditions ?? null,
-      data.credit_limit ?? 0
+      data.credit_limit ?? 0,
+      data.category ?? 'DÉTAIL'
     );
     return this.getById(id)!;
   },
@@ -126,6 +128,7 @@ export const ClientRepository = {
       data.ice ?? existing.ice ?? null,
       data.payment_conditions ?? existing.payment_conditions ?? null,
       data.credit_limit ?? existing.credit_limit ?? 0,
+      data.category ?? existing.category ?? 'DÉTAIL',
       id
     );
     return this.getById(id)!;

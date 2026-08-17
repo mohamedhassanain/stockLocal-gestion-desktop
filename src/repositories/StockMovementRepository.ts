@@ -1,4 +1,4 @@
-import { db, runInTransaction } from '../database/config/connection';
+import { db } from '../database/config/connection';
 
 export interface StockMovement {
   id: string;

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useDocumentStore } from '../stores/useDocumentStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useClientStore } from '../stores/useClientStore';
-import type { Document, DocumentType, DocumentItem } from '../repositories/DocumentRepository';
+import type { Document, DocumentType } from '../repositories/DocumentRepository';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 

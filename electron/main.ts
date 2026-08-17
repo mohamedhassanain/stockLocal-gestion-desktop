@@ -8,6 +8,9 @@ import { ClientService } from '../src/services/ClientService';
 import { DocumentService } from '../src/services/DocumentService';
 import { DashboardRepository } from '../src/repositories/DashboardRepository';
 import { BackupService } from '../src/services/BackupService';
+import { PDFService } from '../src/services/PDFService';
+import { ClientRepository } from '../src/repositories/ClientRepository';
+import { SupplierService } from '../src/services/SupplierService';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -133,6 +136,73 @@ app.whenReady().then(() => {
   ipcMain.handle('clients:addPayment', async (_, { customerId, amount, description, userId }: any) => {
     try {
       return { success: true, data: ClientService.recordPayment(customerId, amount, description, userId) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('clients:exportStatement', async (_, customerId: string) => {
+    try {
+      const client = ClientRepository.getById(customerId);
+      if (!client) throw new Error("Client introuvable");
+      const history = ClientRepository.getHistory(customerId);
+      const filePath = await PDFService.generateClientStatement(client, history);
+      
+      // Ouvrir le fichier automatiquement
+      const { shell } = require('electron');
+      shell.openPath(filePath);
+      
+      return { success: true, filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // ─── Fournisseurs ────────────────────────────────────────────────────────
+
+  ipcMain.handle('suppliers:search', async (_, query: string) => {
+    try {
+      return SupplierService.searchSuppliers(query);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('suppliers:create', async (_, data: any) => {
+    try {
+      return { success: true, data: SupplierService.createSupplier(data) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('suppliers:update', async (_, { id, data }: any) => {
+    try {
+      return { success: true, data: SupplierService.updateSupplier(id, data) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('suppliers:getHistory', async (_, supplierId: string) => {
+    try {
+      return SupplierService.getSupplierHistory(supplierId);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('suppliers:addDebt', async (_, { supplierId, amount, description, userId }: any) => {
+    try {
+      return { success: true, data: SupplierService.addDebt(supplierId, amount, description, userId) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('suppliers:addPayment', async (_, { supplierId, amount, description, userId }: any) => {
+    try {
+      return { success: true, data: SupplierService.recordPayment(supplierId, amount, description, userId) };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

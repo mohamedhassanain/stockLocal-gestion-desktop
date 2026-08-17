@@ -4,11 +4,25 @@ import type { Customer } from '../repositories/ClientRepository';
 
 // ─── Sous-composant : Formulaire de création client ──────────────────────────
 const ClientFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => void }> = ({ onClose, onSave }) => {
-  const [form, setForm] = useState({ name: '', phone: '', address: '', ice: '', credit_limit: 0 });
+  const [form, setForm] = useState({ name: '', phone: '', address: '', ice: '', credit_limit: 0, category: 'DÉTAIL' });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '480px', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
         <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#0f172a' }}>Nouveau Client</h2>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#374151' }}>Catégorie *</label>
+          <select 
+            value={form.category} 
+            onChange={e => setForm({ ...form, category: e.target.value })}
+            style={{ width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }}
+          >
+            <option value="DÉTAIL">Détail</option>
+            <option value="GROSSISTE">Grossiste</option>
+            <option value="VIP">VIP</option>
+          </select>
+        </div>
+
         {[
           { key: 'name', label: 'Nom *', type: 'text', placeholder: 'Nom complet ou raison sociale' },
           { key: 'phone', label: 'Téléphone', type: 'tel', placeholder: '06XXXXXXXX' },
@@ -38,7 +52,7 @@ const ClientFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => vo
 
 // ─── Sous-composant : Fiche Client (Historique + Actions) ───────────────────
 const ClientDetailPanel: React.FC<{ client: Customer; onDebt: (a: number, d: string) => void; onPayment: (a: number, d: string) => void }> = ({ client, onDebt, onPayment }) => {
-  const { clientHistory } = useClientStore();
+  const { clientHistory, exportStatement } = useClientStore();
   const [amount, setAmount] = useState(0);
   const [desc, setDesc] = useState('');
 
@@ -76,7 +90,14 @@ const ClientDetailPanel: React.FC<{ client: Customer; onDebt: (a: number, d: str
 
       {/* Historique */}
       <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <h3 style={{ marginTop: 0 }}>Historique des transactions</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <h3 style={{ margin: 0 }}>Historique des transactions</h3>
+          <button onClick={() => exportStatement(client.id)}
+            style={{ padding: '8px 16px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+            📄 Exporter Relevé PDF
+          </button>
+        </div>
+        
         {clientHistory.length === 0 ? (
           <div style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>Aucune transaction pour ce client.</div>
         ) : (
@@ -184,7 +205,12 @@ export const ClientsPage: React.FC = () => {
             </div>
           ) : (
             <>
-              <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#0f172a' }}>{selectedClient.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, color: '#0f172a' }}>{selectedClient.name}</h2>
+                <span style={{ padding: '4px 8px', background: '#e0e7ff', color: '#4338ca', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
+                  {selectedClient.category}
+                </span>
+              </div>
               <ClientDetailPanel
                 client={selectedClient}
                 onDebt={(a, d) => addDebt(selectedClient.id, a, d).catch(e => alert(e.message))}

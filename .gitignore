@@ -1,1 +1,42 @@
-node_modules
+# Dépendances
+node_modules/
+
+# Builds
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Base de données locale / données utilisateur
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.db3
+backups/
+data/
+
+# Fichiers système / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environnement / IDE
+.env
+.env.local
+.env.*.local
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Packager
+*.pem
+!.env.example

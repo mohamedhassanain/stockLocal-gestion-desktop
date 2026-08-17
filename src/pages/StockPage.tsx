@@ -3,7 +3,7 @@ import { useStockStore } from '../stores/useStockStore';
 import { useProductStore } from '../stores/useProductStore';
 
 export const StockPage: React.FC = () => {
-  const { movements, currentProductStock, loadProductStock, addEntry, addExit, isLoading } = useStockStore();
+  const { currentProductStock, loadProductStock, addEntry, addExit } = useStockStore();
   const { products, searchProducts, searchQuery, setSearchQuery } = useProductStore((state) => ({
     products: state.products,
     searchProducts: state.loadProducts, // assuming loadProducts uses searchQuery

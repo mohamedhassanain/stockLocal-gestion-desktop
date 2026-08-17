@@ -21,6 +21,17 @@ export const api = {
       ipcRenderer.invoke('clients:addDebt', { customerId, amount, description, userId }),
     addPayment: (customerId: string, amount: number, description: string, userId: string) =>
       ipcRenderer.invoke('clients:addPayment', { customerId, amount, description, userId }),
+    exportStatement: (customerId: string) => ipcRenderer.invoke('clients:exportStatement', customerId),
+  },
+  suppliers: {
+    search: (query: string) => ipcRenderer.invoke('suppliers:search', query),
+    create: (data: any) => ipcRenderer.invoke('suppliers:create', data),
+    update: (id: string, data: any) => ipcRenderer.invoke('suppliers:update', { id, data }),
+    getHistory: (supplierId: string) => ipcRenderer.invoke('suppliers:getHistory', supplierId),
+    addDebt: (supplierId: string, amount: number, description: string, userId: string) =>
+      ipcRenderer.invoke('suppliers:addDebt', { supplierId, amount, description, userId }),
+    addPayment: (supplierId: string, amount: number, description: string, userId: string) =>
+      ipcRenderer.invoke('suppliers:addPayment', { supplierId, amount, description, userId }),
   },
   documents: {
     getAll: (type: string) => ipcRenderer.invoke('documents:getAll', type),

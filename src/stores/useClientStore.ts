@@ -16,6 +16,7 @@ interface ClientState {
   updateClient: (id: string, data: Partial<Omit<Customer, 'id' | 'created_at' | 'updated_at' | 'balance'>>) => Promise<void>;
   addDebt: (customerId: string, amount: number, description: string) => Promise<void>;
   addPayment: (customerId: string, amount: number, description: string) => Promise<void>;
+  exportStatement: (customerId: string) => Promise<void>;
 }
 
 const DEFAULT_USER_ID = 'user_1'; // Remplacé par auth plus tard
@@ -110,6 +111,15 @@ export const useClientStore = create<ClientState>((set, get) => ({
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
       throw err;
+    }
+  },
+
+  exportStatement: async (customerId: string) => {
+    try {
+      const result = await window.api.clients.exportStatement(customerId);
+      if (!result.success) throw new Error(result.error);
+    } catch (err: any) {
+      alert("Erreur lors de l'export: " + err.message);
     }
   }
 }));
