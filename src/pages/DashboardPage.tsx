@@ -35,6 +35,7 @@ export const DashboardPage: React.FC = () => {
   const [dues, setDues] = useState<UpcomingDue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [dueDays, setDueDays] = useState(30);
 
   const load = async () => {
     setIsLoading(true);
@@ -44,7 +45,7 @@ export const DashboardPage: React.FC = () => {
         window.api.dashboard.getTopProducts(),
         window.api.dashboard.getTopClients(),
         window.api.dashboard.getLowStock(),
-        window.api.dashboard.getUpcomingDues(30),
+        window.api.dashboard.getUpcomingDues(dueDays),
         window.api.backup.list(),
       ]);
       setStats(s);
@@ -81,6 +82,22 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const result = await window.api.reports.exportCsv({
+        stats,
+        topProducts,
+        topClients,
+        lowStock,
+        dues,
+      });
+      if (!result.success) throw new Error(result.error);
+      alert(`✅ Rapport Excel (CSV) exporté : ${result.filePath}`);
+    } catch (e: any) {
+      alert(`❌ Erreur : ${e.message}`);
+    }
+  };
+
   if (isLoading) {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
@@ -105,6 +122,10 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
             {lastBackup && <div style={{ fontSize: '12px', color: '#64748b', background: '#1e293b', padding: '6px 12px', borderRadius: '8px' }}>💾 Dernière sauvegarde : {lastBackup}</div>}
+            <button onClick={handleExportCsv}
+              style={{ padding: '10px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
+              📊 Export Excel
+            </button>
             <button onClick={handleReport}
               style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
               📄 Rapport PDF
@@ -189,7 +210,18 @@ export const DashboardPage: React.FC = () => {
               ))}
           </Section>
 
-          <Section title={`Échéances (30 prochains jours)`} icon="📅">
+          <Section
+            title={`Échéances (${dueDays} prochains jours)`}
+            icon="📅"
+          >
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              {[7, 30].map(days => (
+                <button key={days} onClick={() => { setDueDays(days); load(); }}
+                  style={{ padding: '6px 14px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', background: dueDays === days ? '#0f172a' : '#f3f4f6', color: dueDays === days ? 'white' : '#6b7280' }}>
+                  {days} jours
+                </button>
+              ))}
+            </div>
             {dues.length === 0
               ? <div style={{ color: '#10b981', textAlign: 'center', padding: '20px', fontWeight: '600' }}>✅ Aucune échéance à venir.</div>
               : dues.map(due => {

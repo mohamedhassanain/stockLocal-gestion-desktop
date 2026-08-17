@@ -5,7 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Product } from '../repositories/ProductRepository';
 
 export const ProductsPage: React.FC = () => {
-  const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct } = useProductStore();
+  const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -52,6 +52,15 @@ export const ProductsPage: React.FC = () => {
   const handleActivate = async (product: Product) => {
     try {
       await activateProduct(product.id);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleDisable = async (product: Product) => {
+    if (!confirm(`Désactiver le produit "${product.designation}" ? Il restera visible mais retiré de la vente.`)) return;
+    try {
+      await disableProduct(product.id);
     } catch (e: any) {
       alert(e.message);
     }
@@ -130,6 +139,7 @@ export const ProductsPage: React.FC = () => {
           <div style={{ padding: '20px', fontSize: '16px', color: '#475569', flex: 1 }}>Unité</div>
           <div style={{ padding: '20px', fontSize: '16px', color: '#475569', flex: 1 }}>Stock</div>
           <div style={{ padding: '20px', fontSize: '16px', color: '#475569', flex: 1 }}>Prix Vente</div>
+          <div style={{ padding: '20px', fontSize: '16px', color: '#475569', flex: 1 }}>Marge</div>
           <div style={{ padding: '20px', fontSize: '16px', color: '#475569', flex: 1 }}>Statut</div>
           <div style={{ padding: '20px', fontSize: '16px', color: '#475569', flex: 1 }}>Actions</div>
         </div>
@@ -172,8 +182,11 @@ export const ProductsPage: React.FC = () => {
                       {stock} {p.min_stock > 0 && stock <= p.min_stock && '⚠️'}
                     </div>
                     <div style={{ padding: '10px 20px', fontWeight: 'bold', flex: 1 }}>{p.selling_price.toFixed(2)} MAD</div>
+                    <div style={{ padding: '10px 20px', flex: 1, fontSize: '13px', fontWeight: '600', color: (p.selling_price - p.purchase_price) >= 0 ? '#16a34a' : '#dc2626' }}>
+                      {(p.selling_price - p.purchase_price).toFixed(2)} MAD
+                    </div>
                     <div style={{ padding: '10px 20px', flex: 1 }}>
-                      <span style={{ padding: '5px 10px', backgroundColor: p.status === 'ACTIVE' ? '#dcfce3' : '#fee2e2', color: p.status === 'ACTIVE' ? '#166534' : '#991b1b', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold' }}>
+                      <span style={{ padding: '5px 10px', backgroundColor: p.status === 'ACTIVE' ? '#dcfce3' : p.status === 'DISABLED' ? '#fef3c7' : '#fee2e2', color: p.status === 'ACTIVE' ? '#166534' : p.status === 'DISABLED' ? '#92400e' : '#991b1b', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold' }}>
                         {p.status}
                       </span>
                     </div>
@@ -182,11 +195,16 @@ export const ProductsPage: React.FC = () => {
                         ✏️
                       </button>
                       {p.status === 'ACTIVE' ? (
-                        <button onClick={() => handleArchive(p)} style={{ padding: '6px 12px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
-                          🗄️
-                        </button>
+                        <>
+                          <button onClick={() => handleDisable(p)} title="Désactiver (retirer de la vente)" style={{ padding: '6px 12px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            ⛔
+                          </button>
+                          <button onClick={() => handleArchive(p)} title="Archiver" style={{ padding: '6px 12px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
+                            🗄️
+                          </button>
+                        </>
                       ) : (
-                        <button onClick={() => handleActivate(p)} style={{ padding: '6px 12px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
+                        <button onClick={() => handleActivate(p)} title="Réactiver" style={{ padding: '6px 12px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
                           ✅
                         </button>
                       )}

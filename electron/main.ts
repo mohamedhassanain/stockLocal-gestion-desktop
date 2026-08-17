@@ -17,6 +17,7 @@ import { ImportService } from '../src/services/ImportService';
 import { ClientRepository } from '../src/repositories/ClientRepository';
 import { SupplierService } from '../src/services/SupplierService';
 import { ProductRepository } from '../src/repositories/ProductRepository';
+import { DemoDataService } from '../src/services/DemoDataService';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +64,7 @@ app.on('activate', () => {
 app.whenReady().then(() => {
   createWindow();
   BackupService.scheduleAutoBackup();
+  DemoDataService.seedIfEmpty();
   AuditService.log('APP_START', 'system', 'stocklocal', 'Application démarrée');
 
   // ─── Produits ──────────────────────────────────────────────────────────────
@@ -104,6 +106,16 @@ app.whenReady().then(() => {
     try {
       ProductService.activateProduct(id);
       AuditService.log('PRODUCT_ACTIVATE', 'product', id, 'Produit réactivé');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('products:disable', async (_, id: string) => {
+    try {
+      ProductRepository.disable(id);
+      AuditService.log('PRODUCT_DISABLE', 'product', id, 'Produit désactivé (retiré de la vente)');
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -257,9 +269,48 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('reports:exportCsv', async (_, data: any) => {
+    try {
+      const { writeFileSync, mkdirSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const csv = (row: any[]) => row.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';');
+      const lines: string[] = [];
+
+      lines.push(csv(['Rapport de gestion', new Date().toISOString().split('T')[0]]));
+      lines.push('');
+      lines.push(csv(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']));
+      lines.push(csv([data.stats?.revenue_today, data.stats?.revenue_week, data.stats?.revenue_month, data.stats?.gross_margin_month, data.stats?.total_stock_value, data.stats?.unpaid_total]));
+      lines.push('');
+      lines.push(csv(['TOP PRODUITS']));
+      lines.push(csv(['Produit', 'Référence', 'Quantité', 'CA']));
+      for (const p of data.topProducts ?? []) lines.push(csv([p.designation, p.reference, p.total_qty, p.total_revenue]));
+      lines.push('');
+      lines.push(csv(['TOP CLIENTS']));
+      lines.push(csv(['Client', 'Factures', 'CA']));
+      for (const c of data.topClients ?? []) lines.push(csv([c.name, c.invoice_count, c.total_revenue]));
+      lines.push('');
+      lines.push(csv(['ALERTES STOCK']));
+      lines.push(csv(['Produit', 'Référence', 'Stock', 'Min']));
+      for (const s of data.lowStock ?? []) lines.push(csv([s.designation, s.reference, s.current_stock, s.min_stock]));
+      lines.push('');
+      lines.push(csv(['ECHEANCES']));
+      lines.push(csv(['Document', 'Client', 'Echéance', 'Reste', 'Jours']));
+      for (const d of data.dues ?? []) lines.push(csv([d.document_number, d.customer_name, d.due_date, d.remaining, d.days_left]));
+
+      const exportsDir = join(app.getPath('documents'), 'StockLocal', 'exports');
+      mkdirSync(exportsDir, { recursive: true });
+      const filePath = join(exportsDir, `rapport_${new Date().toISOString().split('T')[0]}.csv`);
+      writeFileSync(filePath, lines.join('\r\n'), 'utf-8');
+      shell.openPath(filePath);
+      return { success: true, filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   // ─── Stock ─────────────────────────────────────────────────────────────────
   ipcMain.handle('stock:getHistory', async (_, productId: string) => {
-    return StockMovementRepository.getHistory(productId);
+    return StockMovementRepository.getHistoryWithUser(productId);
   });
 
   ipcMain.handle('stock:getLevel', async (_, productId: string) => {
@@ -321,6 +372,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle('clients:getHistory', async (_, customerId: string) => {
     return ClientService.getClientHistory(customerId);
+  });
+
+  ipcMain.handle('clients:getDocuments', async (_, customerId: string) => {
+    return ClientRepository.getDocuments(customerId);
   });
 
   ipcMain.handle('clients:addDebt', async (_, { customerId, amount, description, userId }: any) => {

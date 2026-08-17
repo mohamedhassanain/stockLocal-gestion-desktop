@@ -147,5 +147,23 @@ export const ClientRepository = {
     const id = randomUUID();
     stmtAddCredit.run(id, data.customer_id, data.type, data.amount, data.description ?? null, data.user_id);
     return { id, ...data, date: new Date().toISOString() };
+  },
+
+  /** Les documents (factures, avoirs) liés au client — historique complet §5 */
+  getDocuments(customerId: string): Array<{
+    id: string;
+    type: string;
+    document_number: string;
+    date: string;
+    total_incl_tax: number;
+    status: string;
+  }> {
+    return db.prepare(`
+      SELECT d.id, d.type, d.document_number, d.date, d.total_incl_tax, d.status
+      FROM documents d
+      WHERE d.entity_id = ?
+      ORDER BY d.date DESC
+      LIMIT 200
+    `).all(customerId) as any;
   }
 };

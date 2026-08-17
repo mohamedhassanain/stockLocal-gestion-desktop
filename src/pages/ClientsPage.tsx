@@ -67,10 +67,31 @@ const ClientFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => vo
 };
 
 // ─── Sous-composant : Fiche Client (Historique + Actions) ───────────────────
+interface ClientDocument {
+  id: string;
+  type: string;
+  document_number: string;
+  date: string;
+  total_incl_tax: number;
+  status: string;
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  QUOTE: 'Devis',
+  DELIVERY_NOTE: 'Bon de livraison',
+  INVOICE: 'Facture',
+  CREDIT_NOTE: 'Avoir',
+};
+
 const ClientDetailPanel: React.FC<{ client: Customer; onDebt: (a: number, d: string) => void; onPayment: (a: number, d: string) => void }> = ({ client, onDebt, onPayment }) => {
   const { clientHistory, exportStatement } = useClientStore();
   const [amount, setAmount] = useState(0);
   const [desc, setDesc] = useState('');
+  const [docs, setDocs] = useState<ClientDocument[]>([]);
+
+  useEffect(() => {
+    window.api.clients.getDocuments(client.id).then(setDocs).catch(() => {});
+  }, [client.id]);
 
   const balanceColor = (client.balance ?? 0) > 0 ? '#ef4444' : '#10b981';
 
@@ -128,6 +149,33 @@ const ClientDetailPanel: React.FC<{ client: Customer; onDebt: (a: number, d: str
                 </div>
                 <div style={{ fontWeight: 'bold', color: h.type === 'CREDIT' ? '#ef4444' : '#10b981' }}>
                   {h.type === 'CREDIT' ? '+' : '-'}{h.amount.toFixed(2)} MAD
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Documents (factures, avoirs) — historique complet §5 */}
+      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <h3 style={{ margin: '0 0 15px' }}>📄 Factures & Avoirs</h3>
+        {docs.length === 0 ? (
+          <div style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>Aucun document pour ce client.</div>
+        ) : (
+          <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+            {docs.map(doc => (
+              <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div>
+                  <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', background: doc.type === 'CREDIT_NOTE' ? '#d1fae5' : '#dbeafe', color: doc.type === 'CREDIT_NOTE' ? '#065f46' : '#1e40af', marginRight: '8px' }}>
+                    {TYPE_LABELS[doc.type] ?? doc.type}
+                  </span>
+                  <span style={{ fontWeight: '600', fontSize: '14px', color: '#111827' }}>{doc.document_number}</span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontWeight: 'bold', color: doc.type === 'CREDIT_NOTE' ? '#10b981' : '#0f172a' }}>
+                    {doc.total_incl_tax.toFixed(2)} MAD
+                  </span>
+                  <div style={{ fontSize: '11px', color: '#9ca3af' }}>{doc.date?.split('T')[0]}</div>
                 </div>
               </div>
             ))}

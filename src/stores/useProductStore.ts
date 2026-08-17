@@ -13,6 +13,7 @@ interface ProductState {
   updateProduct: (id: string, productData: ProductInput) => Promise<void>;
   archiveProduct: (id: string) => Promise<void>;
   activateProduct: (id: string) => Promise<void>;
+  disableProduct: (id: string) => Promise<void>;
 }
 
 export const useProductStore = create<ProductState>((set, get) => ({
@@ -84,6 +85,20 @@ export const useProductStore = create<ProductState>((set, get) => ({
     set({ error: null });
     try {
       const result = await window.api.products.activate(id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+
+  disableProduct: async (id) => {
+    set({ error: null });
+    try {
+      const result = await window.api.products.disable(id);
       if (!result.success) {
         throw new Error(result.error);
       }

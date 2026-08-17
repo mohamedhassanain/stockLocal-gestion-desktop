@@ -60,7 +60,8 @@ export class ProductRepository {
       WHERE id = @id
     `),
     archive: db.prepare('UPDATE products SET status = \'ARCHIVED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
-    activate: db.prepare('UPDATE products SET status = \'ACTIVE\', updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    activate: db.prepare('UPDATE products SET status = \'ACTIVE\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+    disable: db.prepare('UPDATE products SET status = \'DISABLED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?')
   };
 
   static findById(id: string): Product | undefined {
@@ -89,5 +90,9 @@ export class ProductRepository {
 
   static activate(id: string): void {
     this.stmts.activate.run(id);
+  }
+
+  static disable(id: string): void {
+    this.stmts.disable.run(id);
   }
 }

@@ -9,6 +9,7 @@ export const api = {
     update: (id: string, data: any) => ipcRenderer.invoke('products:update', { id, data }),
     archive: (id: string) => ipcRenderer.invoke('products:archive', id),
     activate: (id: string) => ipcRenderer.invoke('products:activate', id),
+    disable: (id: string) => ipcRenderer.invoke('products:disable', id),
     importCsv: (filePath: string) => ipcRenderer.invoke('products:importCsv', filePath),
     printLabels: (productIds: string[]) => ipcRenderer.invoke('products:printLabels', productIds),
   },
@@ -43,12 +44,14 @@ export const api = {
   },
   reports: {
     generate: (month?: string) => ipcRenderer.invoke('reports:generate', month),
+    exportCsv: (data: any) => ipcRenderer.invoke('reports:exportCsv', data),
   },
   clients: {
     search: (query: string) => ipcRenderer.invoke('clients:search', query),
     create: (data: any) => ipcRenderer.invoke('clients:create', data),
     update: (id: string, data: any) => ipcRenderer.invoke('clients:update', { id, data }),
     getHistory: (customerId: string) => ipcRenderer.invoke('clients:getHistory', customerId),
+    getDocuments: (customerId: string) => ipcRenderer.invoke('clients:getDocuments', customerId),
     addDebt: (customerId: string, amount: number, description: string, userId: string) =>
       ipcRenderer.invoke('clients:addDebt', { customerId, amount, description, userId }),
     addPayment: (customerId: string, amount: number, description: string, userId: string) =>
