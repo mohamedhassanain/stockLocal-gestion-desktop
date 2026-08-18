@@ -87,6 +87,43 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('products:updateWithStock', async (_, { id, data, stockAdjustment }: { id: string; data: any; stockAdjustment: number }) => {
+    try {
+      const product = ProductService.updateProduct(id, data);
+      if (stockAdjustment !== 0) {
+        const currentStock = StockMovementRepository.getStockLevel(id);
+        const newStock = currentStock + stockAdjustment;
+        if (newStock < 0) {
+          return { success: false, error: `Stock insuffisant. Stock actuel : ${currentStock}, tentative de retirer ${Math.abs(stockAdjustment)}.` };
+        }
+        if (stockAdjustment > 0) {
+          StockService.addStockEntry({
+            product_id: id,
+            quantity: stockAdjustment,
+            unit_price: data.purchase_price || 0,
+            reference_doc: null as any,
+            supplier_id: null as any,
+            user_id: 'user_1',
+            notes: `Ajustement stock: ${currentStock} → ${newStock}`
+          });
+        } else {
+          StockService.addStockExit({
+            product_id: id,
+            quantity: Math.abs(stockAdjustment),
+            unit_price: data.purchase_price || 0,
+            exitType: 'CASSE',
+            user_id: 'user_1',
+            notes: `Ajustement stock: ${currentStock} → ${newStock}`
+          });
+        }
+      }
+      AuditService.log('PRODUCT_UPDATE', 'product', id, `Modification produit ${product.reference}${stockAdjustment !== 0 ? ` (stock ajusté de ${stockAdjustment})` : ''}`);
+      return { success: true, data: product };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('products:archive', async (_, id: string) => {
     try {
       ProductService.archiveProduct(id);
@@ -111,6 +148,39 @@ app.whenReady().then(() => {
     try {
       ProductRepository.disable(id);
       AuditService.log('PRODUCT_DISABLE', 'product', id, 'Produit désactivé (retiré de la vente)');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('products:createWithStock', async (_, { productData, initialStock }: { productData: any; initialStock: number }) => {
+    try {
+      const product = ProductService.createProduct(productData);
+      if (initialStock > 0) {
+        StockService.addStockEntry({
+          product_id: product.id,
+          quantity: initialStock,
+          unit_price: productData.purchase_price || 0,
+          reference_doc: null as any,
+          supplier_id: null as any,
+          user_id: 'user_1',
+          notes: 'Stock initial à la création'
+        });
+      }
+      AuditService.log('PRODUCT_CREATE', 'product', product.id, `Création produit ${product.reference}${initialStock > 0 ? ` (stock initial: ${initialStock})` : ''}`);
+      return { success: true, data: product };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('products:delete', async (_, id: string) => {
+    try {
+      const product = ProductRepository.findById(id);
+      if (!product) throw new Error('Produit introuvable.');
+      ProductService.deleteProduct(id);
+      AuditService.log('PRODUCT_DELETE', 'product', id, `Suppression définitive produit ${product.reference}`);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -243,6 +313,48 @@ app.whenReady().then(() => {
   });
 
   // ─── Étiquettes / codes-barres ─────────────────────────────────────────────
+  ipcMain.handle('products:pickImage', async () => {
+    try {
+      const { dialog, app } = require('electron');
+      const pathMod = require('path');
+      const fs = require('fs');
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Images', extensions: ['jpg','jpeg','png','gif','webp','bmp'] }]
+      });
+      if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true };
+      const srcPath = result.filePaths[0];
+      const ext = pathMod.extname(srcPath);
+      const destDir = pathMod.join(app.getPath('userData'), 'product-images');
+      fs.mkdirSync(destDir, { recursive: true });
+      const filename = Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext;
+      const destPath = pathMod.join(destDir, filename);
+      fs.copyFileSync(srcPath, destPath);
+      return { success: true, path: destPath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('products:getImageBase64', async (_, imagePath: string) => {
+    try {
+      const fs = require('fs');
+      if (!imagePath || !fs.existsSync(imagePath)) return { success: false };
+      const buffer = fs.readFileSync(imagePath);
+      const ext = require('path').extname(imagePath).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.png': 'image/png', '.gif': 'image/gif',
+        '.webp': 'image/webp', '.bmp': 'image/bmp',
+      };
+      const mime = mimeMap[ext] || 'image/png';
+      const base64 = buffer.toString('base64');
+      return { success: true, dataUrl: `data:${mime};base64,${base64}` };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('products:printLabels', async (_, productIds: string[]) => {
     try {
       const filePath = await PDFService.generateBarcodeLabels(productIds);

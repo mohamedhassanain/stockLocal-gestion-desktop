@@ -61,7 +61,8 @@ export class ProductRepository {
     `),
     archive: db.prepare('UPDATE products SET status = \'ARCHIVED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
     activate: db.prepare('UPDATE products SET status = \'ACTIVE\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
-    disable: db.prepare('UPDATE products SET status = \'DISABLED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    disable: db.prepare('UPDATE products SET status = \'DISABLED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+    delete: db.prepare('DELETE FROM products WHERE id = ?')
   };
 
   static findById(id: string): Product | undefined {
@@ -94,5 +95,9 @@ export class ProductRepository {
 
   static disable(id: string): void {
     this.stmts.disable.run(id);
+  }
+
+  static remove(id: string): void {
+    this.stmts.delete.run(id);
   }
 }

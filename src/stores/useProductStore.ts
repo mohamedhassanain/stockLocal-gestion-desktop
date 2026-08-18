@@ -10,10 +10,13 @@ interface ProductState {
   setSearchQuery: (query: string) => void;
   loadProducts: () => Promise<void>;
   addProduct: (productData: ProductInput) => Promise<void>;
+  addProductWithStock: (productData: ProductInput, initialStock: number) => Promise<void>;
   updateProduct: (id: string, productData: ProductInput) => Promise<void>;
+  updateProductWithStock: (id: string, productData: ProductInput, stockAdjustment: number) => Promise<void>;
   archiveProduct: (id: string) => Promise<void>;
   activateProduct: (id: string) => Promise<void>;
   disableProduct: (id: string) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
 }
 
 export const useProductStore = create<ProductState>((set, get) => ({
@@ -53,10 +56,38 @@ export const useProductStore = create<ProductState>((set, get) => ({
     }
   },
 
+  addProductWithStock: async (productData, initialStock) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.products.createWithStock(productData, initialStock);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
   updateProduct: async (id, productData) => {
     set({ isLoading: true, error: null });
     try {
       const result = await window.api.products.update(id, productData);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  updateProductWithStock: async (id, productData, stockAdjustment) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.products.updateWithStock(id, productData, stockAdjustment);
       if (!result.success) {
         throw new Error(result.error);
       }
@@ -99,6 +130,20 @@ export const useProductStore = create<ProductState>((set, get) => ({
     set({ error: null });
     try {
       const result = await window.api.products.disable(id);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      await get().loadProducts();
+    } catch (err: any) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
+
+  deleteProduct: async (id) => {
+    set({ error: null });
+    try {
+      const result = await window.api.products.delete(id);
       if (!result.success) {
         throw new Error(result.error);
       }

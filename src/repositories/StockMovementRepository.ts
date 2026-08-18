@@ -31,7 +31,18 @@ export class StockMovementRepository {
   };
 
   static create(movement: StockMovement): void {
-    this.stmts.insert.run(movement);
+    // better-sqlite3 exige tous les paramètres nommés (pas de undefined)
+    this.stmts.insert.run({
+      id: movement.id,
+      product_id: movement.product_id,
+      type: movement.type,
+      quantity: movement.quantity,
+      unit_price: movement.unit_price,
+      reference_doc: movement.reference_doc ?? null,
+      supplier_id: movement.supplier_id ?? null,
+      user_id: movement.user_id,
+      notes: movement.notes ?? null,
+    });
   }
 
   static getHistory(productId: string, limit: number = 50, offset: number = 0): StockMovement[] {

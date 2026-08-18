@@ -76,6 +76,17 @@ export class ProductService {
   }
 
   /**
+   * Supprime définitivement un produit.
+   * Les mouvements de stock et lignes de documents liés seront supprimés en cascade
+   * grâce aux contraintes FOREIGN KEY ... ON DELETE CASCADE / RESTRICT.
+   */
+  static deleteProduct(id: string): void {
+    const existing = ProductRepository.findById(id);
+    if (!existing) throw new Error('Produit introuvable.');
+    ProductRepository.remove(id);
+  }
+
+  /**
    * Recherche instantanée de produits
    */
   static searchProducts(query: string, limit: number = 50): Product[] {

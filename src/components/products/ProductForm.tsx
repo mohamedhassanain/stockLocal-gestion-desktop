@@ -35,13 +35,19 @@ interface ProductFormProps {
 
 export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduct }) => {
   const addProduct = useProductStore(state => state.addProduct);
+  const addProductWithStock = useProductStore(state => state.addProductWithStock);
   const updateProduct = useProductStore(state => state.updateProduct);
+  const updateProductWithStock = useProductStore(state => state.updateProductWithStock);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<Category[]>([]);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const [currentStock, setCurrentStock] = useState<number | null>(null);
+  const [newStock, setNewStock] = useState<number>(0);
   const [formData, setFormData] = useState({
     reference: editingProduct?.reference ?? '',
     designation: editingProduct?.designation ?? '',
     description: editingProduct?.description ?? '',
+    image_path: editingProduct?.image_path ?? '',
     barcode: editingProduct?.barcode ?? '',
     unit: editingProduct?.unit ?? 'PIÈCE',
     category_id: editingProduct?.category_id ?? '',
@@ -50,11 +56,33 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     selling_price: editingProduct?.selling_price ?? 0,
     wholesale_price: editingProduct?.wholesale_price ?? 0,
     min_stock: editingProduct?.min_stock ?? 5,
+    initial_stock: 0,
   });
 
   useEffect(() => {
     window.api.categories.getAll().then(setCategories).catch(() => {});
+    if (editingProduct) {
+      window.api.stock.getLevel(editingProduct.id).then((level: number) => {
+        setCurrentStock(level);
+        setNewStock(level);
+      }).catch(() => { setCurrentStock(0); setNewStock(0); });
+    }
   }, []);
+
+  // Charger l'aperçu image en base64 quand image_path change
+  useEffect(() => {
+    if (formData.image_path) {
+      window.api.products.getImageBase64(formData.image_path).then((result: any) => {
+        if (result.success && result.dataUrl) {
+          setImagePreview(result.dataUrl);
+        } else {
+          setImagePreview('');
+        }
+      }).catch(() => setImagePreview(''));
+    } else {
+      setImagePreview('');
+    }
+  }, [formData.image_path]);
 
   const selectedCategory = categories.find(c => c.id === formData.category_id);
   const selectedSubs = selectedCategory?.subcategories ?? [];
@@ -80,9 +108,14 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
       const validatedData = productSchema.parse(payload);
 
       if (editingProduct) {
-        await updateProduct(editingProduct.id, { ...validatedData, status: editingProduct.status });
+        const stockAdjustment = (currentStock !== null) ? (newStock - currentStock) : 0;
+        await updateProductWithStock(
+          editingProduct.id,
+          { ...validatedData, image_path: formData.image_path || undefined, status: editingProduct.status },
+          stockAdjustment
+        );
       } else {
-        await addProduct({ ...validatedData, status: 'ACTIVE' });
+        await addProductWithStock({ ...validatedData, image_path: formData.image_path || undefined, status: 'ACTIVE' }, formData.initial_stock || 0);
       }
       onClose();
     } catch (error: any) {
@@ -154,6 +187,15 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
           </div>
 
           <div style={{ marginBottom: '15px' }}>
+            <label style={labelStyle}>Image du produit</label>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              {imagePreview && <img src={imagePreview} alt="preview" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e5e7eb' }} />}
+              <button type="button" onClick={async () => { const r = await window.api.products.pickImage(); if (r.success && r.path) setFormData(pr => ({ ...pr, image_path: r.path })); }} style={{ padding: '10px 16px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer' }}>Choisir image</button>
+              {formData.image_path && <button type="button" onClick={() => setFormData(pr => ({ ...pr, image_path: '' }))} style={{ padding: '6px 12px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer' }}>Supprimer</button>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
             <label style={labelStyle}>Description</label>
             <textarea name="description" value={formData.description} onChange={handleChange} placeholder="Description du produit (optionnel)"
               style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} />
@@ -204,7 +246,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>Prix de Gros</label>
               <input type="number" step="0.01" name="wholesale_price" value={formData.wholesale_price} onChange={handleChange} style={inputStyle} />
@@ -216,6 +258,31 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
               {errors.min_stock && <span style={errorStyle}>{errors.min_stock}</span>}
             </div>
           </div>
+
+          {editingProduct ? (
+            <div style={{ marginBottom: '20px', padding: '15px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={labelStyle}>📦 Stock Initial</label>
+                  <input
+                    type="number"
+                    value={newStock}
+                    onChange={(e) => setNewStock(parseInt(e.target.value) || 0)}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+              <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                Stock actuel : {currentStock !== null ? currentStock : '...'} — Modifier pour ajuster le stock
+              </span>
+            </div>
+          ) : (
+            <div style={{ marginBottom: '20px' }}>
+              <label style={labelStyle}>Stock Initial</label>
+              <input type="number" name="initial_stock" value={formData.initial_stock} onChange={handleChange} style={inputStyle} />
+              <span style={{ fontSize: '13px', color: '#6b7280' }}>Quantité en stock au moment de la création (optionnel)</span>
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
             <button type="button" onClick={onClose} style={{
