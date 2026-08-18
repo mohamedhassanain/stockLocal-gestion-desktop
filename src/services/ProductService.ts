@@ -29,6 +29,7 @@ export class ProductService {
     const newProduct = {
       ...productData,
       id: randomUUID(),
+      image_path: productData.image_path ?? null,
       unit: productData.unit || 'PIÈCE',
       status: productData.status || 'ACTIVE'
     };
@@ -48,7 +49,7 @@ export class ProductService {
       throw new Error('Le prix de vente ne peut pas être inférieur au prix d\'achat.');
     }
 
-    ProductRepository.update({ ...productData, id });
+    ProductRepository.update({ ...productData, image_path: productData.image_path ?? null, id });
     const updated = ProductRepository.findById(id);
     if (!updated) throw new Error('Erreur lors de la mise à jour du produit.');
     return updated;

@@ -9,7 +9,7 @@ export interface Product {
   category_id?: string;
   subcategory_id?: string;
   barcode?: string;
-  image_path?: string;
+  image_path?: string | null;
   unit?: string;
   purchase_price: number;
   selling_price: number;
