@@ -62,11 +62,6 @@ app.on('activate', () => {
 });
 
 app.whenReady().then(() => {
-  createWindow();
-  BackupService.scheduleAutoBackup();
-  DemoDataService.seedIfEmpty();
-  AuditService.log('APP_START', 'system', 'stocklocal', 'Application démarrée');
-
   // ─── Produits ──────────────────────────────────────────────────────────────
   ipcMain.handle('products:search', async (_, query: string) => {
     return ProductService.searchProducts(query);
@@ -569,4 +564,14 @@ app.whenReady().then(() => {
   ipcMain.handle('backup:list', async () => {
     return BackupService.listBackups();
   });
+
+  // ─── Démarrage (après enregistrement des handlers IPC) ────────────────────
+  try {
+    DemoDataService.seedIfEmpty();
+  } catch (error) {
+    console.error('[Seed] Échec du jeu de données de démonstration :', error);
+  }
+  AuditService.log('APP_START', 'system', 'stocklocal', 'Application démarrée');
+  BackupService.scheduleAutoBackup();
+  createWindow();
 });
