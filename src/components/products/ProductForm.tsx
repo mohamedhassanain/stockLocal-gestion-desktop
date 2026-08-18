@@ -76,7 +76,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     setErrors({});
 
     try {
-      const validatedData = productSchema.parse(formData);
+      const payload = { ...formData, category_id: formData.category_id || undefined, subcategory_id: formData.subcategory_id || undefined };
+      const validatedData = productSchema.parse(payload);
 
       if (editingProduct) {
         await updateProduct(editingProduct.id, { ...validatedData, status: editingProduct.status });
