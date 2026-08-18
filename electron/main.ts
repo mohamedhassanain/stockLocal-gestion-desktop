@@ -383,6 +383,8 @@ app.whenReady().then(() => {
       const csv = (row: any[]) => row.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';');
       const lines: string[] = [];
 
+      // BOM UTF-8 pour que Excel affiche correctement les accents
+      lines.push('\uFEFF');
       lines.push(csv(['Rapport de gestion', new Date().toISOString().split('T')[0]]));
       lines.push('');
       lines.push(csv(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']));
