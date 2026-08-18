@@ -69,19 +69,22 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     }
   }, []);
 
-  // Charger l'aperçu image en base64 quand image_path change
+  // Charger l'aperçu image en base64 quand image_path change (avec debounce)
   useEffect(() => {
-    if (formData.image_path) {
+    if (!formData.image_path) {
+      setImagePreview('');
+      return;
+    }
+    const timeout = setTimeout(() => {
       window.api.products.getImageBase64(formData.image_path).then((result: any) => {
-        if (result.success && result.dataUrl) {
+        if (result && result.success && result.dataUrl) {
           setImagePreview(result.dataUrl);
         } else {
           setImagePreview('');
         }
       }).catch(() => setImagePreview(''));
-    } else {
-      setImagePreview('');
-    }
+    }, 300);
+    return () => clearTimeout(timeout);
   }, [formData.image_path]);
 
   const selectedCategory = categories.find(c => c.id === formData.category_id);
