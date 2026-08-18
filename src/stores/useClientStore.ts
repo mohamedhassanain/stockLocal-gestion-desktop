@@ -14,6 +14,7 @@ interface ClientState {
   selectClient: (client: Customer) => Promise<void>;
   createClient: (data: Omit<Customer, 'id' | 'created_at' | 'updated_at' | 'balance'>) => Promise<void>;
   updateClient: (id: string, data: Partial<Omit<Customer, 'id' | 'created_at' | 'updated_at' | 'balance'>>) => Promise<void>;
+  deleteClient: (id: string) => Promise<void>;
   addDebt: (customerId: string, amount: number, description: string) => Promise<void>;
   addPayment: (customerId: string, amount: number, description: string) => Promise<void>;
   exportStatement: (customerId: string) => Promise<void>;
@@ -72,6 +73,21 @@ export const useClientStore = create<ClientState>((set, get) => ({
     try {
       const result = await window.api.clients.update(id, data);
       if (!result.success) throw new Error(result.error);
+      await get().loadClients();
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  deleteClient: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.clients.delete(id);
+      if (!result.success) throw new Error(result.error);
+      if (get().selectedClient?.id === id) {
+        set({ selectedClient: null, clientHistory: [] });
+      }
       await get().loadClients();
     } catch (err: any) {
       set({ error: err.message, isLoading: false });

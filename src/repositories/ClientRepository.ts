@@ -87,6 +87,10 @@ const stmtGetBalance = db.prepare<[string]>(`
   WHERE customer_id = ?
 `);
 
+const stmtDelete = db.prepare('DELETE FROM customers WHERE id = ?');
+
+const stmtCountDocuments = db.prepare('SELECT COUNT(*) AS cnt FROM documents WHERE entity_id = ?');
+
 // ─── Repository ──────────────────────────────────────────────────────────────
 
 export const ClientRepository = {
@@ -132,6 +136,16 @@ export const ClientRepository = {
       id
     );
     return this.getById(id)!;
+  },
+
+  remove(id: string): void {
+    const existing = this.getById(id);
+    if (!existing) throw new Error('Client introuvable : ' + id);
+    const result = stmtCountDocuments.get(id) as { cnt: number };
+    if (result.cnt > 0) {
+      throw new Error('Impossible de supprimer ce client : des documents sont encore lies (factures/avoirs).');
+    }
+    stmtDelete.run(id);
   },
 
   getHistory(customerId: string): ClientCredit[] {

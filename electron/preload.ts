@@ -50,6 +50,7 @@ export const api = {
     search: (query: string) => ipcRenderer.invoke('clients:search', query),
     create: (data: any) => ipcRenderer.invoke('clients:create', data),
     update: (id: string, data: any) => ipcRenderer.invoke('clients:update', { id, data }),
+    delete: (id: string) => ipcRenderer.invoke('clients:delete', id),
     getHistory: (customerId: string) => ipcRenderer.invoke('clients:getHistory', customerId),
     getDocuments: (customerId: string) => ipcRenderer.invoke('clients:getDocuments', customerId),
     addDebt: (customerId: string, amount: number, description: string, userId: string) =>
@@ -62,6 +63,7 @@ export const api = {
     search: (query: string) => ipcRenderer.invoke('suppliers:search', query),
     create: (data: any) => ipcRenderer.invoke('suppliers:create', data),
     update: (id: string, data: any) => ipcRenderer.invoke('suppliers:update', { id, data }),
+    delete: (id: string) => ipcRenderer.invoke('suppliers:delete', id),
     getHistory: (supplierId: string) => ipcRenderer.invoke('suppliers:getHistory', supplierId),
     addDebt: (supplierId: string, amount: number, description: string, userId: string) =>
       ipcRenderer.invoke('suppliers:addDebt', { supplierId, amount, description, userId }),

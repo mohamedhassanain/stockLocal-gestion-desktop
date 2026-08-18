@@ -14,6 +14,7 @@ interface SupplierState {
   selectSupplier: (supplier: Supplier) => Promise<void>;
   createSupplier: (data: Omit<Supplier, 'id' | 'created_at' | 'updated_at' | 'balance'>) => Promise<void>;
   updateSupplier: (id: string, data: Partial<Omit<Supplier, 'id' | 'created_at' | 'updated_at' | 'balance'>>) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<void>;
   addDebt: (supplierId: string, amount: number, description: string) => Promise<void>;
   addPayment: (supplierId: string, amount: number, description: string) => Promise<void>;
 }
@@ -71,6 +72,21 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
     try {
       const result = await window.api.suppliers.update(id, data);
       if (!result.success) throw new Error(result.error);
+      await get().loadSuppliers();
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  deleteSupplier: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.suppliers.delete(id);
+      if (!result.success) throw new Error(result.error);
+      if (get().selectedSupplier?.id === id) {
+        set({ selectedSupplier: null, supplierHistory: [] });
+      }
       await get().loadSuppliers();
     } catch (err: any) {
       set({ error: err.message, isLoading: false });

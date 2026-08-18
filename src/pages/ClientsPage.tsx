@@ -3,12 +3,15 @@ import { useClientStore } from '../stores/useClientStore';
 import type { Customer } from '../repositories/ClientRepository';
 
 // ─── Sous-composant : Formulaire de création client ──────────────────────────
-const ClientFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => void }> = ({ onClose, onSave }) => {
-  const [form, setForm] = useState({ name: '', phone: '', address: '', ice: '', payment_conditions: 'Comptant', credit_limit: 0, category: 'DÉTAIL' });
+const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSave: (data: any) => void }> = ({ initial, onClose, onSave }) => {
+  const [form, setForm] = useState(() =>
+    initial
+      ? { name: initial.name, phone: initial.phone ?? '', address: initial.address ?? '', ice: initial.ice ?? '', payment_conditions: initial.payment_conditions ?? 'Comptant', credit_limit: initial.credit_limit ?? 0, category: initial.category ?? 'DÉTAIL' }
+      : { name: '', phone: '', address: '', ice: '', payment_conditions: 'Comptant', credit_limit: 0, category: 'DÉTAIL' });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '480px', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
-        <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#0f172a' }}>Nouveau Client</h2>
+        <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#0f172a' }}>{initial ? '✏️ Modifier le Client' : 'Nouveau Client'}</h2>
         
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#374151' }}>Catégorie *</label>
@@ -188,15 +191,29 @@ const ClientDetailPanel: React.FC<{ client: Customer; onDebt: (a: number, d: str
 
 // ─── Page Principale Clients ─────────────────────────────────────────────────
 export const ClientsPage: React.FC = () => {
-  const { clients, selectedClient, searchQuery, isLoading, setSearchQuery, loadClients, selectClient, createClient, addDebt, addPayment } = useClientStore();
-  const [showForm, setShowForm] = useState(false);
+  const { clients, selectedClient, searchQuery, isLoading, setSearchQuery, loadClients, selectClient, createClient, updateClient, deleteClient, addDebt, addPayment } = useClientStore();
+  const [modalState, setModalState] = useState<{ mode: 'create' } | { mode: 'edit'; client: Customer } | null>(null);
 
   useEffect(() => { loadClients(); }, []);
 
-  const handleSaveClient = async (data: any) => {
+  const handleSaveForm = async (data: any) => {
     try {
-      await createClient(data);
-      setShowForm(false);
+      if (modalState?.mode === 'edit' && modalState.client) {
+        await updateClient(modalState.client.id, data);
+      } else {
+        await createClient(data);
+      }
+      setModalState(null);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    const ok = window.confirm('Supprimer le client « ' + name + ' » ? Cette action est irréversible.');
+    if (!ok) return;
+    try {
+      await deleteClient(id);
     } catch (e: any) {
       alert(e.message);
     }
@@ -207,7 +224,7 @@ export const ClientsPage: React.FC = () => {
       {/* Header */}
       <div style={{ padding: '24px 30px 16px', borderBottom: '1px solid #e5e7eb', background: 'white', display: 'flex', alignItems: 'center', gap: '16px' }}>
         <h1 style={{ margin: 0, fontSize: '28px', color: '#0f172a', flex: 1 }}>🤝 Clients & Crédits (نسيئة)</h1>
-        <button onClick={() => setShowForm(true)} style={{ padding: '12px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+        <button onClick={() => setModalState({ mode: 'create' })} style={{ padding: '12px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
           + Nouveau Client
         </button>
       </div>
@@ -274,6 +291,15 @@ export const ClientsPage: React.FC = () => {
                 <span style={{ padding: '4px 8px', background: '#e0e7ff', color: '#4338ca', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold' }}>
                   {selectedClient.category}
                 </span>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => setModalState({ mode: 'edit', client: selectedClient })}
+                  style={{ padding: '10px 18px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  ✏️ Modifier
+                </button>
+                <button onClick={() => handleDelete(selectedClient.id, selectedClient.name)}
+                  style={{ padding: '10px 18px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  🗑️ Supprimer
+                </button>
               </div>
               <ClientDetailPanel
                 client={selectedClient}
@@ -285,7 +311,7 @@ export const ClientsPage: React.FC = () => {
         </div>
       </div>
 
-      {showForm && <ClientFormModal onClose={() => setShowForm(false)} onSave={handleSaveClient} />}
+      {modalState && (<ClientFormModal initial={modalState.mode === 'edit' ? modalState.client : undefined} onClose={() => setModalState(null)} onSave={handleSaveForm} />)}
     </div>
   );
 };

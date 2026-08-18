@@ -84,6 +84,12 @@ const stmtGetBalance = db.prepare<[string]>(`
   WHERE supplier_id = ?
 `);
 
+const stmtDelete = db.prepare('DELETE FROM suppliers WHERE id = ?');
+
+const stmtCountDocuments = db.prepare('SELECT COUNT(*) AS cnt FROM documents WHERE entity_id = ?');
+
+const stmtCountStock = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE supplier_id = ?');
+
 // ─── Repository ──────────────────────────────────────────────────────────────
 
 export const SupplierRepository = {
@@ -123,6 +129,20 @@ export const SupplierRepository = {
       id
     );
     return this.getById(id)!;
+  },
+
+  remove(id: string): void {
+    const existing = this.getById(id);
+    if (!existing) throw new Error('Fournisseur introuvable : ' + id);
+    const docs = stmtCountDocuments.get(id) as { cnt: number };
+    if (docs.cnt > 0) {
+      throw new Error('Impossible de supprimer ce fournisseur : il possede ' + docs.cnt + ' document(s).');
+    }
+    const stock = stmtCountStock.get(id) as { cnt: number };
+    if (stock.cnt > 0) {
+      throw new Error('Impossible de supprimer ce fournisseur : il est lie a ' + stock.cnt + ' mouvement(s) de stock.');
+    }
+    stmtDelete.run(id);
   },
 
   getHistory(supplierId: string): SupplierCredit[] {

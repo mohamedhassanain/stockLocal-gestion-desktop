@@ -365,6 +365,16 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle('clients:delete', async (_, id: string) => {
+    try {
+      ClientService.deleteClient(id);
+      AuditService.log('CLIENT_DELETE', 'client', id, 'Client supprime');
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle('clients:getHistory', async (_, customerId: string) => {
     return ClientService.getClientHistory(customerId);
   });
@@ -428,6 +438,16 @@ app.whenReady().then(() => {
   ipcMain.handle('suppliers:update', async (_, { id, data }: any) => {
     try {
       return { success: true, data: SupplierService.updateSupplier(id, data) };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('suppliers:delete', async (_, id: string) => {
+    try {
+      SupplierService.deleteSupplier(id);
+      AuditService.log('SUPPLIER_DELETE', 'supplier', id, 'Fournisseur supprime');
+      return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };
     }

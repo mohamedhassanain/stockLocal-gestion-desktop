@@ -17,6 +17,9 @@ export const ClientService = {
     return ClientRepository.update(id, data);
   },
 
+  deleteClient(id: string): void {
+    ClientRepository.remove(id);
+  },
   // Ajouter une dette (vente à crédit - نسيئة)
   addDebt(customerId: string, amount: number, description: string, userId: string): ClientCredit {
     if (amount <= 0) throw new Error('Le montant doit être supérieur à 0.');

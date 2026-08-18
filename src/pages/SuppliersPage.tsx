@@ -3,12 +3,15 @@ import { useSupplierStore } from '../stores/useSupplierStore';
 import type { Supplier } from '../repositories/SupplierRepository';
 
 // ─── Sous-composant : Formulaire de création fournisseur ──────────────────────
-const SupplierFormModal: React.FC<{ onClose: () => void; onSave: (data: any) => void }> = ({ onClose, onSave }) => {
-  const [form, setForm] = useState({ name: '', phone: '', address: '', ice: '' });
+const SupplierFormModal: React.FC<{ initial?: Supplier; onClose: () => void; onSave: (data: any) => void }> = ({ initial, onClose, onSave }) => {
+  const [form, setForm] = useState(() =>
+    initial
+      ? { name: initial.name, phone: initial.phone ?? '', address: initial.address ?? '', ice: initial.ice ?? '' }
+      : { name: '', phone: '', address: '', ice: '' });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '480px', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
-        <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#0f172a' }}>🏭 Nouveau Fournisseur</h2>
+        <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#0f172a' }}>{initial ? '✏️ Modifier le Fournisseur' : '🏭 Nouveau Fournisseur'}</h2>
         {[
           { key: 'name', label: 'Nom *', type: 'text', placeholder: 'Raison sociale du fournisseur' },
           { key: 'phone', label: 'Téléphone', type: 'tel', placeholder: '05XXXXXXXX' },
@@ -122,15 +125,29 @@ const SupplierDetailPanel: React.FC<{ supplier: Supplier; onDebt: (a: number, d:
 
 // ─── Page Principale Fournisseurs ─────────────────────────────────────────────
 export const SuppliersPage: React.FC = () => {
-  const { suppliers, selectedSupplier, searchQuery, isLoading, setSearchQuery, loadSuppliers, selectSupplier, createSupplier, addDebt, addPayment } = useSupplierStore();
-  const [showForm, setShowForm] = useState(false);
+  const { suppliers, selectedSupplier, searchQuery, isLoading, setSearchQuery, loadSuppliers, selectSupplier, createSupplier, updateSupplier, deleteSupplier, addDebt, addPayment } = useSupplierStore();
+  const [modalState, setModalState] = useState<{ mode: 'create' } | { mode: 'edit'; supplier: Supplier } | null>(null);
 
   useEffect(() => { loadSuppliers(); }, []);
 
-  const handleSaveSupplier = async (data: any) => {
+  const handleSaveForm = async (data: any) => {
     try {
-      await createSupplier(data);
-      setShowForm(false);
+      if (modalState?.mode === 'edit' && modalState.supplier) {
+        await updateSupplier(modalState.supplier.id, data);
+      } else {
+        await createSupplier(data);
+      }
+      setModalState(null);
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    const ok = window.confirm('Supprimer le fournisseur « ' + name + ' » ? Cette action est irréversible.');
+    if (!ok) return;
+    try {
+      await deleteSupplier(id);
     } catch (e: any) {
       alert(e.message);
     }
@@ -141,7 +158,7 @@ export const SuppliersPage: React.FC = () => {
       {/* Header */}
       <div style={{ padding: '24px 30px 16px', borderBottom: '1px solid #e5e7eb', background: 'white', display: 'flex', alignItems: 'center', gap: '16px' }}>
         <h1 style={{ margin: 0, fontSize: '28px', color: '#0f172a', flex: 1 }}>🏭 Fournisseurs</h1>
-        <button onClick={() => setShowForm(true)} style={{ padding: '12px 24px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
+        <button onClick={() => setModalState({ mode: 'create' })} style={{ padding: '12px 24px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
           + Nouveau Fournisseur
         </button>
       </div>
@@ -203,7 +220,18 @@ export const SuppliersPage: React.FC = () => {
             </div>
           ) : (
             <>
-              <h2 style={{ marginTop: 0, marginBottom: '20px', color: '#0f172a' }}>{selectedSupplier.name}</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, color: '#0f172a' }}>{selectedSupplier.name}</h2>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => setModalState({ mode: 'edit', supplier: selectedSupplier })}
+                  style={{ padding: '10px 18px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  ✏️ Modifier
+                </button>
+                <button onClick={() => handleDelete(selectedSupplier.id, selectedSupplier.name)}
+                  style={{ padding: '10px 18px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  🗑️ Supprimer
+                </button>
+              </div>
               <SupplierDetailPanel
                 supplier={selectedSupplier}
                 onDebt={(a, d) => addDebt(selectedSupplier.id, a, d).catch(e => alert(e.message))}
@@ -214,7 +242,7 @@ export const SuppliersPage: React.FC = () => {
         </div>
       </div>
 
-      {showForm && <SupplierFormModal onClose={() => setShowForm(false)} onSave={handleSaveSupplier} />}
+      {modalState && (<SupplierFormModal initial={modalState.mode === 'edit' ? modalState.supplier : undefined} onClose={() => setModalState(null)} onSave={handleSaveForm} />)}
     </div>
   );
 };
