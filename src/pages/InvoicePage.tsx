@@ -21,6 +21,167 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
   CANCELLED: { label: 'Annulée',    color: '#6b7280', bg: '#f3f4f6' },
 };
 
+// ─── Modal de Retour Partiel (Avoir) ────────────────────────────────────────
+
+const PartialReturnModal: React.FC<{
+  doc: Document;
+  onClose: () => void;
+  onConfirm: (returnItems: Array<{ product_id: string; quantity: number }>, reason: string) => void;
+}> = ({ doc, onClose, onConfirm }) => {
+  const [reason, setReason] = useState('Retour marchandise');
+  const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const [returnAll, setReturnAll] = useState(false);
+
+  const items = doc.items ?? [];
+
+  // Initialiser les quantités à retourner
+  useEffect(() => {
+    const initial: Record<string, number> = {};
+    items.forEach(item => { initial[item.product_id] = item.quantity; });
+    setReturnQty(initial);
+  }, [doc.id]);
+
+  const handleToggleAll = () => {
+    if (returnAll) {
+      // Désélectionner tout
+      const zeroed: Record<string, number> = {};
+      items.forEach(item => { zeroed[item.product_id] = 0; });
+      setReturnQty(zeroed);
+      setReturnAll(false);
+    } else {
+      // Tout sélectionner
+      const all: Record<string, number> = {};
+      items.forEach(item => { all[item.product_id] = item.quantity; });
+      setReturnQty(all);
+      setReturnAll(true);
+    }
+  };
+
+  const updateQty = (productId: string, qty: number, maxQty: number) => {
+    const clamped = Math.max(0, Math.min(qty, maxQty));
+    setReturnQty(prev => ({ ...prev, [productId]: clamped }));
+    // Vérifier si tout est sélectionné
+    const updated = { ...returnQty, [productId]: clamped };
+    const allSelected = items.every(it => updated[it.product_id] === it.quantity);
+    setReturnAll(allSelected);
+  };
+
+  const selectedItems = items.filter(it => (returnQty[it.product_id] ?? 0) > 0);
+  const totalReturn = selectedItems.reduce((sum, it) => {
+    const qty = returnQty[it.product_id] ?? 0;
+    return sum + qty * it.unit_price * (1 - it.discount / 100);
+  }, 0);
+
+  const isFullReturn = items.every(it => (returnQty[it.product_id] ?? 0) >= it.quantity);
+
+  const handleConfirm = () => {
+    const returnItems = selectedItems.map(it => ({
+      product_id: it.product_id,
+      quantity: returnQty[it.product_id] ?? 0,
+    }));
+    onConfirm(returnItems, reason);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'white', borderRadius: '16px', width: '700px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column' }}>
+
+        {/* Header */}
+        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '24px' }}>↩️</span>
+          <div>
+            <h2 style={{ margin: 0, color: '#0f172a' }}>Créer un Avoir</h2>
+            <div style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>Facture : {doc.document_number}</div>
+          </div>
+        </div>
+
+        <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Motif */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Motif du retour</label>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)}
+              placeholder="Ex: Produit défectueux, Annulation commande..."
+              style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
+          </div>
+
+          {/* Sélection retour total/partiel */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button onClick={handleToggleAll}
+              style={{ padding: '8px 16px', borderRadius: '8px', border: '2px solid', fontWeight: '600', fontSize: '14px', cursor: 'pointer',
+                borderColor: returnAll ? '#10b981' : '#d1d5db', background: returnAll ? '#d1fae5' : 'white', color: returnAll ? '#065f46' : '#6b7280' }}>
+              {returnAll ? '✓ Tout retourner' : 'Tout sélectionner'}
+            </button>
+            <span style={{ fontSize: '13px', color: '#9ca3af' }}>
+              {isFullReturn ? 'Retour total — la facture sera annulée' : 'Retour partiel — la facture reste active'}
+            </span>
+          </div>
+
+          {/* Lignes de retour */}
+          <div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
+                  <th style={{ padding: '10px', borderBottom: '2px solid #e5e7eb' }}>Produit</th>
+                  <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Qté facture</th>
+                  <th style={{ padding: '10px', width: '100px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Qté retour</th>
+                  <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>P.U.</th>
+                  <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>Total retour</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => {
+                  const qty = returnQty[item.product_id] ?? 0;
+                  const lineTotal = qty * item.unit_price * (1 - item.discount / 100);
+                  return (
+                    <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9', background: qty > 0 ? '#f0fdf4' : 'transparent' }}>
+                      <td style={{ padding: '8px 10px' }}><strong>{item.product_ref}</strong> {item.product_name}</td>
+                      <td style={{ padding: '8px', textAlign: 'center', color: '#6b7280' }}>{item.quantity}</td>
+                      <td style={{ padding: '4px 8px' }}>
+                        <input type="number" min="0" max={item.quantity} value={qty}
+                          onChange={e => updateQty(item.product_id, Number(e.target.value), item.quantity)}
+                          style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px', boxSizing: 'border-box' }} />
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'right', color: '#6b7280' }}>{item.unit_price.toFixed(2)} MAD</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600', color: qty > 0 ? '#dc2626' : '#6b7280' }}>
+                        {lineTotal.toFixed(2)} MAD
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+                  <td colSpan={4} style={{ padding: '12px 10px', textAlign: 'right', fontSize: '16px' }}>TOTAL AVOIR :</td>
+                  <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: '#dc2626' }}>{totalReturn.toFixed(2)} MAD</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '20px 28px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '13px', color: '#6b7280' }}>
+            {isFullReturn
+              ? '⚠️ La facture originale sera annulée.'
+              : '✅ La facture originale restera active.'}
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={onClose}
+              style={{ padding: '12px 24px', background: '#f3f4f6', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' }}>
+              Annuler
+            </button>
+            <button onClick={handleConfirm} disabled={selectedItems.length === 0}
+              style={{ padding: '12px 28px', background: selectedItems.length === 0 ? '#9ca3af' : '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: selectedItems.length === 0 ? 'not-allowed' : 'pointer' }}>
+              ↩️ Créer l'avoir ({totalReturn.toFixed(2)} MAD)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Formulaire de Création de Document ──────────────────────────────────────
 
 const NewDocumentModal: React.FC<{
@@ -207,7 +368,13 @@ const NewDocumentModal: React.FC<{
 
 // ─── Détail d'un document ─────────────────────────────────────────────────────
 
-const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number, method: string) => void; onConvert?: () => void; onPrint: () => void; onCreditNote?: () => void }> = ({ doc, onPayment, onConvert, onPrint, onCreditNote }) => {
+const DocumentDetailPanel: React.FC<{
+  doc: Document;
+  onPayment: (amount: number, method: string) => void;
+  onConvert?: () => void;
+  onPrint: () => void;
+  onCreditNote?: () => void;
+}> = ({ doc, onPayment, onConvert, onPrint, onCreditNote }) => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('CASH');
   const remaining = doc.total_incl_tax - (doc.amount_paid ?? 0);
@@ -270,7 +437,7 @@ const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number,
       )}
 
       {/* Paiement (uniquement si document pas encore payé) */}
-      {doc.status !== 'PAID' && doc.status !== 'CANCELLED' && (
+      {doc.status !== 'PAID' && doc.status !== 'CANCELLED' && doc.type !== 'CREDIT_NOTE' && (
         <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
           <h3 style={{ marginTop: 0 }}>Encaisser un paiement</h3>
           <div style={{ display: 'flex', gap: '12px' }}>
@@ -319,6 +486,7 @@ const DocumentDetailPanel: React.FC<{ doc: Document; onPayment: (amount: number,
 export const InvoicePage: React.FC = () => {
   const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, selectDocument, createDocument, addPayment, convertBL } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
 
   useEffect(() => { loadDocuments(); }, []);
 
@@ -360,16 +528,23 @@ export const InvoicePage: React.FC = () => {
     }
   };
 
-  const handleCreditNote = async () => {
+  const handleCreditNoteClick = () => {
+    setShowReturnModal(true);
+  };
+
+  const handleReturnConfirm = async (returnItems: Array<{ product_id: string; quantity: number }>, reason: string) => {
     if (!selectedDocument) return;
-    const reason = prompt('Motif de l\'avoir (retour, annulation...) :', 'Retour marchandise') ?? 'Retour marchandise';
-    if (reason === null) return;
-    if (!confirm(`Créer un avoir pour ${selectedDocument.document_number} ? La facture sera annulée.`)) return;
     try {
-      const result = await window.api.documents.createCreditNote(selectedDocument.id, reason);
+      const result = await window.api.documents.createCreditNote(selectedDocument.id, returnItems, reason);
       if (!result.success) throw new Error(result.error);
       alert(`Avoir ${result.data.document_number} créé avec succès !`);
-      loadDocuments();
+      setShowReturnModal(false);
+      await loadDocuments();
+      // Sélectionner le nouvel avoir
+      if (result.data?.id) {
+        await selectDocument(result.data);
+        setActiveType('CREDIT_NOTE');
+      }
     } catch (e: any) {
       alert(e.message);
     }
@@ -448,7 +623,7 @@ export const InvoicePage: React.FC = () => {
               onPayment={handlePayment}
               onConvert={selectedDocument.type === 'DELIVERY_NOTE' ? handleConvert : undefined}
               onPrint={handlePrint}
-              onCreditNote={selectedDocument.type === 'INVOICE' ? handleCreditNote : undefined}
+              onCreditNote={selectedDocument.type === 'INVOICE' ? handleCreditNoteClick : undefined}
             />
           )}
         </div>
@@ -456,6 +631,14 @@ export const InvoicePage: React.FC = () => {
 
       {showNewForm && (
         <NewDocumentModal type={activeType} onClose={() => setShowNewForm(false)} onSave={handleCreate} />
+      )}
+
+      {showReturnModal && selectedDocument && (
+        <PartialReturnModal
+          doc={selectedDocument}
+          onClose={() => setShowReturnModal(false)}
+          onConfirm={handleReturnConfirm}
+        />
       )}
     </div>
   );

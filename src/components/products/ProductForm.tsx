@@ -34,9 +34,7 @@ interface ProductFormProps {
 }
 
 export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduct }) => {
-  const addProduct = useProductStore(state => state.addProduct);
   const addProductWithStock = useProductStore(state => state.addProductWithStock);
-  const updateProduct = useProductStore(state => state.updateProduct);
   const updateProductWithStock = useProductStore(state => state.updateProductWithStock);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<Category[]>([]);

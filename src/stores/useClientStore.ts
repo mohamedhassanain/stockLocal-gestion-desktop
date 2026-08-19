@@ -20,8 +20,6 @@ interface ClientState {
   exportStatement: (customerId: string) => Promise<void>;
 }
 
-const DEFAULT_USER_ID = 'user_1'; // Remplacé par auth plus tard
-
 export const useClientStore = create<ClientState>((set, get) => ({
   clients: [],
   selectedClient: null,
@@ -98,7 +96,7 @@ export const useClientStore = create<ClientState>((set, get) => ({
   addDebt: async (customerId, amount, description) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await window.api.clients.addDebt(customerId, amount, description, DEFAULT_USER_ID);
+      const result = await window.api.clients.addDebt(customerId, amount, description);
       if (!result.success) throw new Error(result.error);
       await get().loadClients();
       // Rafraîchir l'historique si le client est sélectionné
@@ -116,7 +114,7 @@ export const useClientStore = create<ClientState>((set, get) => ({
   addPayment: async (customerId, amount, description) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await window.api.clients.addPayment(customerId, amount, description, DEFAULT_USER_ID);
+      const result = await window.api.clients.addPayment(customerId, amount, description);
       if (!result.success) throw new Error(result.error);
       await get().loadClients();
       const selected = get().selectedClient;

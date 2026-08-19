@@ -21,7 +21,7 @@ export const ClientService = {
     ClientRepository.remove(id);
   },
   // Ajouter une dette (vente à crédit - نسيئة)
-  addDebt(customerId: string, amount: number, description: string, userId: string): ClientCredit {
+  addDebt(customerId: string, amount: number, description: string): ClientCredit {
     if (amount <= 0) throw new Error('Le montant doit être supérieur à 0.');
     const customer = ClientRepository.getById(customerId);
     if (!customer) throw new Error('Client introuvable.');
@@ -40,13 +40,12 @@ export const ClientService = {
         type: 'CREDIT',
         amount,
         description,
-        user_id: userId
       });
     })();
   },
 
   // Encaisser un paiement
-  recordPayment(customerId: string, amount: number, description: string, userId: string): ClientCredit {
+  recordPayment(customerId: string, amount: number, description: string): ClientCredit {
     if (amount <= 0) throw new Error('Le montant doit être supérieur à 0.');
     const currentBalance = ClientRepository.getBalance(customerId);
     if (amount > currentBalance) {
@@ -59,7 +58,6 @@ export const ClientService = {
         type: 'PAYMENT',
         amount,
         description: description || 'Paiement reçu',
-        user_id: userId
       });
     })();
   },

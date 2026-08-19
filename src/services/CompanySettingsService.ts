@@ -6,6 +6,7 @@ export interface CompanySettings {
   ice: string;
   rc: string;
   if_: string;
+  patente: string;
   address: string;
   phone: string;
   email: string;
@@ -18,6 +19,7 @@ const DEFAULTS: CompanySettings = {
   ice: '000000000000000',
   rc: '00000',
   if_: '00000000',
+  patente: '',
   address: '',
   phone: '',
   email: '',
@@ -40,6 +42,7 @@ export const CompanySettingsService = {
       ice: map['ice'] ?? DEFAULTS.ice,
       rc: map['rc'] ?? DEFAULTS.rc,
       if_: map['if_'] ?? DEFAULTS.if_,
+      patente: map['patente'] ?? DEFAULTS.patente,
       address: map['address'] ?? DEFAULTS.address,
       phone: map['phone'] ?? DEFAULTS.phone,
       email: map['email'] ?? DEFAULTS.email,
@@ -55,6 +58,7 @@ export const CompanySettingsService = {
       ['ice', settings.ice],
       ['rc', settings.rc],
       ['if_', settings.if_],
+      ['patente', settings.patente],
       ['address', settings.address],
       ['phone', settings.phone],
       ['email', settings.email],

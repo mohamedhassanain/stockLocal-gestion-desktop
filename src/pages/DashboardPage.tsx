@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue } from '../repositories/DashboardRepository';
+import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, MonthlyRevenue, AlertSummary } from '../repositories/DashboardRepository';
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 const KpiCard: React.FC<{
@@ -33,6 +33,8 @@ export const DashboardPage: React.FC = () => {
   const [topClients, setTopClients] = useState<TopClient[]>([]);
   const [lowStock, setLowStock] = useState<LowStockAlert[]>([]);
   const [dues, setDues] = useState<UpcomingDue[]>([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([]);
+  const [alertSummary, setAlertSummary] = useState<AlertSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [dueDays, setDueDays] = useState(30);
@@ -40,19 +42,23 @@ export const DashboardPage: React.FC = () => {
   const load = async () => {
     setIsLoading(true);
     try {
-      const [s, tp, tc, ls, d, backups] = await Promise.all([
+      const [s, tp, tc, ls, d, backups, mr, alerts] = await Promise.all([
         window.api.dashboard.getStats(),
         window.api.dashboard.getTopProducts(),
         window.api.dashboard.getTopClients(),
         window.api.dashboard.getLowStock(),
         window.api.dashboard.getUpcomingDues(dueDays),
         window.api.backup.list(),
+        window.api.dashboard.getMonthlyRevenue(6),
+        window.api.dashboard.getAlertSummary(),
       ]);
       setStats(s);
       setTopProducts(tp);
       setTopClients(tc);
       setLowStock(ls);
       setDues(d);
+      setMonthlyRevenue(mr);
+      setAlertSummary(alerts);
       if (backups.length > 0) setLastBackup(backups[0].date);
     } catch (e) {
       console.error(e);
@@ -151,10 +157,57 @@ export const DashboardPage: React.FC = () => {
           <KpiCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} color="#10b981" bgColor="#f0fdf4" />
           <KpiCard icon="💹" label="Marge Brute (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} color="#f59e0b" bgColor="#fffbeb" />
           <KpiCard icon="📦" label="Valeur du Stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} color="#6366f1" bgColor="#eef2ff" />
+          <KpiCard icon="💹" label="Bénéfice Estimé (mois)" value={`${(stats?.gross_margin_month ?? 0).toFixed(2)} MAD`} sub={`Marge sur ${stats?.sales_count_month ?? 0} factures`} color="#10b981" bgColor="#f0fdf4" />
           <KpiCard icon="⚠️" label="Impayés" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} color="#ef4444" bgColor="#fef2f2" />
         </div>
 
-        {/* Ligne 2 : Top Produits + Top Clients */}
+        {/* Ligne 1.5 : Résumé des alertes */}
+        {alertSummary && (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            {[
+              { label: 'Stock bas', count: alertSummary.low_stock_count, icon: '📦', color: '#f59e0b', bg: '#fffbeb' },
+              { label: 'Impayés', count: alertSummary.unpaid_count, icon: '💰', color: '#ef4444', bg: '#fef2f2' },
+              { label: 'En retard', count: alertSummary.overdue_count, icon: '⏰', color: '#dc2626', bg: '#fee2e2' },
+              { label: 'Échéance J-7', count: alertSummary.expiring_soon_count, icon: '📅', color: '#f97316', bg: '#fff7ed' },
+            ].map(a => (
+              <div key={a.label} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', background: a.bg, borderRadius: '12px', border: `2px solid ${a.color}20` }}>
+                <span style={{ fontSize: '28px' }}>{a.icon}</span>
+                <div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: a.color }}>{a.count}</div>
+                  <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: '600' }}>{a.label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Ligne 2 : Évolution du CA */}
+        {monthlyRevenue.length > 0 && (
+          <Section title="Évolution du Chiffre d'Affaires (6 mois)" icon="📈">
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '180px', padding: '0 8px' }}>
+              {(() => {
+                const maxRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
+                return monthlyRevenue.map((m) => {
+                  const heightPct = (m.revenue / maxRevenue) * 100;
+                  const monthLabel = m.month.slice(5); // "MM"
+                  return (
+                    <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f172a' }}>{m.revenue.toFixed(0)}</div>
+                      <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, #3b82f6, #60a5fa)', borderRadius: '6px 6px 0 0', transition: 'height 0.3s', minHeight: '4px' }} />
+                      <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>{monthLabel}</div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div style={{ marginTop: '12px', display: 'flex', gap: '16px', justifyContent: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>📊 {monthlyRevenue.reduce((s, m) => s + m.invoice_count, 0)} factures au total</span>
+              <span style={{ fontSize: '12px', color: '#10b981' }}>💹 Marge totale : {monthlyRevenue.reduce((s, m) => s + m.margin, 0).toFixed(2)} MAD</span>
+            </div>
+          </Section>
+        )}
+
+        {/* Ligne 3 : Top Produits + Top Clients */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <Section title="Top Produits du mois" icon="🏆">
             {topProducts.length === 0

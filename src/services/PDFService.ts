@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import type { Customer, ClientCredit } from '../repositories/ClientRepository';
+import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
 import type { Document } from '../repositories/DocumentRepository';
 import type { Product } from '../repositories/ProductRepository';
 import { CompanySettingsService } from './CompanySettingsService';
@@ -73,6 +74,75 @@ export const PDFService = {
     const documentsPath = app.getPath('documents');
     const safeName = client.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const filePath = path.join(documentsPath, `Releve_${safeName}_${Date.now()}.pdf`);
+
+    fs.writeFileSync(filePath, pdfBytes);
+    return filePath;
+  },
+
+  async generateSupplierStatement(supplier: Supplier, history: SupplierCredit[]): Promise<string> {
+    const settings = CompanySettingsService.getAll();
+    const pdfDoc = await PDFDocument.create();
+    let page = pdfDoc.addPage();
+    const { height } = page.getSize();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let y = height - 50;
+
+    page.drawText(settings.name || 'StockLocal', { x: 50, y, size: 14, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 24;
+
+    page.drawText('Relevé de Compte (Fournisseur)', { x: 50, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 40;
+
+    page.drawText(`Fournisseur: ${supplier.name}`, { x: 50, y, size: 14, font: boldFont });
+    y -= 20;
+    if (supplier.phone) {
+      page.drawText(`Tél: ${supplier.phone}`, { x: 50, y, size: 12, font });
+      y -= 15;
+    }
+    if (supplier.ice) {
+      page.drawText(`ICE: ${supplier.ice}`, { x: 50, y, size: 12, font });
+      y -= 15;
+    }
+
+    const balance = supplier.balance ?? 0;
+    page.drawText(`Solde actuel: ${balance.toFixed(2)} MAD`, {
+      x: 50, y, size: 14, font: boldFont, color: balance > 0 ? rgb(0.8, 0.1, 0.1) : rgb(0.1, 0.6, 0.1)
+    });
+
+    y -= 40;
+
+    page.drawText('Date', { x: 50, y, size: 12, font: boldFont });
+    page.drawText('Type', { x: 150, y, size: 12, font: boldFont });
+    page.drawText('Description', { x: 250, y, size: 12, font: boldFont });
+    page.drawText('Montant', { x: 450, y, size: 12, font: boldFont });
+
+    y -= 10;
+    page.drawLine({ start: { x: 50, y }, end: { x: 550, y }, thickness: 1, color: rgb(0.7, 0.7, 0.7) });
+    y -= 20;
+
+    for (const item of history) {
+      if (y < 50) {
+        page = pdfDoc.addPage();
+        y = height - 50;
+      }
+      const dateStr = new Date(item.date).toLocaleDateString();
+      const typeStr = item.type === 'DEBT' ? 'Dette' : 'Paiement';
+      const color = item.type === 'DEBT' ? rgb(0.8, 0.1, 0.1) : rgb(0.1, 0.6, 0.1);
+
+      page.drawText(dateStr, { x: 50, y, size: 10, font });
+      page.drawText(typeStr, { x: 150, y, size: 10, font, color });
+      page.drawText(truncate(item.description || '', 30), { x: 250, y, size: 10, font });
+      page.drawText(`${item.amount.toFixed(2)} MAD`, { x: 450, y, size: 10, font: boldFont, color });
+
+      y -= 20;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    const documentsPath = app.getPath('documents');
+    const safeName = supplier.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const filePath = path.join(documentsPath, `Releve_Fournisseur_${safeName}_${Date.now()}.pdf`);
 
     fs.writeFileSync(filePath, pdfBytes);
     return filePath;
@@ -292,7 +362,7 @@ export const PDFService = {
       y -= 18;
     };
 
-    drawKpi('CA aujourd’hui', `${stats.revenue_today.toFixed(2)} MAD`);
+    drawKpi('CA aujourd\'hui', `${stats.revenue_today.toFixed(2)} MAD`);
     drawKpi('CA cette semaine', `${stats.revenue_week.toFixed(2)} MAD`);
     drawKpi('CA ce mois', `${stats.revenue_month.toFixed(2)} MAD`);
     drawKpi('Marge brute (mois)', `${stats.gross_margin_month.toFixed(2)} MAD`);

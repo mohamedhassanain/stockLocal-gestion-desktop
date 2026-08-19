@@ -1,14 +1,8 @@
 -- Création des tables et des relations
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
+-- NOTE: La table users a été supprimée. StockLocal est une application single-user.
+-- L'audit trail fonctionne sans compte utilisateur.
 
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
@@ -42,6 +36,11 @@ CREATE TABLE IF NOT EXISTS products (
     selling_price REAL NOT NULL DEFAULT 0.0,
     wholesale_price REAL NOT NULL DEFAULT 0.0,
     min_stock INTEGER NOT NULL DEFAULT 0,
+    max_stock INTEGER NOT NULL DEFAULT 0,
+    vat_rate REAL NOT NULL DEFAULT 20.0,
+    location TEXT,
+    brand TEXT,
+    supplier_id TEXT,
     status TEXT NOT NULL DEFAULT 'ACTIVE',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -58,11 +57,9 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reference_doc TEXT,
     supplier_id TEXT,
-    user_id TEXT NOT NULL,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS customers (
@@ -88,7 +85,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table pour la gestion directe des crédits/dettes (نسيئة) sans facture
+-- Crédits/dettes clients (نسيئة)
 CREATE TABLE IF NOT EXISTS client_credits (
     id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
@@ -96,12 +93,9 @@ CREATE TABLE IF NOT EXISTS client_credits (
     amount REAL NOT NULL,
     description TEXT,
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    user_id TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
+    FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE
 );
-
 
 CREATE TABLE IF NOT EXISTS supplier_credits (
     id TEXT PRIMARY KEY,
@@ -110,22 +104,20 @@ CREATE TABLE IF NOT EXISTS supplier_credits (
     amount REAL NOT NULL,
     description TEXT,
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    user_id TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT
+    FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL, -- QUOTE, DELIVERY_NOTE, INVOICE, CREDIT_NOTE
     document_number TEXT NOT NULL UNIQUE,
-    entity_id TEXT NOT NULL, -- Customer ID ou Supplier ID
+    entity_id TEXT NOT NULL, -- Customer ID
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     due_date DATETIME,
     total_excl_tax REAL NOT NULL DEFAULT 0.0,
     total_incl_tax REAL NOT NULL DEFAULT 0.0,
-    status TEXT NOT NULL DEFAULT 'UNPAID', -- PAID, UNPAID, PARTIAL
+    status TEXT NOT NULL DEFAULT 'UNPAID', -- PAID, UNPAID, PARTIAL, CANCELLED
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -155,18 +147,17 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
 );
 
+-- Audit trail (sans user_id)
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
     action TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     details TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Paramètres de l'entreprise (assistant de configuration)
+-- Paramètres de l'entreprise
 CREATE TABLE IF NOT EXISTS company_settings (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -183,9 +174,7 @@ CREATE TABLE IF NOT EXISTS volume_discounts (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Étape 4 : Création des index pour garantir des performances ultra-rapides (< 100ms)
-
--- Index pour la recherche des produits
+-- Index pour les produits
 CREATE INDEX IF NOT EXISTS idx_products_reference ON products (reference);
 CREATE INDEX IF NOT EXISTS idx_products_barcode ON products (barcode);
 CREATE INDEX IF NOT EXISTS idx_products_designation ON products (designation);
@@ -210,7 +199,6 @@ CREATE INDEX IF NOT EXISTS idx_payments_document ON payments (document_id);
 CREATE INDEX IF NOT EXISTS idx_payments_date ON payments (date);
 
 -- Index pour l'audit
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_date ON audit_logs (created_at);
 
@@ -228,3 +216,103 @@ CREATE INDEX IF NOT EXISTS idx_supplier_credits_date ON supplier_credits (date);
 
 -- Index pour les remises par volume
 CREATE INDEX IF NOT EXISTS idx_volume_discounts_qty ON volume_discounts (min_qty);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- NOUVELLES TABLES (Phase 1+ : unités, historique prix, achats, inventaire)
+-- ══════════════════════════════════════════════════════════════════════════════
+
+-- Conversions d'unités (CARTON = 24 PIÈCES, etc.)
+CREATE TABLE IF NOT EXISTS unit_conversions (
+    id TEXT PRIMARY KEY,
+    from_unit TEXT NOT NULL,
+    to_unit TEXT NOT NULL,
+    factor REAL NOT NULL,
+    product_id TEXT, -- NULL = conversion globale, défini = spécifique à un produit
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+-- Historique des prix d'un produit
+CREATE TABLE IF NOT EXISTS price_history (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    purchase_price REAL,
+    selling_price REAL,
+    wholesale_price REAL,
+    changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reason TEXT,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+-- Commandes d'achat fournisseurs
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id TEXT PRIMARY KEY,
+    order_number TEXT NOT NULL UNIQUE,
+    supplier_id TEXT NOT NULL,
+    date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expected_date DATETIME,
+    status TEXT NOT NULL DEFAULT 'DRAFT', -- DRAFT, CONFIRMED, RECEIVED, CANCELLED
+    total REAL NOT NULL DEFAULT 0.0,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE RESTRICT
+);
+
+-- Lignes de commandes d'achat
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+    id TEXT PRIMARY KEY,
+    purchase_order_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    unit_price REAL NOT NULL,
+    received_qty INTEGER NOT NULL DEFAULT 0,
+    total REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+);
+
+-- Sessions d'inventaire (workflow multi-étapes)
+CREATE TABLE IF NOT EXISTS inventory_sessions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'DRAFT', -- DRAFT, COMPTAGE, CALCUL, VALIDATION
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Lignes d'inventaire
+CREATE TABLE IF NOT EXISTS inventory_items (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    expected_qty INTEGER NOT NULL DEFAULT 0,
+    counted_qty INTEGER,
+    difference INTEGER,
+    status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, COUNTED, ADJUSTED
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES inventory_sessions (id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+);
+
+-- Paramètres globaux (seuils d'alerte, etc.)
+CREATE TABLE IF NOT EXISTS global_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- Index pour les nouvelles tables
+CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history (product_id);
+CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history (changed_at);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON purchase_orders (supplier_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders (status);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_items_product ON purchase_order_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_sessions_status ON inventory_sessions (status);
+CREATE INDEX IF NOT EXISTS idx_inventory_items_session ON inventory_items (session_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_items_product ON inventory_items (product_id);
+CREATE INDEX IF NOT EXISTS idx_unit_conversions_product ON unit_conversions (product_id);

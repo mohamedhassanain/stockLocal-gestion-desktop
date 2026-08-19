@@ -4,6 +4,10 @@ import { AuditService } from './AuditService';
 
 export const DocumentService = {
 
+  /**
+   * Crée un document (facture, BL, devis) avec vérification et décrémentation
+   * atomiques du stock pour les types INVOICE et DELIVERY_NOTE.
+   */
   createDocument(data: {
     type: DocumentType;
     entity_id: string;
@@ -12,7 +16,7 @@ export const DocumentService = {
     notes?: string;
     items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
   }): Document {
-    if (!data.entity_id) throw new Error('Veuillez sélectionner un client.');
+    // entity_id peut être vide pour les ventes comptoir (POS)
     if (!data.items || data.items.length === 0) throw new Error('Le document doit contenir au moins une ligne de produit.');
 
     for (const item of data.items) {
@@ -21,7 +25,10 @@ export const DocumentService = {
       if (item.discount < 0 || item.discount > 100) throw new Error('La remise doit être comprise entre 0 et 100%.');
     }
 
-    return DocumentRepository.create(data);
+    // Gérer le stock automatiquement pour factures et BL
+    const manageStock = data.type === 'INVOICE' || data.type === 'DELIVERY_NOTE';
+
+    return DocumentRepository.create({ ...data, manageStock });
   },
 
   getDocuments(type: DocumentType, query = ''): Document[] {
@@ -56,29 +63,85 @@ export const DocumentService = {
   },
 
   /**
-   * Crée un avoir à partir d'une facture (cahier des charges §7).
-   * L'ancienne facture est marquée CANCELLED et un avoir AV-YYYY-NNN est généré.
+   * Crée un avoir (partiel ou total) à partir d'une facture.
+   *
+   * @param invoiceId - ID de la facture originale
+   * @param returnItems - Produits retournés avec quantités. Si omitted ou vide,
+   *                      retour total de tous les articles.
+   * @param reason - Motif du retour
+   *
+   * Le stock est réinjecté atomiquement dans la même transaction.
+   * - Retour total → la facture originale passe en CANCELLED
+   * - Retour partiel → la facture reste ACTIVE (UNPAID/PARTIAL/PAID)
    */
-  createCreditNote(invoiceId: string, reason: string = 'Retour marchandise'): Document {
+  createCreditNote(
+    invoiceId: string,
+    returnItems?: Array<{ product_id: string; quantity: number }>,
+    reason: string = 'Retour marchandise',
+  ): Document {
     const invoice = DocumentRepository.getById(invoiceId);
     if (!invoice) throw new Error('Facture introuvable.');
     if (invoice.type !== 'INVOICE') throw new Error('Seules les factures peuvent générer un avoir.');
+    if (invoice.status === 'CANCELLED') throw new Error('Cette facture est déjà annulée.');
 
-    const creditNote = DocumentRepository.create({
-      type: 'CREDIT_NOTE',
+    const invoiceItems = invoice.items ?? [];
+
+    // Construire les articles à retourner
+    let itemsToReturn: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
+
+    if (!returnItems || returnItems.length === 0) {
+      // Retour total : tous les articles de la facture
+      itemsToReturn = invoiceItems.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        discount: item.discount,
+      }));
+    } else {
+      // Retour partiel : valider et construire
+      itemsToReturn = [];
+      for (const ri of returnItems) {
+        if (ri.quantity <= 0) continue;
+
+        const originalItem = invoiceItems.find(ii => ii.product_id === ri.product_id);
+        if (!originalItem) {
+          throw new Error(`Le produit ${ri.product_id} n'existe pas dans la facture originale.`);
+        }
+        if (ri.quantity > originalItem.quantity) {
+          throw new Error(
+            `Impossible de retourner ${ri.quantity} unités de "${originalItem.product_ref}" : ` +
+            `la facture ne contient que ${originalItem.quantity} unités.`
+          );
+        }
+
+        itemsToReturn.push({
+          product_id: ri.product_id,
+          quantity: ri.quantity,
+          unit_price: originalItem.unit_price,
+          discount: originalItem.discount,
+        });
+      }
+    }
+
+    if (itemsToReturn.length === 0) {
+      throw new Error('Aucun article à retourner.');
+    }
+
+    // Créer l'avoir via le repository (transaction atomique avec stock)
+    const creditNote = DocumentRepository.createCreditNote({
+      original_invoice_id: invoiceId,
       entity_id: invoice.entity_id,
       date: new Date().toISOString().split('T')[0],
-      notes: `Avoir pour ${invoice.document_number} — ${reason}`,
-      items: (invoice.items ?? []).map(i => ({
-        product_id: i.product_id,
-        quantity: i.quantity,
-        unit_price: -Math.abs(i.unit_price),  // négatif : retour de marchandise
-        discount: i.discount
-      }))
+      return_items: itemsToReturn,
+      reason,
     });
 
-    // Marquer la facture originale comme annulée
-    DocumentRepository.cancelDocument(invoiceId);
+    AuditService.log(
+      'CREDIT_NOTE_CREATE',
+      'document',
+      creditNote.id,
+      `Avoir ${creditNote.document_number} pour ${reason} (${itemsToReturn.length} article(s))`
+    );
 
     return creditNote;
   },

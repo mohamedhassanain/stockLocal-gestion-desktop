@@ -9,16 +9,14 @@ export interface StockMovement {
   date?: string;
   reference_doc?: string;
   supplier_id?: string;
-  user_id: string;
   notes?: string;
-  username?: string;
 }
 
 export class StockMovementRepository {
   private static stmts = {
     insert: db.prepare(`
-      INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reference_doc, supplier_id, user_id, notes)
-      VALUES (@id, @product_id, @type, @quantity, @unit_price, @reference_doc, @supplier_id, @user_id, @notes)
+      INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reference_doc, supplier_id, notes)
+      VALUES (@id, @product_id, @type, @quantity, @unit_price, @reference_doc, @supplier_id, @notes)
     `),
     findByProduct: db.prepare('SELECT * FROM stock_movements WHERE product_id = ? ORDER BY date DESC LIMIT ? OFFSET ?'),
     getCurrentStock: db.prepare(`
@@ -31,7 +29,6 @@ export class StockMovementRepository {
   };
 
   static create(movement: StockMovement): void {
-    // better-sqlite3 exige tous les paramètres nommés (pas de undefined)
     this.stmts.insert.run({
       id: movement.id,
       product_id: movement.product_id,
@@ -40,7 +37,6 @@ export class StockMovementRepository {
       unit_price: movement.unit_price,
       reference_doc: movement.reference_doc ?? null,
       supplier_id: movement.supplier_id ?? null,
-      user_id: movement.user_id,
       notes: movement.notes ?? null,
     });
   }
@@ -49,19 +45,29 @@ export class StockMovementRepository {
     return this.stmts.findByProduct.all(productId, limit, offset) as StockMovement[];
   }
 
-  static getHistoryWithUser(productId: string, limit: number = 50, offset: number = 0): Array<StockMovement & { username: string }> {
+  static getHistoryWithUser(productId: string, limit: number = 50, offset: number = 0): StockMovement[] {
     return db.prepare(`
-      SELECT sm.*, COALESCE(u.username, 'inconnu') AS username
+      SELECT sm.*
       FROM stock_movements sm
-      LEFT JOIN users u ON u.id = sm.user_id
       WHERE sm.product_id = ?
       ORDER BY sm.date DESC
       LIMIT ? OFFSET ?
-    `).all(productId, limit, offset) as Array<StockMovement & { username: string }>;
+    `).all(productId, limit, offset) as StockMovement[];
   }
 
   static getStockLevel(productId: string): number {
     const result = this.stmts.getCurrentStock.get(productId) as { total_stock: number };
     return result?.total_stock || 0;
+  }
+
+  /** Get all movements across all products (for §16 full history) */
+  static getAllHistory(limit: number = 200, offset: number = 0): Array<StockMovement & { product_ref?: string; product_name?: string }> {
+    return db.prepare(`
+      SELECT sm.*, p.reference AS product_ref, p.designation AS product_name
+      FROM stock_movements sm
+      LEFT JOIN products p ON p.id = sm.product_id
+      ORDER BY sm.date DESC
+      LIMIT ? OFFSET ?
+    `).all(limit, offset) as any[];
   }
 }

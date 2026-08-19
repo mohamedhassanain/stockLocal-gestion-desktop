@@ -23,7 +23,6 @@ export interface ClientCredit {
   amount: number;
   description?: string;
   date: string;
-  user_id: string;
   created_at?: string;
 }
 
@@ -76,9 +75,9 @@ const stmtGetHistory = db.prepare<[string]>(`
   SELECT * FROM client_credits WHERE customer_id = ? ORDER BY date DESC LIMIT 200
 `);
 
-const stmtAddCredit = db.prepare<[string, string, string, number, string | null, string]>(`
-  INSERT INTO client_credits (id, customer_id, type, amount, description, user_id)
-  VALUES (?, ?, ?, ?, ?, ?)
+const stmtAddCredit = db.prepare<[string, string, string, number, string | null]>(`
+  INSERT INTO client_credits (id, customer_id, type, amount, description)
+  VALUES (?, ?, ?, ?, ?)
 `);
 
 const stmtGetBalance = db.prepare<[string]>(`
@@ -157,9 +156,9 @@ export const ClientRepository = {
     return result.balance;
   },
 
-  addCredit(data: { customer_id: string; type: 'CREDIT' | 'PAYMENT'; amount: number; description?: string; user_id: string }): ClientCredit {
+  addCredit(data: { customer_id: string; type: 'CREDIT' | 'PAYMENT'; amount: number; description?: string }): ClientCredit {
     const id = randomUUID();
-    stmtAddCredit.run(id, data.customer_id, data.type, data.amount, data.description ?? null, data.user_id);
+    stmtAddCredit.run(id, data.customer_id, data.type, data.amount, data.description ?? null);
     return { id, ...data, date: new Date().toISOString() };
   },
 

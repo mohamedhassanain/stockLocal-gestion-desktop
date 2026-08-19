@@ -41,7 +41,6 @@ export const StockPage: React.FC = () => {
         product_id: selectedProductId,
         quantity: qty,
         unit_price: price,
-        user_id: 'user_1',
         reference_doc: blRef || undefined,
         notes: notes || undefined,
       });
@@ -63,7 +62,6 @@ export const StockPage: React.FC = () => {
         product_id: selectedProductId,
         quantity: qty,
         unit_price: price,
-        user_id: 'user_1',
         exitType,
         notes: notes || undefined,
       });
@@ -83,7 +81,6 @@ export const StockPage: React.FC = () => {
       await addInventory({
         product_id: selectedProductId,
         unit_price: 0,
-        user_id: 'user_1',
       }, actualCount);
       alert('Inventaire enregistré (écart ajusté).');
       loadProductStock(selectedProductId);
@@ -212,7 +209,6 @@ export const StockPage: React.FC = () => {
                           {h.notes ? h.notes.substring(0, 50) : `Qté: ${h.quantity}`}
                         </span>
                         <span style={{ textAlign: 'right', color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                          {h.username ? `👤 ${h.username} · ` : ''}
                           {new Date(h.date ?? Date.now()).toLocaleDateString('fr-MA')}
                         </span>
                       </div>

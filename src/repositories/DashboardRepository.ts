@@ -43,6 +43,20 @@ export interface UpcomingDue {
   days_left: number;
 }
 
+export interface MonthlyRevenue {
+  month: string;
+  revenue: number;
+  margin: number;
+  invoice_count: number;
+}
+
+export interface AlertSummary {
+  low_stock_count: number;
+  overdue_count: number;
+  unpaid_count: number;
+  expiring_soon_count: number;
+}
+
 // ─── Requêtes SQL ultra-optimisées pour le Dashboard ─────────────────────────
 
 const stmtRevenue = db.prepare<[]>(`
@@ -171,5 +185,61 @@ export const DashboardRepository = {
 
   getUpcomingDues(daysAhead: number = 30): UpcomingDue[] {
     return stmtUpcomingDue.all(daysAhead) as UpcomingDue[];
+  },
+
+  getMonthlyRevenue(months: number = 6): MonthlyRevenue[] {
+    return db.prepare(`
+      SELECT 
+        strftime('%Y-%m', d.date) AS month,
+        COALESCE(SUM(d.total_incl_tax), 0) AS revenue,
+        COALESCE(SUM(
+          (SELECT SUM((di.unit_price - p.purchase_price) * di.quantity * (1 - di.discount/100.0))
+           FROM document_items di JOIN products p ON p.id = di.product_id
+           WHERE di.document_id = d.id)
+        ), 0) AS margin,
+        COUNT(*) AS invoice_count
+      FROM documents d
+      WHERE d.type = 'INVOICE' AND d.status != 'CANCELLED'
+        AND d.date >= date('now', '-' || ? || ' months')
+      GROUP BY strftime('%Y-%m', d.date)
+      ORDER BY month ASC
+    `).all(months) as MonthlyRevenue[];
+  },
+
+  getAlertSummary(): AlertSummary {
+    const lowStock = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM (
+        SELECT p.id FROM products p
+        LEFT JOIN stock_movements sm ON sm.product_id = p.id
+        WHERE p.status = 'ACTIVE'
+        GROUP BY p.id
+        HAVING COALESCE(SUM(CASE WHEN sm.type='IN' THEN sm.quantity ELSE -sm.quantity END), 0) <= p.min_stock
+      )
+    `).get() as { cnt: number };
+
+    const overdue = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM documents d
+      WHERE d.type = 'INVOICE' AND d.status IN ('UNPAID', 'PARTIAL')
+        AND d.due_date IS NOT NULL AND julianday(d.due_date) < julianday('now')
+    `).get() as { cnt: number };
+
+    const unpaid = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM documents d
+      WHERE d.type = 'INVOICE' AND d.status IN ('UNPAID', 'PARTIAL')
+    `).get() as { cnt: number };
+
+    const expiringSoon = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM documents d
+      WHERE d.type = 'INVOICE' AND d.status IN ('UNPAID', 'PARTIAL')
+        AND d.due_date IS NOT NULL
+        AND julianday(d.due_date) - julianday('now') BETWEEN 0 AND 7
+    `).get() as { cnt: number };
+
+    return {
+      low_stock_count: lowStock.cnt,
+      overdue_count: overdue.cnt,
+      unpaid_count: unpaid.cnt,
+      expiring_soon_count: expiringSoon.cnt,
+    };
   }
 };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { ProductForm } from '../components/products/ProductForm';
 import { useVirtualizer } from '@tanstack/react-virtual';

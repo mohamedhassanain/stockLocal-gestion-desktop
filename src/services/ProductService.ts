@@ -1,4 +1,5 @@
 import { Product, ProductRepository, ProductInput } from '../repositories/ProductRepository';
+import { PriceHistoryRepository } from '../repositories/PriceHistoryRepository';
 import { randomUUID } from 'crypto';
 
 export class ProductService {
@@ -49,9 +50,28 @@ export class ProductService {
       throw new Error('Le prix de vente ne peut pas être inférieur au prix d\'achat.');
     }
 
+    // Capturer les anciens prix AVANT la mise à jour
+    const oldPrices = {
+      purchase_price: existing.purchase_price,
+      selling_price: existing.selling_price,
+      wholesale_price: existing.wholesale_price
+    };
+
     ProductRepository.update({ ...productData, image_path: productData.image_path ?? null, id });
     const updated = ProductRepository.findById(id);
     if (!updated) throw new Error('Erreur lors de la mise à jour du produit.');
+
+    // Enregistrer l'historique des prix si les prix ont changé
+    PriceHistoryRepository.recordChange(
+      id,
+      oldPrices,
+      {
+        purchase_price: updated.purchase_price,
+        selling_price: updated.selling_price,
+        wholesale_price: updated.wholesale_price
+      }
+    );
+
     return updated;
   }
 

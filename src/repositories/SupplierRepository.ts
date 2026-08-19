@@ -20,7 +20,6 @@ export interface SupplierCredit {
   amount: number;
   description?: string;
   date: string;
-  user_id: string;
   created_at?: string;
 }
 
@@ -73,9 +72,9 @@ const stmtGetHistory = db.prepare<[string]>(`
   SELECT * FROM supplier_credits WHERE supplier_id = ? ORDER BY date DESC LIMIT 200
 `);
 
-const stmtAddCredit = db.prepare<[string, string, string, number, string | null, string]>(`
-  INSERT INTO supplier_credits (id, supplier_id, type, amount, description, user_id)
-  VALUES (?, ?, ?, ?, ?, ?)
+const stmtAddCredit = db.prepare<[string, string, string, number, string | null]>(`
+  INSERT INTO supplier_credits (id, supplier_id, type, amount, description)
+  VALUES (?, ?, ?, ?, ?)
 `);
 
 const stmtGetBalance = db.prepare<[string]>(`
@@ -154,9 +153,9 @@ export const SupplierRepository = {
     return result.balance;
   },
 
-  addCredit(data: { supplier_id: string; type: 'DEBT' | 'PAYMENT'; amount: number; description?: string; user_id: string }): SupplierCredit {
+  addCredit(data: { supplier_id: string; type: 'DEBT' | 'PAYMENT'; amount: number; description?: string }): SupplierCredit {
     const id = randomUUID();
-    stmtAddCredit.run(id, data.supplier_id, data.type, data.amount, data.description ?? null, data.user_id);
+    stmtAddCredit.run(id, data.supplier_id, data.type, data.amount, data.description ?? null);
     return { id, ...data, date: new Date().toISOString() };
   }
 };

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useClientStore } from '../stores/useClientStore';
+import { ClientDetailPanel } from '../components/ClientDetailPanel';
 import type { Customer } from '../repositories/ClientRepository';
 
 // ─── Sous-composant : Formulaire de création client ──────────────────────────
@@ -64,126 +65,6 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
           <button onClick={onClose} style={{ flex: 1, padding: '14px', background: '#f3f4f6', border: 'none', borderRadius: '8px', fontSize: '16px', cursor: 'pointer' }}>Annuler</button>
           <button onClick={() => onSave(form)} style={{ flex: 2, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>Enregistrer</button>
         </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── Sous-composant : Fiche Client (Historique + Actions) ───────────────────
-interface ClientDocument {
-  id: string;
-  type: string;
-  document_number: string;
-  date: string;
-  total_incl_tax: number;
-  status: string;
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  QUOTE: 'Devis',
-  DELIVERY_NOTE: 'Bon de livraison',
-  INVOICE: 'Facture',
-  CREDIT_NOTE: 'Avoir',
-};
-
-const ClientDetailPanel: React.FC<{ client: Customer; onDebt: (a: number, d: string) => void; onPayment: (a: number, d: string) => void }> = ({ client, onDebt, onPayment }) => {
-  const { clientHistory, exportStatement } = useClientStore();
-  const [amount, setAmount] = useState(0);
-  const [desc, setDesc] = useState('');
-  const [docs, setDocs] = useState<ClientDocument[]>([]);
-
-  useEffect(() => {
-    window.api.clients.getDocuments(client.id).then(setDocs).catch(() => {});
-  }, [client.id]);
-
-  const balanceColor = (client.balance ?? 0) > 0 ? '#ef4444' : '#10b981';
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Solde */}
-      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>Solde de dette (نسيئة)</div>
-        <div style={{ fontSize: '36px', fontWeight: 'bold', color: balanceColor }}>
-          {(client.balance ?? 0).toFixed(2)} MAD
-        </div>
-        {(client.credit_limit ?? 0) > 0 && (
-          <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>Plafond : {client.credit_limit} MAD</div>
-        )}
-      </div>
-
-      {/* Actions Rapides */}
-      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <h3 style={{ marginTop: 0 }}>Action Rapide</h3>
-        <input type="number" placeholder="Montant (MAD)" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} style={{ width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' }} />
-        <input type="text" placeholder="Description (optionnel)" value={desc} onChange={e => setDesc(e.target.value)} style={{ width: '100%', padding: '12px', fontSize: '14px', border: '2px solid #e5e7eb', borderRadius: '8px', marginBottom: '14px', boxSizing: 'border-box' }} />
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => { if (amount > 0) { onDebt(amount, desc); setAmount(0); setDesc(''); } }}
-            style={{ flex: 1, padding: '16px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-            + Dette (نسيئة)
-          </button>
-          <button onClick={() => { if (amount > 0) { onPayment(amount, desc); setAmount(0); setDesc(''); } }}
-            style={{ flex: 1, padding: '16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-            ✓ Encaisser
-          </button>
-        </div>
-      </div>
-
-      {/* Historique */}
-      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-          <h3 style={{ margin: 0 }}>Historique des transactions</h3>
-          <button onClick={() => exportStatement(client.id)}
-            style={{ padding: '8px 16px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
-            📄 Exporter Relevé PDF
-          </button>
-        </div>
-        
-        {clientHistory.length === 0 ? (
-          <div style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>Aucune transaction pour ce client.</div>
-        ) : (
-          <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-            {clientHistory.map(h => (
-              <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <div>
-                  <span style={{ fontWeight: '600', color: h.type === 'CREDIT' ? '#ef4444' : '#10b981', marginRight: '8px' }}>
-                    {h.type === 'CREDIT' ? '↑ Dette' : '↓ Paiement'}
-                  </span>
-                  <span style={{ fontSize: '13px', color: '#6b7280' }}>{h.description}</span>
-                </div>
-                <div style={{ fontWeight: 'bold', color: h.type === 'CREDIT' ? '#ef4444' : '#10b981' }}>
-                  {h.type === 'CREDIT' ? '+' : '-'}{h.amount.toFixed(2)} MAD
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Documents (factures, avoirs) — historique complet §5 */}
-      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <h3 style={{ margin: '0 0 15px' }}>📄 Factures & Avoirs</h3>
-        {docs.length === 0 ? (
-          <div style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>Aucun document pour ce client.</div>
-        ) : (
-          <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-            {docs.map(doc => (
-              <div key={doc.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <div>
-                  <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: '700', background: doc.type === 'CREDIT_NOTE' ? '#d1fae5' : '#dbeafe', color: doc.type === 'CREDIT_NOTE' ? '#065f46' : '#1e40af', marginRight: '8px' }}>
-                    {TYPE_LABELS[doc.type] ?? doc.type}
-                  </span>
-                  <span style={{ fontWeight: '600', fontSize: '14px', color: '#111827' }}>{doc.document_number}</span>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontWeight: 'bold', color: doc.type === 'CREDIT_NOTE' ? '#10b981' : '#0f172a' }}>
-                    {doc.total_incl_tax.toFixed(2)} MAD
-                  </span>
-                  <div style={{ fontSize: '11px', color: '#9ca3af' }}>{doc.date?.split('T')[0]}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -303,8 +184,8 @@ export const ClientsPage: React.FC = () => {
               </div>
               <ClientDetailPanel
                 client={selectedClient}
-                onDebt={(a, d) => addDebt(selectedClient.id, a, d).catch(e => alert(e.message))}
-                onPayment={(a, d) => addPayment(selectedClient.id, a, d).catch(e => alert(e.message))}
+                onDebt={(a: number, d: string) => addDebt(selectedClient.id, a, d).catch((e: any) => alert(e.message))}
+                onPayment={(a: number, d: string) => addPayment(selectedClient.id, a, d).catch((e: any) => alert(e.message))}
               />
             </>
           )}

@@ -18,7 +18,7 @@ export const SupplierService = {
     SupplierRepository.remove(id);
   },
   // Ajouter une dette (On doit de l'argent au fournisseur)
-  addDebt(supplierId: string, amount: number, description: string, userId: string): SupplierCredit {
+  addDebt(supplierId: string, amount: number, description: string): SupplierCredit {
     if (amount <= 0) throw new Error('Le montant doit être supérieur à 0.');
     const supplier = SupplierRepository.getById(supplierId);
     if (!supplier) throw new Error('Fournisseur introuvable.');
@@ -29,13 +29,12 @@ export const SupplierService = {
         type: 'DEBT',
         amount,
         description,
-        user_id: userId
       });
     })();
   },
 
   // Enregistrer un paiement au fournisseur
-  recordPayment(supplierId: string, amount: number, description: string, userId: string): SupplierCredit {
+  recordPayment(supplierId: string, amount: number, description: string): SupplierCredit {
     if (amount <= 0) throw new Error('Le montant doit être supérieur à 0.');
     
     // Facultatif: On pourrait empêcher de payer plus que la dette, mais certains permettent des avances.
@@ -51,7 +50,6 @@ export const SupplierService = {
         type: 'PAYMENT',
         amount,
         description: description || 'Paiement effectué',
-        user_id: userId
       });
     })();
   },

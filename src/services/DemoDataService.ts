@@ -18,7 +18,6 @@ export class DemoDataService {
     }
 
     runInTransaction(() => {
-      const userId = 'user_1';
       const now = new Date().toISOString();
 
       // ─── Catégories & sous-catégories ──────────────────────────────────────
@@ -50,9 +49,9 @@ export class DemoDataService {
           description: `Produit de démonstration ${p.designation}`,
         });
         db.prepare(`
-          INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, date, user_id, notes)
-          VALUES (?, ?, 'IN', ?, ?, ?, ?, 'Stock initial de démonstration')
-        `).run(randomUUID(), id, qty, p.purchase_price, now, userId);
+          INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, date, notes)
+          VALUES (?, ?, 'IN', ?, ?, ?, 'Stock initial de démonstration')
+        `).run(randomUUID(), id, qty, p.purchase_price, now);
       };
 
       defineProduct({ reference: 'LAIT-1L', designation: 'Lait entier 1L', unit: 'PIÈCE', category_id: catEpicerie.id, subcategory_id: subLaitiers.id, barcode: '6111000000011', purchase_price: 6.5, selling_price: 9.0, wholesale_price: 7.5, min_stock: 24, qty: 120 });
@@ -74,11 +73,11 @@ export class DemoDataService {
       `);
       for (const c of customerRows) insertCustomer.run(c);
 
-      // Crédit initial pour démontrer le système de nسيئة
+      // Crédit initial pour démontrer le système de نسيئة
       db.prepare(`
-        INSERT INTO client_credits (id, customer_id, type, amount, description, date, user_id)
-        VALUES (?, ?, 'CREDIT', ?, 'Crédit initial de démonstration', ?, ?)
-      `).run(randomUUID(), customerRows[0].id, 750, now, userId);
+        INSERT INTO client_credits (id, customer_id, type, amount, description, date)
+        VALUES (?, ?, 'CREDIT', ?, 'Crédit initial de démonstration', ?)
+      `).run(randomUUID(), customerRows[0].id, 750, now);
 
       // ─── Fournisseurs de démo ─────────────────────────────────────────────
       const suppliers = [

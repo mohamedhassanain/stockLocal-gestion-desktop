@@ -1,6 +1,72 @@
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 
+// ─── Prepared statements pour le stock ────────────────────────────────────────
+
+const stmtGetStockLevel = db.prepare(`
+  SELECT 
+    COALESCE(SUM(CASE WHEN type IN ('IN', 'INVENTORY') THEN quantity ELSE 0 END), 0) - 
+    COALESCE(SUM(CASE WHEN type = 'OUT' THEN quantity ELSE 0 END), 0) as total_stock
+  FROM stock_movements 
+  WHERE product_id = ?
+`);
+
+const stmtInsertMovement = db.prepare(`
+  INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reference_doc, notes)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+
+const stmtGetProductRef = db.prepare(`
+  SELECT reference, designation FROM products WHERE id = ?
+`);
+
+// ─── Helper: vérifier et décrémenter le stock dans une transaction ────────────
+
+function decrementStockForItems(
+  items: Array<{ product_id: string; quantity: number; unit_price: number }>,
+  documentNumber: string,
+): void {
+  for (const item of items) {
+    const stockResult = stmtGetStockLevel.get(item.product_id) as { total_stock: number };
+    const currentStock = stockResult?.total_stock ?? 0;
+    if (currentStock < item.quantity) {
+    const prod = stmtGetProductRef.get(item.product_id) as { reference: string; designation: string } | undefined;
+    const label = prod ? `${prod.reference} (${prod.designation})` : item.product_id;
+      throw new Error(
+        `Stock insuffisant pour "${label}" : demandé ${item.quantity}, disponible ${currentStock}.`
+      );
+    }
+    const movementId = randomUUID();
+    stmtInsertMovement.run(
+      movementId,
+      item.product_id,
+      'OUT',
+      item.quantity,
+      item.unit_price,
+      documentNumber,
+      `VENTE — ${documentNumber}`
+    );
+  }
+}
+
+function incrementStockForReturns(
+  items: Array<{ product_id: string; quantity: number; unit_price: number }>,
+  documentNumber: string,
+): void {
+  for (const item of items) {
+    const movementId = randomUUID();
+    stmtInsertMovement.run(
+      movementId,
+      item.product_id,
+      'IN',
+      item.quantity,
+      Math.abs(item.unit_price),
+      documentNumber,
+      `RETOUR_CLIENT — ${documentNumber}`
+    );
+  }
+}
+
 export type DocumentType = 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE';
 export type DocumentStatus = 'DRAFT' | 'PAID' | 'UNPAID' | 'PARTIAL' | 'CANCELLED';
 export type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
@@ -141,6 +207,10 @@ export const DocumentRepository = {
     return doc;
   },
 
+  /**
+   * Crée un document. Si manageStock=true, le stock est vérifié et décrémenté
+   * atomiquement dans la même transaction SQLite (INVOICE / DELIVERY_NOTE).
+   */
   create(data: {
     type: DocumentType;
     entity_id: string;
@@ -148,6 +218,7 @@ export const DocumentRepository = {
     due_date?: string;
     items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
     notes?: string;
+    manageStock?: boolean;
   }): Document {
     const id = randomUUID();
     const document_number = this.generateNumber(data.type);
@@ -161,6 +232,13 @@ export const DocumentRepository = {
     const total_incl_tax = total_excl_tax; // TVA non applicable en V1
 
     const insertAll = db.transaction(() => {
+      // 1. Décrémenter le stock si demandé (avant l'insertion du document pour que le
+      //    ROLLBACK restore le stock en cas d'erreur)
+      if (data.manageStock && (data.type === 'INVOICE' || data.type === 'DELIVERY_NOTE')) {
+        decrementStockForItems(data.items, document_number);
+      }
+
+      // 2. Créer le document
       stmtInsertDoc.run(
         id, data.type, document_number, data.entity_id,
         data.date, data.due_date ?? null,
@@ -168,12 +246,82 @@ export const DocumentRepository = {
         'UNPAID', data.notes ?? null
       );
 
+      // 3. Créer les lignes
       for (const item of data.items) {
         const lineTotal = item.quantity * item.unit_price * (1 - item.discount / 100);
         stmtInsertItem.run(
           randomUUID(), id, item.product_id,
           item.quantity, item.unit_price, item.discount, lineTotal
         );
+      }
+    });
+
+    insertAll();
+    return this.getById(id)!;
+  },
+
+  /**
+   * Crée un avoir (partiel ou total) et réinjecte le stock correspondant
+   * dans une transaction atomique.
+   */
+  createCreditNote(data: {
+    original_invoice_id: string;
+    entity_id: string;
+    date: string;
+    return_items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
+    reason?: string;
+  }): Document {
+    const id = randomUUID();
+    const document_number = this.generateNumber('CREDIT_NOTE');
+
+    // Calcul des totaux (valeurs négatives = retour)
+    let total_excl_tax = 0;
+    for (const item of data.return_items) {
+      const lineTotal = item.quantity * Math.abs(item.unit_price) * (1 - item.discount / 100);
+      total_excl_tax += lineTotal;
+    }
+    const total_incl_tax = total_excl_tax;
+
+    const notes = data.reason
+      ? `Avoir pour facture — ${data.reason}`
+      : 'Avoir — retour marchandise';
+
+    const insertAll = db.transaction(() => {
+      // 1. Réinjecter le stock (IN) pour les produits retournés
+      incrementStockForReturns(data.return_items, document_number);
+
+      // 2. Créer le document avoir
+      stmtInsertDoc.run(
+        id, 'CREDIT_NOTE', document_number, data.entity_id,
+        data.date, null,
+        total_excl_tax, total_incl_tax,
+        'PAID', notes
+      );
+
+      // 3. Créer les lignes (quantités positives, montants négatifs pour refléter le crédit)
+      for (const item of data.return_items) {
+        const lineTotal = item.quantity * Math.abs(item.unit_price) * (1 - item.discount / 100);
+        stmtInsertItem.run(
+          randomUUID(), id, item.product_id,
+          item.quantity, -Math.abs(item.unit_price), item.discount, -lineTotal
+        );
+      }
+
+      // 4. Si c'est un retour partiel, ne PAS annuler la facture originale
+      //    Si c'est un retour total, annuler la facture originale
+      const originalInvoice = stmtGetById.get(data.original_invoice_id) as Document | undefined;
+      if (originalInvoice) {
+        const originalItems = stmtGetItems.all(data.original_invoice_id) as DocumentItem[];
+        const allReturned = data.return_items.every(ri => {
+          const orig = originalItems.find(oi => oi.product_id === ri.product_id);
+          return orig && ri.quantity >= orig.quantity;
+        });
+        if (allReturned) {
+          stmtUpdateStatus.run('CANCELLED', data.original_invoice_id);
+        } else {
+          // Partiel : la facture reste ACTIVE mais on note le retour
+          // On ne change pas le statut — il reste UNPAID/PARTIAL/PAID
+        }
       }
     });
 

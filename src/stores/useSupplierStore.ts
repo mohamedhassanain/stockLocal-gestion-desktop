@@ -19,8 +19,6 @@ interface SupplierState {
   addPayment: (supplierId: string, amount: number, description: string) => Promise<void>;
 }
 
-const DEFAULT_USER_ID = 'user_1'; // Remplacé par auth plus tard
-
 export const useSupplierStore = create<SupplierState>((set, get) => ({
   suppliers: [],
   selectedSupplier: null,
@@ -97,7 +95,7 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
   addDebt: async (supplierId, amount, description) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await window.api.suppliers.addDebt(supplierId, amount, description, DEFAULT_USER_ID);
+      const result = await window.api.suppliers.addDebt(supplierId, amount, description);
       if (!result.success) throw new Error(result.error);
       await get().loadSuppliers();
       const selected = get().selectedSupplier;
@@ -114,7 +112,7 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
   addPayment: async (supplierId, amount, description) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await window.api.suppliers.addPayment(supplierId, amount, description, DEFAULT_USER_ID);
+      const result = await window.api.suppliers.addPayment(supplierId, amount, description);
       if (!result.success) throw new Error(result.error);
       await get().loadSuppliers();
       const selected = get().selectedSupplier;
