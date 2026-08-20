@@ -1,6 +1,7 @@
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { runInTransaction } from '../database/config/connection';
+import { StockLedgerService } from '../services/StockLedgerService';
 
 export interface InventorySession {
   id: string;
@@ -21,6 +22,7 @@ export interface InventoryItem {
   product_id: string;
   product_ref?: string;
   product_name?: string;
+  unit?: string;
   expected_qty: number;
   counted_qty: number | null;
   difference: number | null;
@@ -35,7 +37,7 @@ const stmtGetAll = db.prepare('SELECT * FROM inventory_sessions ORDER BY created
 const stmtGetById = db.prepare('SELECT * FROM inventory_sessions WHERE id = ?');
 
 const stmtGetItems = db.prepare(`
-  SELECT ii.*, p.reference AS product_ref, p.designation AS product_name
+  SELECT ii.*, p.reference AS product_ref, p.designation AS product_name, p.unit AS unit
   FROM inventory_items ii
   LEFT JOIN products p ON p.id = ii.product_id
   WHERE ii.session_id = ?
@@ -71,18 +73,8 @@ const stmtGetStockLevel = db.prepare(`
   FROM stock_movements WHERE product_id = ?
 `);
 
-const stmtInsertMovement = db.prepare(`
-  INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reference_doc, notes)
-  VALUES (?, 'INVENTORY', ?, 0, ?, ?, ?)
-`);
-
-const stmtInsertOutMovement = db.prepare(`
-  INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reference_doc, notes)
-  VALUES (?, 'OUT', ?, 0, ?, ?, ?)
-`);
-
 const stmtGetActiveProducts = db.prepare(`
-  SELECT id, reference, designation, purchase_price FROM products WHERE status = 'ACTIVE' ORDER BY designation ASC
+  SELECT id, reference, designation, purchase_price, unit FROM products WHERE status = 'ACTIVE' ORDER BY designation ASC
 `);
 
 // ─── Repository ──────────────────────────────────────────────────────────────
@@ -116,7 +108,7 @@ export const InventorySessionRepository = {
       stmtInsertSession.run(id, data.name, 'DRAFT', data.notes ?? null);
 
       const products = stmtGetActiveProducts.all() as Array<{
-        id: string; reference: string; designation: string; purchase_price: number;
+        id: string; reference: string; designation: string; purchase_price: number; unit: string;
       }>;
 
       for (const p of products) {
@@ -142,11 +134,24 @@ export const InventorySessionRepository = {
 
   /**
    * Enregistre le comptage d'un article.
+   * @param countedQty quantité physiquement comptée (>= 0)
    */
   countItem(itemId: string, countedQty: number): void {
+    const qty = Number(countedQty);
+    if (!Number.isFinite(qty) || qty < 0) {
+      throw new Error('Quantité comptée invalide : doit être un nombre positif ou zéro.');
+    }
+
     const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId) as InventoryItem | undefined;
     if (!item) throw new Error('Article d\'inventaire introuvable.');
-    stmtUpdateCountedQty.run(itemId, countedQty, item.expected_qty);
+
+    const session = stmtGetById.get(item.session_id) as InventorySession | undefined;
+    if (!session || session.status !== 'COMPTAGE') {
+      throw new Error('Le comptage n\'est autorisé que pendant la phase de comptage.');
+    }
+
+    // placeholders : counted_qty = ? ; difference = ? - ? ; WHERE id = ?
+    stmtUpdateCountedQty.run(qty, qty, item.expected_qty ?? 0, itemId);
   },
 
   /**
@@ -166,12 +171,19 @@ export const InventorySessionRepository = {
   },
 
   /**
-   * Valide l'inventaire : applique les ajustements de stock pour tous les écarts.
+   * Valide l'inventaire : applique les ajustements de stock via le StockLedgerService.
+   *
+   * Chaque écart est appliqué avec un mouvement explicite :
+   *   écart positif (surplus) → ADJUSTMENT_IN
+   *   écart négatif (manque) → ADJUSTMENT_OUT
+   *
+   * La validation est idempotente : une session déjà validée ne peut pas l'être deux fois.
    */
   validate(id: string): InventorySession {
     return runInTransaction(() => {
       const session = stmtGetById.get(id) as InventorySession | undefined;
       if (!session) throw new Error('Session d\'inventaire introuvable.');
+      if (session.status === 'VALIDATION') throw new Error('Cette session d\'inventaire a déjà été validée.');
       if (session.status !== 'CALCUL') throw new Error('La session doit être en mode calcul.');
 
       const items = stmtGetItems.all(id) as InventoryItem[];
@@ -183,19 +195,14 @@ export const InventorySessionRepository = {
         const price = product?.purchase_price ?? 0;
         const sessionName = session.name;
 
-        if (item.difference > 0) {
-          // Excédent → entrée de stock
-          stmtInsertMovement.run(
-            randomUUID(), item.product_id, item.difference, price,
-            `INVENTAIRE — ${sessionName}`, `Inventaire "${sessionName}" : +${item.difference}`
-          );
-        } else {
-          // Manquant → sortie de stock
-          stmtInsertOutMovement.run(
-            randomUUID(), item.product_id, Math.abs(item.difference),
-            `INVENTAIRE — ${sessionName}`, `Inventaire "${sessionName}" : ${item.difference}`
-          );
-        }
+        // Écriture via le moteur central (atomique, traçable, signe correct)
+        StockLedgerService.adjustInventory({
+          product_id: item.product_id,
+          actualCount: item.counted_qty,
+          unit_price: price,
+          document_id: id,
+          notes: `INVENTAIRE — ${sessionName}`,
+        });
 
         stmtUpdateItemStatus.run('ADJUSTED', item.id);
       }

@@ -5,10 +5,10 @@ export interface Product {
   id: string;
   reference: string;
   designation: string;
-  description?: string;
-  category_id?: string;
-  subcategory_id?: string;
-  barcode?: string;
+  description?: string | null;
+  category_id?: string | null;
+  subcategory_id?: string | null;
+  barcode?: string | null;
   image_path?: string | null;
   unit?: string;
   purchase_price: number;

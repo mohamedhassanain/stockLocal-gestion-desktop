@@ -24,7 +24,9 @@ export const BackupService = {
       fs.mkdirSync(backupDir, { recursive: true });
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    // Millisecondes incluses : deux sauvegardes dans la même seconde génèrent
+    // des noms uniques (VACUUM INTO refuse d'écraser un fichier existant).
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupName = `stocklocal-backup-${timestamp}.db`;
     const backupPath = path.join(backupDir, backupName);
 
@@ -116,13 +118,16 @@ export const BackupService = {
   },
 
   /**
-   * Restaure un backup.
-   * 1. Crée un backup de l'état actuel
-   * 2. Vérifie l'intégrité du backup sélectionné
-   * 3. Remplace la DB
-   * 4. Vérifie que la restauration a fonctionné
+   * Restaure un backup (sûr sur Windows).
+   *
+   * Sur Windows, un fichier SQLite ouvert ne peut pas être remplacé.
+   * La restauration est donc déposée comme marqueur `.restore_pending.db`,
+   * puis appliquée au prochain démarrage par connection.ts (applyPendingRestore) :
+   *   backup de sécurité → copie → integrity_check → rollback si invalide.
+   *
+   * Avant de déposer le marqueur, le backup est validé (intégrité SQLite).
    */
-  async restoreBackup(backupPath: string): Promise<{ success: boolean; error?: string }> {
+  async restoreBackup(backupPath: string): Promise<{ success: boolean; error?: string; needsRestart?: boolean }> {
     if (!fs.existsSync(backupPath)) {
       return { success: false, error: 'Le fichier de sauvegarde est introuvable.' };
     }
@@ -132,55 +137,26 @@ export const BackupService = {
       return { success: false, error: 'Le fichier de sauvegarde est vide.' };
     }
 
+    // 1. Valider l'intégrité du backup AVANT tout
+    const validation = await this.validateBackup(backupPath);
+    if (!validation.valid) {
+      return { success: false, error: validation.error ?? 'Sauvegarde invalide.' };
+    }
+
+    // 2. Backup de sécurité de l'état actuel
+    await this.backup();
+
     try {
-      // 1. Backup de l'état actuel avant restauration
-      await this.backup();
+      // 3. Sur Windows, la base est ouverte et ne peut pas être remplacée :
+      //    on dépose le backup comme marqueur, appliqué au prochain démarrage.
+      const dataPath = DataStorageService.getConfig().dataPath;
+      const markerPath = path.join(dataPath, '.restore_pending.db');
+      fs.copyFileSync(backupPath, markerPath);
 
-      const dbPath = DataStorageService.getDatabasePath();
-
-      // 2. Remplacer la DB
-      // Note: better-sqlite3 a le fichier ouvert, on ne peut pas le remplacer directement
-      // On copie le backup vers un fichier temporaire, puis on exécute la restauration
-      const tempPath = dbPath + '.restore_tmp';
-      fs.copyFileSync(backupPath, tempPath);
-
-      // Copier WAL/SHM du backup si existants
-      for (const ext of ['-wal', '-shm']) {
-        const src = backupPath + ext;
-        if (fs.existsSync(src)) {
-          fs.copyFileSync(src, tempPath + ext);
-        }
-      }
-
-      // Renommer l'ancienne DB
-      const oldPath = dbPath + '.old';
-      try { fs.renameSync(dbPath, oldPath); } catch { /* ignore */ }
-      for (const ext of ['-wal', '-shm']) {
-        try { fs.renameSync(dbPath + ext, dbPath + ext + '.old'); } catch { /* ignore */ }
-      }
-
-      // Renommer le backup temp vers la DB principale
-      fs.renameSync(tempPath, dbPath);
-      for (const ext of ['-wal', '-shm']) {
-        const src = tempPath + ext;
-        if (fs.existsSync(src)) {
-          try { fs.renameSync(src, dbPath + ext); } catch { /* ignore */ }
-        }
-      }
-
-      // 3. Vérification (on recharge la DB)
-      // Note: pour une vraie vérification, il faudrait redémarrer l'app
-      console.log('[Backup] Restauration terminée. Redémarrage recommandé.');
-
-      // Nettoyer l'ancienne DB
-      try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
-      for (const ext of ['-wal', '-shm']) {
-        try { fs.unlinkSync(oldPath + ext); } catch { /* ignore */ }
-      }
-
-      return { success: true };
+      console.log('[Backup] Restauration planifiée. Elle sera appliquée au prochain démarrage.');
+      return { success: true, needsRestart: true };
     } catch (e: any) {
-      return { success: false, error: `Erreur lors de la restauration : ${e.message}` };
+      return { success: false, error: `Erreur lors de la préparation de la restauration : ${e.message}` };
     }
   },
 

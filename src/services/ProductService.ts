@@ -1,5 +1,6 @@
 import { Product, ProductRepository, ProductInput } from '../repositories/ProductRepository';
 import { PriceHistoryRepository } from '../repositories/PriceHistoryRepository';
+import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 
 export class ProductService {
@@ -26,10 +27,15 @@ export class ProductService {
       throw new Error(`La référence ${productData.reference} est déjà utilisée.`);
     }
 
-    // 4. Génération de l'ID et insertion
+    // 4. Normalisation des champs optionnels (better-sqlite3 exige la clé,
+    //    même nulle) + génération de l'ID
     const newProduct = {
       ...productData,
       id: randomUUID(),
+      description: productData.description ?? null,
+      category_id: productData.category_id ?? null,
+      subcategory_id: productData.subcategory_id ?? null,
+      barcode: productData.barcode ?? null,
       image_path: productData.image_path ?? null,
       unit: productData.unit || 'PIÈCE',
       status: productData.status || 'ACTIVE'
@@ -57,7 +63,17 @@ export class ProductService {
       wholesale_price: existing.wholesale_price
     };
 
-    ProductRepository.update({ ...productData, image_path: productData.image_path ?? null, id });
+    ProductRepository.update({
+      ...productData,
+      id,
+      description: productData.description ?? null,
+      category_id: productData.category_id ?? null,
+      subcategory_id: productData.subcategory_id ?? null,
+      barcode: productData.barcode ?? null,
+      image_path: productData.image_path ?? null,
+      unit: productData.unit || 'PIÈCE',
+      status: productData.status || 'ACTIVE',
+    });
     const updated = ProductRepository.findById(id);
     if (!updated) throw new Error('Erreur lors de la mise à jour du produit.');
 
@@ -97,12 +113,38 @@ export class ProductService {
 
   /**
    * Supprime définitivement un produit.
-   * Les mouvements de stock et lignes de documents liés seront supprimés en cascade
-   * grâce aux contraintes FOREIGN KEY ... ON DELETE CASCADE / RESTRICT.
+   *
+   * Protection des données historiques (§9) :
+   *  - si le produit a le moindre mouvement de stock ou une ligne dans un document
+   *    (facture, devis, BL, achat, avoir…), la suppression est REFUSÉE :
+   *    l'utilisateur doit utiliser "Archiver" à la place.
+   *  - seul un produit sans historique (créé par erreur, jamais utilisé)
+   *    peut être supprimé physiquement.
    */
   static deleteProduct(id: string): void {
     const existing = ProductRepository.findById(id);
     if (!existing) throw new Error('Produit introuvable.');
+
+    const movementCount = (db.prepare(
+      'SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?'
+    ).get(id) as { count: number }).count;
+    if (movementCount > 0) {
+      throw new Error(
+        'Suppression refusée : ce produit possède un historique de stock. ' +
+        'Utilisez "Archiver" pour le masquer tout en conservant son historique.'
+      );
+    }
+
+    const docCount = (db.prepare(
+      'SELECT COUNT(*) AS count FROM document_items WHERE product_id = ?'
+    ).get(id) as { count: number }).count;
+    if (docCount > 0) {
+      throw new Error(
+        'Suppression refusée : ce produit figure sur des documents (factures, devis, BL…). ' +
+        'Utilisez "Archiver" pour le masquer tout en conservant son historique.'
+      );
+    }
+
     ProductRepository.remove(id);
   }
 

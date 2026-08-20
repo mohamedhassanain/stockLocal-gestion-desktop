@@ -2,28 +2,41 @@ import { create } from 'zustand';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+export type InventorySessionStatus = 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION';
+
 export interface InventoryItem {
   id: string;
-  inventory_session_id: string;
+  session_id: string;
   product_id: string;
   product_reference?: string;
   product_designation?: string;
+  unit?: string;
   expected_qty: number;
   counted_qty: number | null;
-  gap: number | null;
-  unit?: string;
+  difference: number | null;
+  status?: string;
 }
 
 export interface InventorySession {
   id: string;
   name: string;
   notes?: string;
-  status: 'brouillon' | 'en_cours' | 'comptage_termine' | 'ecarts_calcules' | ' valide';
-  created_at: string;
+  status: InventorySessionStatus;
   started_at?: string;
-  validated_at?: string;
+  completed_at?: string | null;
+  created_at: string;
   items?: InventoryItem[];
+  summary?: { total_products: number; counted: number; discrepancies: number };
 }
+
+// ─── Workflow labels (UI) ────────────────────────────────────────────────────
+
+export const INVENTORY_STATUS_LABELS: Record<InventorySessionStatus, string> = {
+  DRAFT: 'Brouillon',
+  COMPTAGE: 'En cours',
+  CALCUL: 'Écarts calculés',
+  VALIDATION: 'Validé',
+};
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
@@ -99,7 +112,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await window.api.inventory.countItem(itemId, countedQty);
-      // Reload the selected session to reflect the change
       const selected = get().selectedSession;
       if (selected) {
         await get().loadSessionById(selected.id);

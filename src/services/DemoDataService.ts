@@ -102,7 +102,7 @@ export class DemoDataService {
 
       // ─── Paramètres entreprise par défaut ─────────────────────────────────
       const settings = [
-        ['company_name', 'StockLocal SARL'],
+        ['name', 'StockLocal SARL'],
         ['ice', '000000000000000'],
         ['rc', '000000'],
         ['if', '00000000'],

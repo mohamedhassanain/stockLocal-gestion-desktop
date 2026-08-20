@@ -1,6 +1,6 @@
-import { db } from '../database/config/connection';
+import { db, runInTransaction } from '../database/config/connection';
 import { randomUUID } from 'crypto';
-import { runInTransaction } from '../database/config/connection';
+import { StockLedgerService } from '../services/StockLedgerService';
 
 export interface PurchaseOrder {
   id: string;
@@ -90,11 +90,6 @@ const stmtGetNextNumber = db.prepare(`
   SELECT COUNT(*) as cnt FROM purchase_orders WHERE strftime('%Y', date) = ?
 `);
 
-const stmtInsertMovement = db.prepare(`
-  INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reference_doc, supplier_id, notes)
-  VALUES (?, ?, 'IN', ?, ?, ?, ?, ?)
-`);
-
 // ─── Repository ──────────────────────────────────────────────────────────────
 
 export const PurchaseOrderRepository = {
@@ -137,7 +132,10 @@ export const PurchaseOrderRepository = {
 
     let total = 0;
     for (const item of data.items) {
-      total += item.quantity * item.unit_price;
+      const qty = Number(item.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantité de commande invalide.');
+      if (Number(item.unit_price) < 0) throw new Error('Prix unitaire invalide.');
+      total += qty * Number(item.unit_price);
     }
 
     const insertAll = db.transaction(() => {
@@ -147,10 +145,10 @@ export const PurchaseOrderRepository = {
       );
 
       for (const item of data.items) {
-        const itemTotal = item.quantity * item.unit_price;
+        const itemTotal = Number(item.quantity) * Number(item.unit_price);
         stmtInsertItem.run(
           randomUUID(), id, item.product_id,
-          item.quantity, item.unit_price, 0, itemTotal
+          Number(item.quantity), Number(item.unit_price), 0, itemTotal
         );
       }
     });
@@ -171,10 +169,15 @@ export const PurchaseOrderRepository = {
   },
 
   /**
-   * Réceptionne les produits d'une commande :
-   * - Met à jour received_qty pour chaque ligne
-   * - Crée les entrées de stock
-   * - Passe le statut à RECEIVED
+   * Réceptionne (partiellement ou totalement) une commande confirmée.
+   *
+   * Workflow :
+   *   Commande = 100
+   *   Réception 1 = 60 → PURCHASE_IN 60 → statut CONFIRMED (partielle)
+   *   Réception 2 = 40 → PURCHASE_IN 40 → statut RECEIVED (complète)
+   *
+   * Chaque réception crée un mouvement de stock PURCHASE_IN via le StockLedgerService.
+   * La quantité reçue est cumulative (réceptions multiples autorisées).
    */
   receive(id: string, receivedItems?: Array<{ item_id: string; received_qty: number }>): PurchaseOrder {
     return runInTransaction(() => {
@@ -183,40 +186,58 @@ export const PurchaseOrderRepository = {
       if (order.status !== 'CONFIRMED') throw new Error('Seules les commandes confirmées peuvent être réceptionnées.');
 
       const items = order.items ?? [];
+      if (items.length === 0) throw new Error('Cette commande ne contient aucune ligne.');
 
-      // Si des quantités spécifiques sont fournies, les utiliser, sinon réceptionner tout
-      for (const item of items) {
-        const received = receivedItems?.find(ri => ri.item_id === item.id);
-        const qtyToReceive = received ? received.received_qty : item.quantity;
-
-        if (qtyToReceive > 0) {
-          // Mettre à jour la quantité reçue
-          stmtUpdateItemReceived.run(qtyToReceive, item.id);
-
-          // Créer l'entrée de stock si pas déjà réceptionné
-          if (item.received_qty === 0 && qtyToReceive > 0) {
-            stmtInsertMovement.run(
-              randomUUID(), item.product_id, qtyToReceive, item.unit_price,
-              order.order_number, order.supplier_id,
-              `Réception commande ${order.order_number}`
-            );
+      // Si receivedItems est fourni, valider qu'il couvre toutes les lignes
+      if (receivedItems && receivedItems.length > 0) {
+        for (const ri of receivedItems) {
+          if (!Number.isFinite(ri.received_qty) || ri.received_qty < 0) {
+            throw new Error('Quantité reçue invalide.');
           }
         }
       }
 
-      // Recalculer le total
-      let total = 0;
-      const updatedItems = stmtGetItems.all(id) as PurchaseOrderItem[];
-      for (const item of updatedItems) {
-        total += item.received_qty * item.unit_price;
+      for (const item of items) {
+        const received = receivedItems?.find(ri => ri.item_id === item.id);
+        const qtyToReceive = received ? Number(received.received_qty) : item.quantity;
+
+        if (qtyToReceive > 0) {
+          // La quantité reçue est cumulative
+          const newReceivedQty = item.received_qty + qtyToReceive;
+          if (newReceivedQty > item.quantity) {
+            throw new Error(
+              `Réception refusée : la quantité reçue (${newReceivedQty}) dépasse la quantité commandée (${item.quantity}) ` +
+              `pour "${item.product_ref} ${item.product_name}".`
+            );
+          }
+
+          stmtUpdateItemReceived.run(newReceivedQty, item.id);
+
+          // Créer l'entrée de stock pour CETTE réception (PURCHASE_IN)
+          StockLedgerService.recordMovement({
+            product_id: item.product_id,
+            movement_type: 'PURCHASE_IN',
+            quantity: qtyToReceive,
+            unit_price: item.unit_price,
+            reference_doc: order.order_number,
+            document_id: order.id,
+            supplier_id: order.supplier_id,
+            notes: `Réception commande ${order.order_number} (partiel ${newReceivedQty}/${item.quantity})`,
+          });
+        }
       }
 
-      // Vérifier si tout est reçu
-      const allReceived = updatedItems.every(i => i.received_qty >= i.quantity);
-      const anyReceived = updatedItems.some(i => i.received_qty > 0);
+      // Recalculer le total réceptionné
+      const updatedItems = stmtGetItems.all(id) as PurchaseOrderItem[];
+      let receivedTotal = 0;
+      for (const item of updatedItems) {
+        receivedTotal += item.received_qty * item.unit_price;
+      }
 
-      const newStatus = allReceived ? 'RECEIVED' : anyReceived ? 'CONFIRMED' : 'CONFIRMED';
-      stmtUpdateOrder.run(newStatus, total, id);
+      // Statut : RECEIVED si tout est reçu, sinon CONFIRMED (réception partielle)
+      const allReceived = updatedItems.every(i => i.received_qty >= i.quantity);
+      const newStatus = allReceived ? 'RECEIVED' : 'CONFIRMED';
+      stmtUpdateOrder.run(newStatus, receivedTotal, id);
 
       return this.getById(id)!;
     });
@@ -238,6 +259,10 @@ export const PurchaseOrderRepository = {
     const order = this.getById(id);
     if (!order) throw new Error('Commande introuvable.');
     if (order.status !== 'DRAFT') throw new Error('Seules les commandes en brouillon peuvent être supprimées.');
+    const movements = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE document_id = ?').get(id) as { cnt: number };
+    if (movements.cnt > 0) {
+      throw new Error('Impossible de supprimer : la commande possède un historique de réception de stock.');
+    }
     stmtDeleteOrder.run(id);
   }
 };

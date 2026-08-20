@@ -298,7 +298,7 @@ export const SettingsPage: React.FC = () => {
     try {
       const result = await window.api.backup.restore(backupPath);
       if (result.success) {
-        notify('✅ Restauration réussie. Veuillez redémarrer l\'application.');
+        notify('✅ Restauration planifiée. Veuillez redémarrer l\'application — elle sera appliquée au prochain démarrage.');
       } else {
         notify(`❌ ${result.error}`);
       }

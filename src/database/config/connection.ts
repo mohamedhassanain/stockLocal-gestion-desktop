@@ -14,7 +14,66 @@ if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 
+/**
+ * Applique une restauration en attente au démarrage (avant ouverture de la base).
+ *
+ * Sur Windows, on ne peut pas remplacer un fichier SQLite ouvert. La restauration
+ * est donc déposée comme marqueur `.restore_pending.db` par BackupService, puis
+ * appliquée ici au prochain démarrage, avec :
+ *   1. backup de sécurité de l'état actuel
+ *   2. copie du backup → base
+ *   3. integrity_check (sinon rollback automatique)
+ *   4. suppression du marqueur
+ */
+function applyPendingRestore(): void {
+  try {
+    const dataPath = DataStorageService.getConfig().dataPath;
+    const markerPath = path.join(dataPath, '.restore_pending.db');
+    if (!fs.existsSync(markerPath)) return;
+
+    const backupsDir = DataStorageService.getBackupsPath();
+    if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+
+    // 1. Backup de sécurité de l'état actuel
+    const safetyPath = path.join(backupsDir, `pre-restore-${Date.now()}.db`);
+    if (fs.existsSync(dbPath)) {
+      fs.copyFileSync(dbPath, safetyPath);
+    }
+
+    // 2. Copier le backup en attente → base
+    fs.copyFileSync(markerPath, dbPath);
+
+    // 3. Vérification d'intégrité sur une connexion en lecture seule
+    let ok = false;
+    try {
+      const testDb = new Database(dbPath, { readonly: true });
+      const result = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>;
+      ok = result[0]?.integrity_check === 'ok';
+      testDb.close();
+    } catch {
+      ok = false;
+    }
+
+    // 4. Rollback si invalide, sinon supprimer le marqueur
+    if (ok) {
+      fs.unlinkSync(markerPath);
+      console.log('[Restore] Restauration appliquée avec succès au démarrage.');
+    } else {
+      if (fs.existsSync(safetyPath)) {
+        fs.copyFileSync(safetyPath, dbPath);
+      }
+      fs.unlinkSync(markerPath);
+      console.warn('[Restore] Intégrité invalide : restauration annulée, backup de sécurité restauré.');
+    }
+  } catch (e) {
+    console.warn('[Restore] Échec de l\'application de la restauration en attente :', e);
+  }
+}
+
+applyPendingRestore();
+
 export const db = new Database(dbPath, {
+
   verbose: process.env.NODE_ENV !== 'production' ? console.log : undefined,
 });
 
@@ -188,6 +247,210 @@ function migrateAddProductFields(): void {
   addColumnIfMissing('products', 'supplier_id', 'TEXT');
 }
 
+function migrateStockMovementV2(): void {
+  addColumnIfMissing('stock_movements', 'movement_type', "TEXT NOT NULL DEFAULT 'ADJUSTMENT_IN'");
+  addColumnIfMissing('stock_movements', 'document_id', 'TEXT');
+
+  // Reclasser les mouvements hérités ET corriger le signe des anciens INVENTORY :
+  //  - INVENTORY avec "+N" (surplus) → type IN,  ADJUSTMENT_IN,  quantity = N (positif)
+  //  - INVENTORY avec "−N" (manque)  → type OUT, ADJUSTMENT_OUT, quantity = N (positif)
+  //  - IN                    → PURCHASE_IN  (entrée fournisseur)
+  //  - IN RETOUR_CLIENT      → RETURN_IN
+  //  - IN "Stock initial"    → OPENING_BALANCE
+  //  - OUT avec notes SORTIE → selon le type encodé (VENTE/CASSE/PERTE/RETOUR)
+  //  - OUT vente (notes VENTE —) → SALE_OUT
+  db.exec(`
+    UPDATE stock_movements
+    SET
+      type = CASE
+        WHEN type = 'INVENTORY' AND notes LIKE '%:+%' THEN 'IN'
+        WHEN type = 'INVENTORY' THEN 'OUT'
+        ELSE type
+      END,
+      movement_type = CASE
+        WHEN type = 'IN' AND notes LIKE '%RETOUR_CLIENT%' THEN 'RETURN_IN'
+        WHEN type = 'IN' AND notes LIKE '%Inventaire : +%' THEN 'ADJUSTMENT_IN'
+        WHEN type = 'IN' AND notes LIKE '%INVENTAIRE%' AND notes LIKE '%:+%' THEN 'ADJUSTMENT_IN'
+        WHEN type = 'IN' AND notes LIKE '%Stock initial%' THEN 'OPENING_BALANCE'
+        WHEN type = 'IN' AND notes LIKE '%Inventaire "%' AND notes LIKE '%:+%' THEN 'ADJUSTMENT_IN'
+        WHEN type = 'IN' THEN 'PURCHASE_IN'
+        WHEN type = 'OUT' AND notes LIKE '%SORTIE:CASSE%' THEN 'DAMAGE_OUT'
+        WHEN type = 'OUT' AND notes LIKE '%SORTIE:PERTE%' THEN 'LOSS_OUT'
+        WHEN type = 'OUT' AND notes LIKE '%SORTIE:RETOUR%' THEN 'RETURN_OUT'
+        WHEN type = 'OUT' AND notes LIKE '%SORTIE:VENTE%' THEN 'SALE_OUT'
+        WHEN type = 'OUT' AND notes LIKE 'VENTE —%' THEN 'SALE_OUT'
+        WHEN type = 'OUT' AND notes LIKE '%INVENTAIRE%' THEN 'ADJUSTMENT_OUT'
+        WHEN type = 'OUT' THEN 'SALE_OUT'
+        WHEN type = 'INVENTORY' AND notes LIKE '%:+%' THEN 'ADJUSTMENT_IN'
+        WHEN type = 'INVENTORY' THEN 'ADJUSTMENT_OUT'
+        ELSE movement_type
+      END
+    WHERE movement_type = 'ADJUSTMENT_IN'
+  `);
+
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_stock_movements_movement_type ON stock_movements (movement_type);
+      CREATE INDEX IF NOT EXISTS idx_stock_movements_document ON stock_movements (document_id);
+    `);
+  } catch (e) {
+    console.warn('[DB] Index stock_movements v2 ignorés:', e);
+  }
+}
+
+function migrateDocumentsV2(): void {
+  addColumnIfMissing('documents', 'total_tax', 'REAL NOT NULL DEFAULT 0.0');
+  addColumnIfMissing('documents', 'discount_amount', 'REAL NOT NULL DEFAULT 0.0');
+  addColumnIfMissing('document_items', 'vat_rate', 'REAL NOT NULL DEFAULT 0.0');
+
+  // Recalculer la TVA sur les documents existants dont total_tax = 0 mais total_incl_tax > total_excl_tax
+  try {
+    db.exec(`
+      UPDATE documents SET total_tax = total_incl_tax - total_excl_tax
+      WHERE total_tax = 0 AND total_incl_tax != total_excl_tax
+    `);
+  } catch (e) {
+    console.warn('[DB] Recalcul TVA existante ignoré:', e);
+  }
+}
+
+function migrateQuantitiesReal(): void {
+  // Les colonnes de quantité passent en REAL pour supporter les quantités décimales (0.5, 1.25, ...)
+  // SQLite permet le déclenchement sur ALTER TYPE ? Non : ALTER COLUMN n'existe pas.
+  // On reconstruit les tables concernées si elles sont encore INTEGER.
+  try {
+    const cols = db.prepare(`PRAGMA table_info(document_items)`).all() as { name: string; type: string }[];
+    const qtyCol = cols.find(c => c.name === 'quantity');
+    if (qtyCol && qtyCol.type === 'INTEGER') {
+      console.log('[DB] Migration document_items.quantity → REAL...');
+      db.exec(`
+        CREATE TABLE document_items_new (
+          id TEXT PRIMARY KEY,
+          document_id TEXT NOT NULL,
+          product_id TEXT NOT NULL,
+          quantity REAL NOT NULL CHECK (quantity > 0),
+          unit_price REAL NOT NULL,
+          discount REAL DEFAULT 0.0,
+          total REAL NOT NULL,
+          vat_rate REAL NOT NULL DEFAULT 0.0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+        );
+        INSERT INTO document_items_new (id, document_id, product_id, quantity, unit_price, discount, total, vat_rate, created_at)
+          SELECT id, document_id, product_id, quantity, unit_price, discount, total, vat_rate, created_at FROM document_items;
+        DROP TABLE document_items;
+        ALTER TABLE document_items_new RENAME TO document_items;
+        CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items (document_id);
+        CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items (product_id);
+      `);
+      console.log('[DB] document_items.quantity migré vers REAL.');
+    }
+  } catch (e) {
+    console.warn('[DB] Migration document_items.quantity REAL ignorée:', e);
+  }
+
+  try {
+    const cols = db.prepare(`PRAGMA table_info(purchase_order_items)`).all() as { name: string; type: string }[];
+    const qtyCol = cols.find(c => c.name === 'quantity');
+    if (qtyCol && qtyCol.type === 'INTEGER') {
+      console.log('[DB] Migration purchase_order_items.quantity → REAL...');
+      db.exec(`
+        CREATE TABLE purchase_order_items_new (
+          id TEXT PRIMARY KEY,
+          purchase_order_id TEXT NOT NULL,
+          product_id TEXT NOT NULL,
+          quantity REAL NOT NULL,
+          unit_price REAL NOT NULL,
+          received_qty REAL NOT NULL DEFAULT 0,
+          total REAL NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id) ON DELETE CASCADE,
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+        );
+        INSERT INTO purchase_order_items_new (id, purchase_order_id, product_id, quantity, unit_price, received_qty, total, created_at)
+          SELECT id, purchase_order_id, product_id, quantity, unit_price, received_qty, total, created_at FROM purchase_order_items;
+        DROP TABLE purchase_order_items;
+        ALTER TABLE purchase_order_items_new RENAME TO purchase_order_items;
+        CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
+        CREATE INDEX IF NOT EXISTS idx_purchase_order_items_product ON purchase_order_items (product_id);
+      `);
+      console.log('[DB] purchase_order_items.quantity migré vers REAL.');
+    }
+  } catch (e) {
+    console.warn('[DB] Migration purchase_order_items.quantity REAL ignorée:', e);
+  }
+
+  try {
+    const cols = db.prepare(`PRAGMA table_info(inventory_items)`).all() as { name: string; type: string }[];
+    const qtyCol = cols.find(c => c.name === 'expected_qty');
+    if (qtyCol && qtyCol.type === 'INTEGER') {
+      console.log('[DB] Migration inventory_items.quantity → REAL...');
+      db.exec(`
+        CREATE TABLE inventory_items_new (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          product_id TEXT NOT NULL,
+          expected_qty REAL NOT NULL DEFAULT 0,
+          counted_qty REAL,
+          difference REAL,
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (session_id) REFERENCES inventory_sessions (id) ON DELETE CASCADE,
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+        );
+        INSERT INTO inventory_items_new (id, session_id, product_id, expected_qty, counted_qty, difference, status, created_at)
+          SELECT id, session_id, product_id, expected_qty, counted_qty, difference, status, created_at FROM inventory_items;
+        DROP TABLE inventory_items;
+        ALTER TABLE inventory_items_new RENAME TO inventory_items;
+        CREATE INDEX IF NOT EXISTS idx_inventory_items_session ON inventory_items (session_id);
+        CREATE INDEX IF NOT EXISTS idx_inventory_items_product ON inventory_items (product_id);
+      `);
+      console.log('[DB] inventory_items.quantities migré vers REAL.');
+    }
+  } catch (e) {
+    console.warn('[DB] Migration inventory_items.quantity REAL ignorée:', e);
+  }
+
+  // stock_movements.quantity → REAL (reconstruire si INTEGER)
+  try {
+    const cols = db.prepare(`PRAGMA table_info(stock_movements)`).all() as { name: string; type: string }[];
+    const qtyCol = cols.find(c => c.name === 'quantity');
+    if (qtyCol && qtyCol.type === 'INTEGER') {
+      console.log('[DB] Migration stock_movements.quantity → REAL...');
+      db.exec(`
+        CREATE TABLE stock_movements_new (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          movement_type TEXT NOT NULL DEFAULT 'ADJUSTMENT_IN',
+          quantity REAL NOT NULL CHECK (quantity > 0),
+          unit_price REAL NOT NULL DEFAULT 0,
+          date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          reference_doc TEXT,
+          document_id TEXT,
+          supplier_id TEXT,
+          notes TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+        );
+        INSERT INTO stock_movements_new (id, product_id, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes, created_at)
+          SELECT id, product_id, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes, created_at FROM stock_movements;
+        DROP TABLE stock_movements;
+        ALTER TABLE stock_movements_new RENAME TO stock_movements;
+        CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements (product_id);
+        CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON stock_movements (date);
+        CREATE INDEX IF NOT EXISTS idx_stock_movements_type ON stock_movements (type);
+        CREATE INDEX IF NOT EXISTS idx_stock_movements_movement_type ON stock_movements (movement_type);
+        CREATE INDEX IF NOT EXISTS idx_stock_movements_document ON stock_movements (document_id);
+      `);
+      console.log('[DB] stock_movements.quantity migré vers REAL.');
+    }
+  } catch (e) {
+    console.warn('[DB] Migration stock_movements.quantity REAL ignorée:', e);
+  }
+}
+
 function initDb(): void {
   applySchema();
   migrateColumns();
@@ -196,6 +459,9 @@ function initDb(): void {
   migrateClientCredits();
   migrateSupplierCredits();
   migrateAddProductFields();
+  migrateStockMovementV2();
+  migrateDocumentsV2();
+  migrateQuantitiesReal();
 }
 
 initDb();

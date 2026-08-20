@@ -23,6 +23,9 @@ yarn-error.log*
 backups/
 data/
 
+# Données de test temporaires (dossier isolé créé par tests/setup.ts)
+.stocklocal-test-data/
+
 # Fichiers système / OS
 .DS_Store
 Thumbs.db

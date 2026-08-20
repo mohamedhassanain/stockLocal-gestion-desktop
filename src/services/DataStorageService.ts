@@ -1,8 +1,47 @@
-import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 
 const CONFIG_FILE = 'storage-config.json';
+
+interface ElectronAppLike {
+  getPath(name: string): string;
+}
+
+function loadElectronApp(): ElectronAppLike | undefined {
+  try {
+    // Sous Electron (main process en CJS/ESM), `require` reste accessible via eval
+    // même dans un bundle. Hors Electron (tests Vitest / Node pur), eval('require')
+    // n'existe pas → on retombe sur le dossier de test. On vérifie explicitement
+    // process.versions.electron pour ne charger le module qu'en environnement réel.
+    if (typeof process !== 'undefined' && process.versions?.electron) {
+      // eslint-disable-next-line no-eval
+      const mod = (0, eval)('require')('electron') as { app?: ElectronAppLike } | undefined;
+      if (mod && typeof mod.app?.getPath === 'function') {
+        return mod.app;
+      }
+    }
+  } catch {
+    // Hors Electron (tests unitaires / Node) : le module electron renvoie un chemin
+    // ou n'existe pas → on retombe sur le dossier de test.
+  }
+  return undefined;
+}
+
+/**
+ * Emplacement userData (Electron) avec fallback hors Electron (tests / dev).
+ * Sous Node pur (Vitest), `app` n'existe pas : on utilise un dossier de test.
+ */
+function resolveUserDataDir(): string {
+  const electronApp = loadElectronApp();
+  if (electronApp) {
+    try {
+      return electronApp.getPath('userData');
+    } catch {
+      // Electron pas encore prêt
+    }
+  }
+  return process.env.STOCKLOCAL_TEST_DATA_PATH ?? path.join(process.cwd(), '.stocklocal-test-data');
+}
 
 export interface StorageConfig {
   dataPath: string;
@@ -30,7 +69,7 @@ export class DataStorageService {
   static readonly ATTACHMENTS_DIR = 'attachments';
 
   static init(): void {
-    this.configPath = path.join(app.getPath('userData'), CONFIG_FILE);
+    this.configPath = path.join(resolveUserDataDir(), CONFIG_FILE);
     this.config = this.loadConfig();
   }
 
@@ -42,7 +81,7 @@ export class DataStorageService {
 
   /** Emplacement recommandé par défaut */
   static getRecommendedPath(): string {
-    return path.join(app.getPath('userData'), 'data');
+    return path.join(resolveUserDataDir(), 'data');
   }
 
   /** Chemin complet vers la base de données */

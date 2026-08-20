@@ -9,9 +9,19 @@ interface StockState {
   error: string | null;
 
   loadProductStock: (productId: string) => Promise<void>;
-  addEntry: (data: Omit<StockMovement, 'id' | 'type' | 'notes'> & { reference_doc?: string; notes?: string }) => Promise<void>;
-  addExit: (data: Omit<StockMovement, 'id' | 'type'> & { exitType?: 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR'; reference_doc?: string }) => Promise<void>;
-  addInventory: (data: Omit<StockMovement, 'id' | 'type' | 'quantity'>, actualCount: number) => Promise<void>;
+  addEntry: (data: Omit<StockMovement, 'id' | 'type' | 'notes' | 'movement_type'> & {
+    reference_doc?: string;
+    notes?: string;
+    movement_type?: 'PURCHASE_IN' | 'RETURN_IN' | 'OPENING_BALANCE' | 'TRANSFER_IN' | 'ADJUSTMENT_IN';
+    document_id?: string;
+  }) => Promise<void>;
+  addExit: (data: Omit<StockMovement, 'id' | 'type' | 'movement_type'> & {
+    exitType?: 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+    reference_doc?: string;
+    document_id?: string;
+    movement_type?: 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT' | 'TRANSFER_OUT' | 'ADJUSTMENT_OUT';
+  }) => Promise<void>;
+  addInventory: (data: Omit<StockMovement, 'id' | 'type' | 'quantity' | 'movement_type'>, actualCount: number) => Promise<void>;
 }
 
 export const useStockStore = create<StockState>((set, get) => ({

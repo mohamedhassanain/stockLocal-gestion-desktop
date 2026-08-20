@@ -48,14 +48,22 @@ CREATE TABLE IF NOT EXISTS products (
     FOREIGN KEY (subcategory_id) REFERENCES subcategories (id) ON DELETE SET NULL
 );
 
+-- Mouvements de stock :
+--   type          → IN (entrée) / OUT (sortie) — ancien format conservé pour compatibilité
+--   movement_type → type métier explicite et auditable :
+--                   PURCHASE_IN, SALE_OUT, RETURN_IN, RETURN_OUT,
+--                   ADJUSTMENT_IN, ADJUSTMENT_OUT, TRANSFER_IN, TRANSFER_OUT,
+--                   DAMAGE_OUT, LOSS_OUT, OPENING_BALANCE
 CREATE TABLE IF NOT EXISTS stock_movements (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL,
-    type TEXT NOT NULL, -- IN, OUT, INVENTORY
-    quantity INTEGER NOT NULL,
-    unit_price REAL NOT NULL,
+    type TEXT NOT NULL,
+    movement_type TEXT NOT NULL DEFAULT 'ADJUSTMENT_IN', -- type métier explicite (cf. StockLedgerService)
+    quantity REAL NOT NULL CHECK (quantity > 0),
+    unit_price REAL NOT NULL DEFAULT 0,
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reference_doc TEXT,
+    document_id TEXT, -- lien vers le document source (facture, avoir, commande, session inventaire)
     supplier_id TEXT,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -113,24 +121,43 @@ CREATE TABLE IF NOT EXISTS documents (
     type TEXT NOT NULL, -- QUOTE, DELIVERY_NOTE, INVOICE, CREDIT_NOTE
     document_number TEXT NOT NULL UNIQUE,
     entity_id TEXT NOT NULL, -- Customer ID
+    original_document_id TEXT, -- lien avoir → facture d'origine (null pour les autres types)
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     due_date DATETIME,
     total_excl_tax REAL NOT NULL DEFAULT 0.0,
+    total_tax REAL NOT NULL DEFAULT 0.0,     -- TVA totale (montant)
     total_incl_tax REAL NOT NULL DEFAULT 0.0,
+    discount_amount REAL NOT NULL DEFAULT 0.0, -- Remise globale appliquée
     status TEXT NOT NULL DEFAULT 'UNPAID', -- PAID, UNPAID, PARTIAL, CANCELLED
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Retours liés à une facture (anti double retour / sur-retour)
+CREATE TABLE IF NOT EXISTS credit_note_refs (
+    id TEXT PRIMARY KEY,
+    credit_note_id TEXT NOT NULL,            -- l'avoir
+    original_document_id TEXT NOT NULL,      -- la facture d'origine
+    product_id TEXT NOT NULL,
+    quantity REAL NOT NULL CHECK (quantity > 0),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (credit_note_id) REFERENCES documents (id) ON DELETE CASCADE,
+    FOREIGN KEY (original_document_id) REFERENCES documents (id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_credit_note_refs_original ON credit_note_refs (original_document_id);
+CREATE INDEX IF NOT EXISTS idx_credit_note_refs_credit ON credit_note_refs (credit_note_id);
+
 CREATE TABLE IF NOT EXISTS document_items (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
-    quantity INTEGER NOT NULL,
+    quantity REAL NOT NULL CHECK (quantity > 0),
     unit_price REAL NOT NULL,
     discount REAL DEFAULT 0.0,
     total REAL NOT NULL,
+    vat_rate REAL NOT NULL DEFAULT 0.0,   -- Taux TVA figé au moment de la vente
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT

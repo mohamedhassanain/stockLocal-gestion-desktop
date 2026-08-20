@@ -1,24 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useInventoryStore, type InventorySession } from '../stores/useInventoryStore';
+import { useInventoryStore, INVENTORY_STATUS_LABELS, type InventorySession } from '../stores/useInventoryStore';
 
 // ─── Workflow Steps ──────────────────────────────────────────────────────────
 
 const WORKFLOW_STEPS = [
-  { key: 'brouillon', label: 'Brouillon', icon: '📝' },
-  { key: 'en_cours', label: 'En cours', icon: '🔄' },
-  { key: 'comptage_termine', label: 'Comptage terminé', icon: '✅' },
-  { key: 'ecarts_calcules', label: 'Écarts calculés', icon: '📊' },
-  { key: 'valide', label: 'Validé', icon: '🔒' },
+  { key: 'DRAFT', label: 'Brouillon', icon: '📝' },
+  { key: 'COMPTAGE', label: 'En cours', icon: '🔄' },
+  { key: 'CALCUL', label: 'Écarts calculés', icon: '📊' },
+  { key: 'VALIDATION', label: 'Validé', icon: '🔒' },
 ];
 
 const getStepIndex = (status: string): number => {
   const idx = WORKFLOW_STEPS.findIndex((s) => s.key === status.trim());
   return idx >= 0 ? idx : 0;
-};
-
-const statusLabel = (status: string): string => {
-  const step = WORKFLOW_STEPS.find((s) => s.key === status.trim());
-  return step ? step.label : status;
 };
 
 // ─── Step Indicator Component ────────────────────────────────────────────────
@@ -204,6 +198,8 @@ export const InventoryPage: React.FC = () => {
 
   const countedItems = selectedSession?.items?.filter((i) => i.counted_qty !== null).length || 0;
   const totalItems = selectedSession?.items?.length || 0;
+  const status = selectedSession?.status ?? 'DRAFT';
+  const canCount = status === 'COMPTAGE';
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -343,6 +339,7 @@ export const InventoryPage: React.FC = () => {
               {sessions.map((session) => {
                 const isActive = selectedSession?.id === session.id;
                 const stepIdx = getStepIndex(session.status);
+                const isDone = stepIdx >= 3;
                 return (
                   <div
                     key={session.id}
@@ -380,10 +377,10 @@ export const InventoryPage: React.FC = () => {
                           borderRadius: '12px',
                           fontSize: '11px',
                           fontWeight: 'bold',
-                          backgroundColor: stepIdx >= 4 ? '#dcfce7' : stepIdx >= 1 ? '#dbeafe' : '#f1f5f9',
-                          color: stepIdx >= 4 ? '#166534' : stepIdx >= 1 ? '#1e40af' : '#64748b',
+                          backgroundColor: isDone ? '#dcfce7' : stepIdx >= 1 ? '#dbeafe' : '#f1f5f9',
+                          color: isDone ? '#166534' : stepIdx >= 1 ? '#1e40af' : '#64748b',
                         }}>
-                          {statusLabel(session.status)}
+                          {INVENTORY_STATUS_LABELS[session.status] ?? session.status}
                         </span>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
@@ -451,7 +448,7 @@ export const InventoryPage: React.FC = () => {
               </div>
 
               {/* Step Indicator */}
-              <StepIndicator currentStatus={selectedSession.status} />
+              <StepIndicator currentStatus={status} />
 
               {/* Action Buttons based on status */}
               <div style={{
@@ -460,7 +457,7 @@ export const InventoryPage: React.FC = () => {
                 margin: '16px 0',
                 flexWrap: 'wrap',
               }}>
-                {(selectedSession.status === 'brouillon' || selectedSession.status.trim() === 'brouillon') && (
+                {status === 'DRAFT' && (
                   <button
                     onClick={handleStartCounting}
                     disabled={isLoading}
@@ -479,7 +476,7 @@ export const InventoryPage: React.FC = () => {
                   </button>
                 )}
 
-                {(selectedSession.status === 'en_cours' || selectedSession.status.trim() === 'en_cours') && (
+                {status === 'COMPTAGE' && (
                   <button
                     onClick={handleCalculateGaps}
                     disabled={isLoading}
@@ -498,7 +495,7 @@ export const InventoryPage: React.FC = () => {
                   </button>
                 )}
 
-                {(selectedSession.status === 'ecarts_calcules' || selectedSession.status.trim() === 'ecarts_calcules') && (
+                {status === 'CALCUL' && (
                   <button
                     onClick={handleValidate}
                     disabled={isLoading}
@@ -601,7 +598,7 @@ export const InventoryPage: React.FC = () => {
                     <tbody>
                       {filteredItems.map((item, idx) => {
                         const isEditing = editingItemId === item.id;
-                        const gap = item.gap;
+                        const diff = item.difference;
                         return (
                           <tr
                             key={item.id}
@@ -636,6 +633,8 @@ export const InventoryPage: React.FC = () => {
                                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                   <input
                                     type="number"
+                                    step="0.01"
+                                    min="0"
                                     value={countInput}
                                     onChange={(e) => setCountInput(Number(e.target.value))}
                                     style={{
@@ -683,22 +682,22 @@ export const InventoryPage: React.FC = () => {
                               textAlign: 'center',
                               fontWeight: 'bold',
                             }}>
-                              {gap !== null && gap !== undefined ? (
+                              {diff !== null && diff !== undefined ? (
                                 <span style={{
                                   padding: '3px 10px',
                                   borderRadius: '12px',
                                   fontSize: '13px',
-                                  backgroundColor: gap === 0 ? '#dcfce7' : gap > 0 ? '#dbeafe' : '#fee2e2',
-                                  color: gap === 0 ? '#166534' : gap > 0 ? '#1e40af' : '#991b1b',
+                                  backgroundColor: diff === 0 ? '#dcfce7' : diff > 0 ? '#dbeafe' : '#fee2e2',
+                                  color: diff === 0 ? '#166534' : diff > 0 ? '#1e40af' : '#991b1b',
                                 }}>
-                                  {gap > 0 ? '+' : ''}{gap}
+                                  {diff > 0 ? '+' : ''}{diff}
                                 </span>
                               ) : (
                                 <span style={{ color: '#cbd5e1' }}>—</span>
                               )}
                             </td>
                             <td style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
-                              {!isEditing && (selectedSession.status === 'en_cours' || selectedSession.status.trim() === 'en_cours') && (
+                              {!isEditing && canCount && (
                                 <button
                                   onClick={() => {
                                     setEditingItemId(item.id);
@@ -728,10 +727,12 @@ export const InventoryPage: React.FC = () => {
               ) : (
                 <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
                   <div style={{ fontSize: '40px', marginBottom: '12px' }}>📦</div>
-                  <p>{selectedSession.status === 'brouillon' || selectedSession.status.trim() === 'brouillon'
-                    ? 'Démarrez le comptage pour voir les articles'
-                    : 'Aucun article dans cette session'
-                  }</p>
+                  <p>
+                    {status === 'DRAFT'
+                      ? 'Démarrez le comptage pour voir les articles'
+                      : 'Aucun article dans cette session'
+                    }
+                  </p>
                 </div>
               )}
             </>

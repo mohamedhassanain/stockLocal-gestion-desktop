@@ -1,82 +1,93 @@
-import { StockMovement, StockMovementRepository } from '../repositories/StockMovementRepository';
-import { runInTransaction } from '../database/config/connection';
-import { randomUUID } from 'crypto';
+import type { StockMovement } from '../repositories/StockMovementRepository';
+import { StockLedgerService } from './StockLedgerService';
 
+export type StockExitType = 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+
+/**
+ * Service métier de stock — FAÇADE d'usage courant.
+ *
+ * TOUTES les écritures passent par le StockLedgerService (moteur central) :
+ *   - entrées d'achat      → PURCHASE_IN
+ *   - sorties typées       → SALE_OUT / DAMAGE_OUT / LOSS_OUT / RETURN_OUT
+ *   - inventaire           → ADJUSTMENT_IN / ADJUSTMENT_OUT (signe directionnel correct)
+ */
 export class StockService {
   /**
-   * Ajoute une entrée de stock (réception fournisseur) avec référence BL optionnelle.
+   * Entrée de stock (réception fournisseur, stock initial, retour…).
    */
-  static addStockEntry(data: Omit<StockMovement, 'id' | 'type' | 'notes'> & { reference_doc?: string; notes?: string }): StockMovement {
-    return runInTransaction(() => {
-      const movement: StockMovement = {
-        ...data,
-        id: randomUUID(),
-        type: 'IN',
-        date: new Date().toISOString(),
-        reference_doc: data.reference_doc || undefined,
-        notes: data.notes || (data.reference_doc ? `Réception BL ${data.reference_doc}` : undefined)
-      };
-
-      StockMovementRepository.create(movement);
-      return movement;
+  static addStockEntry(data: Omit<StockMovement, 'id' | 'type' | 'notes' | 'movement_type'> & {
+    reference_doc?: string;
+    notes?: string;
+    movement_type?: 'PURCHASE_IN' | 'RETURN_IN' | 'OPENING_BALANCE' | 'TRANSFER_IN' | 'ADJUSTMENT_IN';
+    document_id?: string;
+  }): StockMovement {
+    return StockLedgerService.recordMovement({
+      product_id: data.product_id,
+      direction: 'IN',
+      movement_type: data.movement_type ?? 'PURCHASE_IN',
+      quantity: data.quantity,
+      unit_price: data.unit_price,
+      date: data.date ?? undefined,
+      reference_doc: data.reference_doc ?? undefined,
+      document_id: data.document_id ?? undefined,
+      supplier_id: data.supplier_id ?? undefined,
+      notes: data.notes ?? (data.reference_doc ? `Réception BL ${data.reference_doc}` : undefined),
     });
   }
 
   /**
-   * Enregistre une sortie de stock typée (VENTE, CASSE, PERTE, RETOUR).
-   * Le type est encodé dans notes : "SORTIE:TYPE — description".
+   * Sortie de stock typée (VENTE, CASSE, PERTE, RETOUR).
    */
-  static addStockExit(data: Omit<StockMovement, 'id' | 'type'> & { exitType?: 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR'; reference_doc?: string }): StockMovement {
-    return runInTransaction(() => {
-      const currentStock = StockMovementRepository.getStockLevel(data.product_id);
-      if (currentStock < data.quantity) {
-        throw new Error(`Stock insuffisant. Stock actuel : ${currentStock}`);
-      }
+  static addStockExit(data: Omit<StockMovement, 'id' | 'type' | 'movement_type'> & {
+    exitType?: StockExitType;
+    reference_doc?: string;
+    document_id?: string;
+    movement_type?: 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT' | 'TRANSFER_OUT' | 'ADJUSTMENT_OUT';
+  }): StockMovement {
+    const exitType = data.exitType ?? 'VENTE';
+    const movementType = data.movement_type ?? {
+      VENTE: 'SALE_OUT',
+      CASSE: 'DAMAGE_OUT',
+      PERTE: 'LOSS_OUT',
+      RETOUR: 'RETURN_OUT',
+    }[exitType] as 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT';
 
-      const exitType = data.exitType ?? 'VENTE';
-      const movement: StockMovement = {
-        ...data,
-        id: randomUUID(),
-        type: 'OUT',
-        date: new Date().toISOString(),
-        notes: data.notes
-          ? `SORTIE:${exitType} — ${data.notes}`
-          : `SORTIE:${exitType}`
-      };
-
-      StockMovementRepository.create(movement);
-      return movement;
+    return StockLedgerService.recordMovement({
+      product_id: data.product_id,
+      direction: 'OUT',
+      movement_type: movementType,
+      quantity: data.quantity,
+      unit_price: data.unit_price,
+      date: data.date ?? undefined,
+      reference_doc: data.reference_doc ?? undefined,
+      document_id: data.document_id ?? undefined,
+      supplier_id: data.supplier_id ?? undefined,
+      notes: data.notes
+        ? `SORTIE:${exitType} — ${data.notes}`
+        : `SORTIE:${exitType}`,
     });
   }
 
   /**
-   * Enregistre un ajustement d'inventaire.
-   * @param data Les données du mouvement à créer
-   * @param actualCount La quantité réellement comptée en magasin
+   * Ajustement d'inventaire (comptage physique).
+   *
+   * théorique 100 / compté  90 → ADJUSTMENT_OUT 10 → stock = 90
+   * théorique 100 / compté 110 → ADJUSTMENT_IN  10 → stock = 110
    */
-  static addInventory(data: Omit<StockMovement, 'id' | 'type' | 'quantity'>, actualCount: number): StockMovement {
-    return runInTransaction(() => {
-      const currentStock = StockMovementRepository.getStockLevel(data.product_id);
-      const difference = actualCount - currentStock;
+  static addInventory(data: Omit<StockMovement, 'id' | 'type' | 'quantity' | 'movement_type'>, actualCount: number): StockMovement | null {
 
-      // Aucun écart → rien à enregistrer
-      if (difference === 0) {
-        throw new Error(`Aucun écart d'inventaire pour ce produit (stock identique à ${currentStock}).`);
-      }
 
-      const movement: StockMovement = {
-        ...data,
-        id: randomUUID(),
-        type: 'INVENTORY',
-        quantity: Math.abs(difference),
-        notes: difference > 0
-          ? `${data.notes ? data.notes + ' · ' : ''}Inventaire : +${difference} (compté ${actualCount})`
-          : `${data.notes ? data.notes + ' · ' : ''}Inventaire : ${difference} (compté ${actualCount})`,
-        date: new Date().toISOString()
-      };
+    const movement = StockLedgerService.adjustInventory({
+      product_id: data.product_id,
+      actualCount,
+      unit_price: data.unit_price,
+      document_id: data.document_id ?? undefined,
+      notes: data.notes ?? undefined,
 
-      StockMovementRepository.create(movement);
-      return movement;
+
     });
+
+    // Aucun écart → aucun mouvement créé
+    return movement;
   }
 }

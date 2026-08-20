@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { requireId, requireString, requirePositiveNumber, validateFilePath, hasPathTraversal, toHumanError, sanitizeNote } from './ipcValidation';
+import { requireId, validateFilePath, hasPathTraversal, toHumanError } from './ipcValidation';
 import { ProductService } from '../src/services/ProductService';
 import { StockService } from '../src/services/StockService';
 import { StockMovementRepository } from '../src/repositories/StockMovementRepository';
@@ -38,6 +38,13 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null;
 
+/**
+ * Sécurité Chromium/Electron :
+ *  - sandbox: true  → le renderer n'a AUCUN accès Node (même limité)
+ *  - contextIsolation: true → l'API exposée via preload est isolée du contexte page
+ *  - nodeIntegration: false → pas d'accès direct à Node depuis le DOM
+ *  - webSecurity reste activé par défaut
+ */
 function createWindow() {
   win = new BrowserWindow({
     width: 1200,
@@ -47,7 +54,31 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
     },
+  });
+
+  // Bloquer toute navigation hors de l'application (anti-hijack, anti-phishing)
+  win.webContents.on('will-navigate', (event, url) => {
+    const allowed = VITE_DEV_SERVER_URL
+      ? url.startsWith(VITE_DEV_SERVER_URL)
+      : url.startsWith('file://');
+    if (!allowed) {
+      event.preventDefault();
+      // Ouvrir les liens externes dans le navigateur système si c'est un http(s) sûr
+      if (/^https?:\/\//.test(url)) {
+        shell.openExternal(url).catch(() => {});
+      }
+    }
+  });
+
+  // window.open / popups → jamais de nouvelle fenêtre Electron
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
+    return { action: 'deny' };
   });
 
   if (VITE_DEV_SERVER_URL) {
@@ -1051,7 +1082,6 @@ app.whenReady().then(() => {
   // ─── Supplier Statement PDF ────────────────────────────────────────────────
   ipcMain.handle('suppliers:exportStatement', async (_, supplierId: string) => {
     try {
-      const supplier = await SupplierService.searchSuppliers(''); // need getById
       const { SupplierRepository } = await import('../src/repositories/SupplierRepository');
       const supplierData = SupplierRepository.getById(supplierId);
       if (!supplierData) throw new Error('Fournisseur introuvable');
