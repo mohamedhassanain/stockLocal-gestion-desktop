@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { ClientDetailPanel } from '../components/ClientDetailPanel';
+import { toast } from '../stores/useToastStore';
 import type { Customer } from '../repositories/ClientRepository';
 
 // ─── Sous-composant : Formulaire de création client ──────────────────────────
@@ -13,11 +14,11 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: 'white', borderRadius: '16px', padding: '32px', width: '480px', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
         <h2 style={{ marginTop: 0, marginBottom: '24px', color: '#0f172a' }}>{initial ? '✏️ Modifier le Client' : 'Nouveau Client'}</h2>
-        
+
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', color: '#374151' }}>Catégorie *</label>
-          <select 
-            value={form.category} 
+          <select
+            value={form.category}
             onChange={e => setForm({ ...form, category: e.target.value })}
             style={{ width: '100%', padding: '12px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }}
           >
@@ -47,7 +48,7 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
           { key: 'name', label: 'Nom *', type: 'text', placeholder: 'Nom complet ou raison sociale' },
           { key: 'phone', label: 'Téléphone', type: 'tel', placeholder: '06XXXXXXXX' },
           { key: 'address', label: 'Adresse', type: 'text', placeholder: 'Ville, quartier...' },
-          { key: 'ice', label: 'ICE', type: 'text', placeholder: 'Identifiant commun de l\'entreprise' },
+          { key: 'ice', label: 'ICE', type: 'text', placeholder: "Identifiant commun de l'entreprise" },
           { key: 'credit_limit', label: 'Plafond crédit (MAD)', type: 'number', placeholder: '0 = illimité' },
         ].map(({ key, label, type, placeholder }) => (
           <div key={key} style={{ marginBottom: '16px' }}>
@@ -81,12 +82,14 @@ export const ClientsPage: React.FC = () => {
     try {
       if (modalState?.mode === 'edit' && modalState.client) {
         await updateClient(modalState.client.id, data);
+        toast.success('Client mis à jour.');
       } else {
         await createClient(data);
+        toast.success('Client créé.');
       }
       setModalState(null);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -95,8 +98,9 @@ export const ClientsPage: React.FC = () => {
     if (!ok) return;
     try {
       await deleteClient(id);
+      toast.success(`Client « ${name} » supprimé.`);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -184,8 +188,8 @@ export const ClientsPage: React.FC = () => {
               </div>
               <ClientDetailPanel
                 client={selectedClient}
-                onDebt={(a: number, d: string) => addDebt(selectedClient.id, a, d).catch((e: any) => alert(e.message))}
-                onPayment={(a: number, d: string) => addPayment(selectedClient.id, a, d).catch((e: any) => alert(e.message))}
+                onDebt={(a: number, d: string) => addDebt(selectedClient.id, a, d).catch((e: any) => toast.error(e.message))}
+                onPayment={(a: number, d: string) => addPayment(selectedClient.id, a, d).catch((e: any) => toast.error(e.message))}
               />
             </>
           )}

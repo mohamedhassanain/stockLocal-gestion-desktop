@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSupplierStore } from '../stores/useSupplierStore';
 import { SupplierDetailPanel } from '../components/SupplierDetailPanel';
+import { toast } from '../stores/useToastStore';
 import type { Supplier } from '../repositories/SupplierRepository';
 
 // ─── Sous-composant : Formulaire de création fournisseur ──────────────────────
@@ -50,12 +51,14 @@ export const SuppliersPage: React.FC = () => {
     try {
       if (modalState?.mode === 'edit' && modalState.supplier) {
         await updateSupplier(modalState.supplier.id, data);
+        toast.success('Fournisseur mis à jour.');
       } else {
         await createSupplier(data);
+        toast.success('Fournisseur créé.');
       }
       setModalState(null);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -64,8 +67,9 @@ export const SuppliersPage: React.FC = () => {
     if (!ok) return;
     try {
       await deleteSupplier(id);
+      toast.success(`Fournisseur « ${name} » supprimé.`);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -150,8 +154,8 @@ export const SuppliersPage: React.FC = () => {
               </div>
               <SupplierDetailPanel
                 supplier={selectedSupplier}
-                onDebt={(a: number, d: string) => addDebt(selectedSupplier.id, a, d).catch((e: any) => alert(e.message))}
-                onPayment={(a: number, d: string) => addPayment(selectedSupplier.id, a, d).catch((e: any) => alert(e.message))}
+                onDebt={(a: number, d: string) => addDebt(selectedSupplier.id, a, d).catch((e: any) => toast.error(e.message))}
+                onPayment={(a: number, d: string) => addPayment(selectedSupplier.id, a, d).catch((e: any) => toast.error(e.message))}
               />
             </>
           )}
