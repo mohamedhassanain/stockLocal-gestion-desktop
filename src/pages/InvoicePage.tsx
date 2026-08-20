@@ -501,8 +501,6 @@ export const InvoicePage: React.FC = () => {
     }
   };
 
-
-
   const handlePayment = async (amount: number, method: string) => {
     if (!selectedDocument) return;
     try {
@@ -543,7 +541,7 @@ export const InvoicePage: React.FC = () => {
     try {
       const result = await window.api.documents.createCreditNote(selectedDocument.id, returnItems, reason);
       if (!result.success) throw new Error(result.error);
-      alert(`Avoir ${result.data.document_number} créé avec succès !`);
+      toast.success(`Avoir ${result.data.document_number} créé avec succès.`);
       setShowReturnModal(false);
       await loadDocuments();
       // Sélectionner le nouvel avoir
@@ -552,7 +550,7 @@ export const InvoicePage: React.FC = () => {
         setActiveType('CREDIT_NOTE');
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { toast } from '../stores/useToastStore';
 import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, MonthlyRevenue, AlertSummary } from '../repositories/DashboardRepository';
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
@@ -108,12 +109,16 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => { load(); }, []);
 
   const handleBackupNow = async () => {
-    const result = await window.api.backup.now();
-    if (result.success) {
-      alert(`✅ Sauvegarde créée : ${result.path}`);
-      load();
-    } else {
-      alert(`❌ Erreur : ${result.error}`);
+    try {
+      const result = await window.api.backup.now();
+      if (result.success) {
+        toast.success(`Sauvegarde créée : ${result.path}`);
+        load();
+      } else {
+        toast.error(result.error);
+      }
+    } catch (e: any) {
+      toast.error(e.message);
     }
   };
 
@@ -121,8 +126,9 @@ export const DashboardPage: React.FC = () => {
     try {
       const result = await window.api.reports.generate();
       if (!result.success) throw new Error(result.error);
+      toast.success('Rapport PDF généré avec succès.');
     } catch (e: any) {
-      alert(`❌ Erreur : ${e.message}`);
+      toast.error(`Erreur : ${e.message}`);
     }
   };
 
@@ -136,9 +142,9 @@ export const DashboardPage: React.FC = () => {
         dues,
       });
       if (!result.success) throw new Error(result.error);
-      alert(`✅ Rapport Excel (CSV) exporté : ${result.filePath}`);
+      toast.success(`Rapport Excel (CSV) exporté : ${result.filePath}`);
     } catch (e: any) {
-      alert(`❌ Erreur : ${e.message}`);
+      toast.error(`Erreur : ${e.message}`);
     }
   };
 
