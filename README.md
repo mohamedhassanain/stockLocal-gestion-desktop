@@ -8,7 +8,7 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://reactjs.org/)
-[![Electron](https://img.shields.io/badge/Electron-31-47848f?logo=electron)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-43-47848f?logo=electron)](https://www.electronjs.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite)](https://www.sqlite.org/)
 
 </div>
@@ -110,8 +110,9 @@ src/
 - API renderer limitée au `preload.ts` (aucun accès direct à Node)
 - Navigation verrouillée (`will-navigate`, `setWindowOpenHandler`) : les liens
   externes s'ouvrent dans le navigateur système
-- **CSP stricte en production** injectée au build (`vite.config.ts` → `<meta>`),
-  désactivée en dev pour le préambule React
+- **CSP stricte en production** : en-tête HTTP (`electron/main.ts` →
+  `onHeadersReceived`) + `<meta>` injecté au build (`vite.config.ts`), désactivée
+  en dev pour le préambule React
 - Validation Zod sur les payloads IPC critiques ; validation systématique des
   chemins fichiers (anti traversal `..`, `~`)
 - Erreurs SQLite traduites en messages humains (`toHumanError`)
@@ -203,7 +204,12 @@ Test Files  5 passed (5)
 2. Bundle renderer (Vite) + main/preload (`dist/`, `dist-electron/`)
 3. Installeur via `electron-builder` (dossier `release/`)
 
-La CSP de production est injectée dans `dist/index.html` au moment du build.
+La CSP de production est appliquée via `session.defaultSession.webRequest.onHeadersReceived`
+dans `electron/main.ts` et injectée en `<meta>` dans `dist/index.html` au build
+(protocole `file://` des builds packagés).
+
+**Stack runtime cible** : Electron **43.4.1**, electron-updater **6.8.9**,
+better-sqlite3 **13.0.3** (recompilé via `electron-builder install-app-deps`).
 
 ---
 

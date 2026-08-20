@@ -1,70 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from '../stores/useToastStore';
+import { Button, Card, CardBody, CardHeader, PageHeader, StatCard } from '../components/ui';
 import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, MonthlyRevenue, AlertSummary } from '../repositories/DashboardRepository';
 
-// ─── KPI Card ────────────────────────────────────────────────────────────────
-const KpiCard: React.FC<{
-  icon: string; label: string; value: string; sub?: string;
-  soft: string; tone?: 'default' | 'danger' | 'warning' | 'success';
-}> = ({ icon, label, value, sub, soft, tone = 'default' }) => (
-  <div
-    style={{
-      background: 'var(--surface)',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-lg)',
-      padding: '16px 18px',
-      boxShadow: 'var(--shadow-sm)',
-      flex: '1 1 190px',
-      minWidth: '180px',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '8px',
-    }}
-  >
-    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-      <span
-        style={{
-          fontSize: '18px',
-          width: '36px',
-          height: '36px',
-          borderRadius: '10px',
-          background: soft,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        {icon}
-      </span>
-      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {label}
-      </span>
-    </div>
-    <div className="money" style={{ fontSize: '20px', fontWeight: '800', color: tone === 'danger' ? 'var(--danger)' : tone === 'warning' ? 'var(--warning)' : tone === 'success' ? 'var(--success)' : 'var(--text)', lineHeight: 1.15 }}>
-      {value}
-    </div>
-    {sub && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{sub}</div>}
-  </div>
-);
-
-// ─── Section générique ───────────────────────────────────────────────────────
-const Section: React.FC<{ title: string; icon: string; children: React.ReactNode; right?: React.ReactNode }> = ({ title, icon, children, right }) => (
-  <div className="card" style={{ padding: '18px' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-      <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '700' }}>
-        <span>{icon}</span>{title}
-      </h3>
-      {right}
-    </div>
-    {children}
-  </div>
-);
-
 const EmptyState: React.FC<{ icon: string; text: string; good?: boolean }> = ({ icon, text, good }) => (
-  <div style={{ padding: '16px', textAlign: 'center', color: good ? 'var(--success)' : 'var(--muted)', fontWeight: '600', fontSize: '13px' }}>
+  <div className="text-center text-sm font-semibold" style={{ padding: 16, color: good ? 'var(--success)' : 'var(--muted)' }}>
     {good ? '✅' : icon} {text}
   </div>
+);
+
+const RankBadge: React.FC<{ rank: number; variant?: 'primary' | 'accent' }> = ({ rank, variant = 'primary' }) => (
+  <span
+    className="flex items-center text-xs font-semibold"
+    style={{
+      width: 24,
+      height: 24,
+      background: variant === 'accent' ? 'var(--accent)' : 'var(--primary)',
+      color: 'var(--surface)',
+      borderRadius: '50%',
+      flexShrink: 0,
+      justifyContent: 'center',
+    }}
+  >
+    {rank}
+  </span>
 );
 
 // ─── Page Tableau de Bord ─────────────────────────────────────────────────────
@@ -152,201 +111,192 @@ export const DashboardPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <div style={{ fontSize: '40px', marginBottom: '12px' }}>⏳</div>
-          <div style={{ fontSize: '15px', fontWeight: '600' }}>Chargement du tableau de bord…</div>
+      <div className="page-shell">
+        <div className="flex flex-1 items-center" style={{ justifyContent: 'center' }}>
+          <div className="text-center text-secondary">
+            <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
+            <div className="font-semibold" style={{ fontSize: 15 }}>Chargement du tableau de bord…</div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)', height: '100vh', overflow: 'hidden' }}>
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span>📊</span>Tableau de bord
-          </h1>
-          <div style={{ color: 'var(--muted)', marginTop: '4px', fontSize: '13px' }}>
-            {new Date().toLocaleDateString('fr-MA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          {lastBackup && (
-            <span className="badge badge-muted" style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
-              💾 Dernière sauvegarde : {lastBackup}
-            </span>
-          )}
-          <button className="btn btn-success" onClick={handleExportCsv}>📊 Export Excel</button>
-          <button className="btn btn-secondary" onClick={handleReport}>📄 Rapport PDF</button>
-          <button className="btn btn-primary" onClick={handleBackupNow}>💾 Sauvegarder</button>
-          <button className="btn btn-ghost" onClick={load}>🔄 Actualiser</button>
-        </div>
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        icon="📊"
+        title="Tableau de bord"
+        subtitle={new Date().toLocaleDateString('fr-MA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        actions={
+          <>
+            {lastBackup && (
+              <span className="badge badge-muted text-sm" style={{ whiteSpace: 'nowrap' }}>
+                💾 Dernière sauvegarde : {lastBackup}
+              </span>
+            )}
+            <Button variant="success" onClick={handleExportCsv}>📊 Export Excel</Button>
+            <Button variant="secondary" onClick={handleReport}>📄 Rapport PDF</Button>
+            <Button onClick={handleBackupNow}>💾 Sauvegarder</Button>
+            <Button variant="ghost" onClick={load}>🔄 Actualiser</Button>
+          </>
+        }
+      />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
+      <div className="page-content">
         {/* KPI Cards */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <KpiCard icon="💰" label="CA Aujourd'hui" value={`${stats?.revenue_today.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_today ?? 0} facture(s)`} soft="var(--primary-soft)" />
-          <KpiCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} soft="var(--success-soft)" />
-          <KpiCard icon="💹" label="Marge (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} soft="var(--accent-soft)" />
-          <KpiCard icon="📦" label="Valeur du stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} soft="var(--info-soft)" />
-          <KpiCard icon="⚠️" label="Impayés clients" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" soft="var(--danger-soft)" tone="danger" />
-          <KpiCard icon="🏭" label="Dettes fournisseurs" value={`${stats?.supplier_debt_total.toFixed(2) ?? '0.00'} MAD`} sub="Crédits fournisseurs en cours" soft="var(--warning-soft)" tone="warning" />
+        <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
+          <StatCard icon="💰" label="CA Aujourd'hui" value={`${stats?.revenue_today.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_today ?? 0} facture(s)`} tone="primary" />
+          <StatCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} tone="success" />
+          <StatCard icon="💹" label="Marge (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} softBg="var(--accent-soft)" />
+          <StatCard icon="📦" label="Valeur du stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} tone="info" />
+          <StatCard icon="⚠️" label="Impayés clients" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" tone="danger" />
+          <StatCard icon="🏭" label="Dettes fournisseurs" value={`${stats?.supplier_debt_total.toFixed(2) ?? '0.00'} MAD`} sub="Crédits fournisseurs en cours" tone="warning" />
         </div>
 
         {/* Résumé des alertes */}
         {alertSummary && (
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {[
-              { label: 'Stock bas', count: alertSummary.low_stock_count, icon: '📦', color: 'var(--warning)', bg: 'var(--warning-soft)' },
-              { label: 'Impayés', count: alertSummary.unpaid_count, icon: '💰', color: 'var(--danger)', bg: 'var(--danger-soft)' },
-              { label: 'En retard', count: alertSummary.overdue_count, icon: '⏰', color: 'var(--danger)', bg: 'var(--danger-soft)' },
-              { label: 'Échéance J-7', count: alertSummary.expiring_soon_count, icon: '📅', color: 'var(--warning)', bg: 'var(--warning-soft)' },
-            ].map(a => (
-              <div key={a.label} style={{ flex: '1 1 180px', display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', background: a.bg, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
-                <span style={{ fontSize: '22px' }}>{a.icon}</span>
-                <div>
-                  <div className="money" style={{ fontSize: '20px', fontWeight: '800', color: a.color, lineHeight: 1.1 }}>{a.count}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>{a.label}</div>
-                </div>
-              </div>
-            ))}
+          <div className="stat-grid">
+            <StatCard label="Stock bas" value={alertSummary.low_stock_count} icon="📦" tone="warning" />
+            <StatCard label="Impayés" value={alertSummary.unpaid_count} icon="💰" tone="danger" />
+            <StatCard label="En retard" value={alertSummary.overdue_count} icon="⏰" tone="danger" />
+            <StatCard label="Échéance J-7" value={alertSummary.expiring_soon_count} icon="📅" tone="warning" />
           </div>
         )}
 
         {/* Évolution du CA */}
         {monthlyRevenue.length > 0 && (
-          <Section title="Évolution du chiffre d'affaires (6 mois)" icon="📈">
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '160px', padding: '0 8px' }}>
+          <Card padding>
+            <h3 className="section-title mb-3">
+              <span>📈</span>Évolution du chiffre d'affaires (6 mois)
+            </h3>
+            <div className="flex items-center gap-2" style={{ height: 160, padding: '0 8px', alignItems: 'flex-end' }}>
               {(() => {
                 const maxRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
                 return monthlyRevenue.map((m) => {
                   const heightPct = (m.revenue / maxRevenue) * 100;
                   const monthLabel = m.month.slice(5);
                   return (
-                    <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                      <div className="money" style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text)' }}>{m.revenue.toFixed(0)}</div>
-                      <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, var(--primary), var(--sidebar-active))', borderRadius: '6px 6px 0 0', minHeight: '4px' }} />
-                      <div className="money" style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>{monthLabel}</div>
+                    <div key={m.month} className="flex flex-1 items-center gap-1" style={{ flexDirection: 'column' }}>
+                      <div className="money text-xs font-semibold">{m.revenue.toFixed(0)}</div>
+                      <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, var(--primary), var(--sidebar-active))', borderRadius: '6px 6px 0 0', minHeight: 4 }} />
+                      <div className="money text-sm text-secondary font-semibold">{monthLabel}</div>
                     </div>
                   );
                 });
               })()}
             </div>
-            <div style={{ marginTop: '12px', display: 'flex', gap: '16px', justifyContent: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
+            <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
               <span>📊 {monthlyRevenue.reduce((s, m) => s + m.invoice_count, 0)} factures au total</span>
-              <span style={{ color: 'var(--success)' }}>💹 Marge totale : {monthlyRevenue.reduce((s, m) => s + m.margin, 0).toFixed(2)} MAD</span>
+              <span className="text-success">💹 Marge totale : {monthlyRevenue.reduce((s, m) => s + m.margin, 0).toFixed(2)} MAD</span>
             </div>
-          </Section>
+          </Card>
         )}
 
         {/* Top Produits + Top Clients */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <Section title="Top produits du mois" icon="🏆">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <Card padding>
+            <h3 className="section-title mb-3">
+              <span>🏆</span>Top produits du mois
+            </h3>
             {topProducts.length === 0
               ? <EmptyState icon="🏆" text="Aucune vente ce mois-ci." />
               : topProducts.map((p, i) => (
-                <div key={p.product_id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <span style={{ width: '24px', height: '24px', background: 'var(--primary)', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>{i + 1}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{p.reference}</div>
+                <div key={p.product_id} className="flex items-center gap-3" style={{ padding: '9px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <RankBadge rank={i + 1} />
+                  <div className="flex-1" style={{ minWidth: 0 }}>
+                    <div className="text-sm font-semibold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
+                    <div className="text-xs text-muted">{p.reference}</div>
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div className="qty" style={{ fontWeight: '700', color: 'var(--text)', fontSize: '13px' }}>{p.total_qty} u.</div>
-                    <div className="money" style={{ fontSize: '12px', color: 'var(--success)' }}>{p.total_revenue.toFixed(2)} MAD</div>
+                  <div className="text-right" style={{ flexShrink: 0 }}>
+                    <div className="qty text-sm font-semibold">{p.total_qty} u.</div>
+                    <div className="money text-xs text-success">{p.total_revenue.toFixed(2)} MAD</div>
                   </div>
                 </div>
               ))}
-          </Section>
+          </Card>
 
-          <Section title="Meilleurs clients du mois" icon="🤝">
+          <Card padding>
+            <h3 className="section-title mb-3">
+              <span>🤝</span>Meilleurs clients du mois
+            </h3>
             {topClients.length === 0
               ? <EmptyState icon="🤝" text="Aucun client ce mois-ci." />
               : topClients.map((c, i) => (
-                <div key={c.customer_id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: i < topClients.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <span style={{ width: '24px', height: '24px', background: 'var(--accent)', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>{i + 1}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text)' }}>{c.name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{c.invoice_count} facture(s)</div>
+                <div key={c.customer_id} className="flex items-center gap-3" style={{ padding: '9px 0', borderBottom: i < topClients.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <RankBadge rank={i + 1} variant="accent" />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">{c.name}</div>
+                    <div className="text-xs text-muted">{c.invoice_count} facture(s)</div>
                   </div>
-                  <div className="money" style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '13px' }}>{c.total_revenue.toFixed(2)} MAD</div>
+                  <div className="money text-sm font-semibold" style={{ color: 'var(--primary)' }}>{c.total_revenue.toFixed(2)} MAD</div>
                 </div>
               ))}
-          </Section>
+          </Card>
         </div>
 
         {/* Alertes Stock + Échéances */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <Section title={`Alertes stock (${lowStock.length})`} icon="🚨">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <Card padding>
+            <h3 className="section-title mb-3">
+              <span>🚨</span>Alertes stock ({lowStock.length})
+            </h3>
             {lowStock.length === 0
               ? <EmptyState icon="🚨" text="Tous les stocks sont suffisants." good />
               : lowStock.map((item, i) => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: i < lowStock.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <div key={item.id} className="flex justify-between items-center" style={{ padding: '9px 0', borderBottom: i < lowStock.length - 1 ? '1px solid var(--border)' : 'none' }}>
                   <div>
-                    <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text)' }}>{item.designation}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{item.reference}</div>
+                    <div className="text-sm font-semibold">{item.designation}</div>
+                    <div className="text-xs text-muted">{item.reference}</div>
                   </div>
                   <span className={item.current_stock <= 0 ? 'badge badge-danger' : 'badge badge-warning'}>
                     {item.current_stock <= 0 ? '🔴 Rupture' : `⚠️ ${item.current_stock} / ${item.min_stock}`}
                   </span>
                 </div>
               ))}
-          </Section>
+          </Card>
 
-          <Section
-            title={`Échéances (${dueDays} prochains jours)`}
-            icon="📅"
-            right={
-              <div style={{ display: 'flex', gap: '4px' }}>
+          <Card overflow>
+            <CardHeader>
+              <h3 className="section-title" style={{ margin: 0 }}>
+                <span>📅</span>Échéances ({dueDays} prochains jours)
+              </h3>
+              <div className="flex gap-1">
                 {[7, 30].map(days => (
                   <button
                     key={days}
                     onClick={() => { setDueDays(days); load(); }}
-                    style={{
-                      padding: '4px 12px',
-                      border: '1px solid var(--border-strong)',
-                      borderRadius: 'var(--radius-md)',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      background: dueDays === days ? 'var(--primary)' : 'var(--surface)',
-                      color: dueDays === days ? '#fff' : 'var(--text-secondary)',
-                    }}
+                    className={`btn btn-sm ${dueDays === days ? 'btn-primary' : 'btn-secondary'}`}
                   >
                     {days} j
                   </button>
                 ))}
               </div>
-            }
-          >
-            {dues.length === 0
-              ? <EmptyState icon="📅" text="Aucune échéance à venir." good />
-              : dues.map((due, i) => {
-                const overdue = due.days_left < 0;
-                const urgent = due.days_left >= 0 && due.days_left <= 7;
-                return (
-                  <div key={due.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: i < dues.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                    <div>
-                      <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text)' }}>{due.document_number}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{due.customer_name} · {due.due_date?.split('T')[0]}</div>
+            </CardHeader>
+            <CardBody>
+              {dues.length === 0
+                ? <EmptyState icon="📅" text="Aucune échéance à venir." good />
+                : dues.map((due, i) => {
+                  const overdue = due.days_left < 0;
+                  const urgent = due.days_left >= 0 && due.days_left <= 7;
+                  return (
+                    <div key={due.id} className="flex justify-between items-center" style={{ padding: '9px 0', borderBottom: i < dues.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                      <div>
+                        <div className="text-sm font-semibold">{due.document_number}</div>
+                        <div className="text-xs text-muted">{due.customer_name} · {due.due_date?.split('T')[0]}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="money text-sm font-semibold text-danger">{due.remaining.toFixed(2)} MAD</div>
+                        <span className={overdue ? 'badge badge-danger' : urgent ? 'badge badge-warning' : 'badge badge-muted'}>
+                          {overdue ? `En retard (${Math.abs(due.days_left)}j)` : `J-${due.days_left}`}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div className="money" style={{ fontWeight: '700', color: 'var(--danger)', fontSize: '13px' }}>{due.remaining.toFixed(2)} MAD</div>
-                      <span className={overdue ? 'badge badge-danger' : urgent ? 'badge badge-warning' : 'badge badge-muted'}>
-                        {overdue ? `En retard (${Math.abs(due.days_left)}j)` : `J-${due.days_left}`}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-          </Section>
+                  );
+                })}
+            </CardBody>
+          </Card>
         </div>
-
       </div>
     </div>
   );

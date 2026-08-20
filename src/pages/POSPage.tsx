@@ -2,8 +2,8 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
 import type { Product } from '../repositories/ProductRepository';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
+import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui';
+import { stockLevelClass } from '../components/ui/statusMaps';
 
 interface CartItem {
   product_id: string;
@@ -16,8 +16,6 @@ interface CartItem {
 }
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
-
-// ─── Page Point de Vente ──────────────────────────────────────────────────────
 
 export const POSPage: React.FC = () => {
   const clients = useClientStore((state) => state.clients);
@@ -39,8 +37,6 @@ export const POSPage: React.FC = () => {
     barcodeRef.current?.focus();
   }, []);
 
-  // Le POS ne conserve qu'une page de résultats, demandée directement à SQLite.
-  // Un délai court évite une requête IPC à chaque frappe sans charger le catalogue.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       window.api.products.search(productSearch)
@@ -50,7 +46,6 @@ export const POSPage: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [productSearch]);
 
-  // Re-focus barcode input on any key press
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!showPayment && !showReceipt && e.key !== 'Tab' && e.key !== 'F2' && e.key !== 'Escape') {
@@ -60,8 +55,6 @@ export const POSPage: React.FC = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [showPayment, showReceipt]);
-
-  // ─── Cart operations ──────────────────────────────────────────────────────
 
   const addToCart = useCallback((product: Product) => {
     if (product.status !== 'ACTIVE') {
@@ -127,38 +120,28 @@ export const POSPage: React.FC = () => {
     setCashGiven(0);
   };
 
-  // ─── Totals ───────────────────────────────────────────────────────────────
-
   const subtotal = cart.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - it.discount / 100), 0);
   const change = paymentMethod === 'CASH' ? Math.max(0, cashGiven - subtotal) : 0;
-
-  // ─── Barcode handling (Phase 1) ─────────────────────────────────────────────
-  // Recherche d'abord côté SQLite (1 produit, zéro scan de la liste chargée) :
-  // un scanner USB émulant un clavier tape le code puis Entrée → requête exacte
-  // `WHERE barcode = ?`. La référence exacte suit la même chaîne SQL; la
-  // recherche texte renvoie au plus 50 résultats depuis SQLite.
+  const canValidate = cart.length > 0;
+  const filteredProducts = products.filter((product) => product.status === 'ACTIVE');
 
   const handleBarcodeSubmit = async () => {
     const code = barcodeInput.trim();
     if (!code) return;
 
     try {
-      // 1. Code-barres exact côté SQLite
       const byBarcode = await window.api.products.getByBarcode(code);
       if (byBarcode) {
         addToCart(byBarcode);
         setBarcodeInput('');
         return;
       }
-      // 2. Référence exacte côté SQLite, sans scan de liste renderer.
       const byReference = await window.api.products.getByReference(code);
       if (byReference) {
         addToCart(byReference);
         setBarcodeInput('');
         return;
       }
-
-      // 3. Introuvable — bascule sur la recherche texte (LIMIT 50 côté SQL).
       setProductSearch(code);
       setBarcodeInput('');
     } catch {
@@ -166,19 +149,10 @@ export const POSPage: React.FC = () => {
     }
   };
 
-  // ─── Filtered products for search ──────────────────────────────────────────
-
-  const filteredProducts = products.filter((product) => product.status === 'ACTIVE');
-
-  // ─── Validation & payment ──────────────────────────────────────────────────
-
-  const canValidate = cart.length > 0;
-
   const handleValidateSale = async () => {
     if (cart.length === 0) return;
 
     try {
-      // Create invoice with stock management
       const result = await window.api.documents.create({
         type: 'INVOICE',
         entity_id: selectedClientId || '',
@@ -194,7 +168,6 @@ export const POSPage: React.FC = () => {
 
       if (!result.success) throw new Error(result.error);
 
-      // Record payment
       if (paymentMethod === 'CASH' && cashGiven >= subtotal) {
         const payResult = await window.api.documents.addPayment({
           document_id: result.data.id,
@@ -224,148 +197,148 @@ export const POSPage: React.FC = () => {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  const paymentDisabled = paymentMethod === 'CASH' && cashGiven < subtotal;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: '#f1f5f9' }}>
-
-      {/* Header */}
-      <div style={{ padding: '16px 28px', background: '#0f172a', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '24px' }}>🛒</span>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: '700' }}>Point de Vente</h1>
+    <div className="page-shell">
+      <div className="pos-header">
+        <div className="flex items-center gap-3">
+          <span className="pos-header-icon">🛒</span>
+          <h1>Point de Vente</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <select value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: '14px' }}>
+        <div className="flex items-center gap-3">
+          <select
+            className="pos-header-select"
+            value={selectedClientId}
+            onChange={e => setSelectedClientId(e.target.value)}
+          >
             <option value="">Client comptoir</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <button onClick={clearCart}
-            style={{ padding: '8px 16px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
-            🗑️ Vider
-          </button>
+          <Button variant="danger" size="sm" onClick={clearCart}>🗑️ Vider</Button>
         </div>
       </div>
 
-      {/* Main content */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-
-        {/* Left: Cart */}
-        <div style={{ flex: 2, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-          {/* Barcode input */}
-          <div style={{ padding: '16px 24px', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <input ref={barcodeRef} type="text" value={barcodeInput}
+      <div className="flex flex-1 pos-main" style={{ overflow: 'hidden' }}>
+        <div className="flex flex-1 flex-col" style={{ flex: 2, overflow: 'hidden' }}>
+          <div style={{ padding: 'var(--space-4) var(--space-5)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+            <div className="flex gap-3">
+              <input
+                ref={barcodeRef}
+                type="text"
+                className="input input-lg flex-1"
+                value={barcodeInput}
                 onChange={e => setBarcodeInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleBarcodeSubmit(); }}
                 placeholder="📷 Scanner le code-barres ou taper la référence..."
                 autoFocus
-                style={{ flex: 1, padding: '14px 18px', fontSize: '18px', border: '2px solid #3b82f6', borderRadius: '10px', outline: 'none', boxSizing: 'border-box' }} />
-              <button onClick={handleBarcodeSubmit}
-                style={{ padding: '14px 24px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>
-                Ajouter
-              </button>
+                style={{ borderColor: 'var(--primary)' }}
+              />
+              <Button variant="primary" size="lg" onClick={handleBarcodeSubmit}>Ajouter</Button>
             </div>
           </div>
 
-          {/* Cart items */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+          <div className="flex-1" style={{ overflowY: 'auto', padding: 'var(--space-4) var(--space-5)' }}>
             {cart.length === 0 ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af', flexDirection: 'column', gap: '12px' }}>
-                <span style={{ fontSize: '64px' }}>🛒</span>
-                <div style={{ fontSize: '18px' }}>Le panier est vide</div>
-                <div style={{ fontSize: '14px' }}>Scannez un produit ou recherchez-le ci-contre</div>
+              <div className="state-box" style={{ height: '100%' }}>
+                <div className="state-icon">🛒</div>
+                <div className="state-title">Le panier est vide</div>
+                <div className="state-text">Scannez un produit ou recherchez-le ci-contre</div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className="flex flex-col gap-2">
                 {cart.map(item => (
-                  <div key={item.product_id}
-                    style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px', background: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{item.reference}</div>
-                      <div style={{ fontSize: '13px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
+                  <div key={item.product_id} className="pos-cart-item">
+                    <div className="flex-1" style={{ minWidth: 0 }}>
+                      <div className="font-semibold">{item.reference}</div>
+                      <div className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)}
-                        style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f3f4f6', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-                      <input type="number" min="1" max={item.current_stock} value={item.quantity}
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)}>−</Button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={item.current_stock}
+                        value={item.quantity}
                         onChange={e => updateCartQuantity(item.product_id, Number(e.target.value))}
-                        style={{ width: '60px', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '15px', fontWeight: '700' }} />
-                      <button onClick={() => updateCartQuantity(item.product_id, item.quantity + 1)}
-                        style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f3f4f6', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                        className="input input-sm qty"
+                        style={{ width: 60, textAlign: 'center', fontWeight: 700 }}
+                      />
+                      <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity + 1)}>+</Button>
                     </div>
-                    <div style={{ width: '90px' }}>
-                      <input type="number" min="0" step="0.01" value={item.unit_price}
+                    <div style={{ width: 90 }}>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={item.unit_price}
                         onChange={e => updateCartPrice(item.product_id, Number(e.target.value))}
-                        style={{ width: '100%', padding: '6px', textAlign: 'right', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px' }} />
+                        className="input input-sm money text-right"
+                      />
                     </div>
-                    <div style={{ width: '60px' }}>
-                      <input type="number" min="0" max="100" value={item.discount}
+                    <div style={{ width: 60 }}>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={item.discount}
                         onChange={e => updateCartDiscount(item.product_id, Number(e.target.value))}
-                        style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px' }} />
+                        className="input input-sm text-center"
+                      />
                     </div>
-                    <div style={{ width: '110px', textAlign: 'right', fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>
+                    <div className="money text-right font-semibold" style={{ width: 110 }}>
                       {(item.quantity * item.unit_price * (1 - item.discount / 100)).toFixed(2)} MAD
                     </div>
-                    <button onClick={() => removeFromCart(item.product_id)}
-                      style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '20px', cursor: 'pointer', padding: '4px' }}>×</button>
+                    <Button variant="ghost" onClick={() => removeFromCart(item.product_id)} style={{ color: 'var(--danger)', fontSize: 20, padding: 4 }}>×</Button>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Footer totals */}
           {cart.length > 0 && (
-            <div style={{ padding: '16px 24px', background: 'white', borderTop: '2px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <span style={{ fontSize: '14px', color: '#6b7280' }}>{cart.length} article(s)</span>
-                <span style={{ margin: '0 12px', color: '#d1d5db' }}>|</span>
-                <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                  {cart.reduce((s, c) => s + c.quantity, 0)} unité(s)
-                </span>
+            <div className="pos-total-bar">
+              <div className="text-sm text-muted">
+                {cart.length} article(s)
+                <span style={{ margin: '0 var(--space-3)', color: 'var(--border-strong)' }}>|</span>
+                {cart.reduce((s, c) => s + c.quantity, 0)} unité(s)
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '13px', color: '#6b7280' }}>TOTAL</div>
-                  <div style={{ fontSize: '32px', fontWeight: '800', color: '#0f172a' }}>{subtotal.toFixed(2)} <span style={{ fontSize: '18px' }}>MAD</span></div>
+              <div className="flex items-center gap-5">
+                <div className="text-right">
+                  <div className="text-xs text-muted">TOTAL</div>
+                  <div className="pos-total-amount money">{subtotal.toFixed(2)} <span style={{ fontSize: 18 }}>MAD</span></div>
                 </div>
-                <button onClick={() => setShowPayment(true)} disabled={!canValidate}
-                  style={{ padding: '16px 36px', background: canValidate ? '#10b981' : '#9ca3af', color: 'white', border: 'none', borderRadius: '12px', fontSize: '18px', fontWeight: '800', cursor: canValidate ? 'pointer' : 'not-allowed' }}>
+                <Button variant="success" size="lg" onClick={() => setShowPayment(true)} disabled={!canValidate}>
                   💳 Encaisser
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Right: Product search */}
-        <div style={{ width: '340px', background: 'white', borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb' }}>
-            <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)}
+        <div className="pos-sidebar">
+          <div style={{ padding: '14px var(--space-4)', borderBottom: '1px solid var(--border)' }}>
+            <input
+              type="text"
+              className="input w-full"
+              value={productSearch}
+              onChange={e => setProductSearch(e.target.value)}
               placeholder="🔍 Rechercher un produit..."
-              style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }} />
+            />
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+          <div className="flex-1" style={{ overflowY: 'auto', padding: 'var(--space-2)' }}>
             {filteredProducts.slice(0, 50).map(p => {
               const stock = p.current_stock ?? 0;
               return (
-                <div key={p.id} onClick={() => addToCart(p)}
-                  style={{ padding: '12px', cursor: 'pointer', borderRadius: '10px', marginBottom: '4px', border: '1px solid #f1f5f9', transition: 'background 0.1s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#f0f9ff')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: '600', fontSize: '14px', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
-                      <div style={{ fontSize: '12px', color: '#6b7280' }}>{p.reference}</div>
+                <div key={p.id} className="list-item" onClick={() => addToCart(p)}>
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1" style={{ minWidth: 0 }}>
+                      <div className="font-semibold text-sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
+                      <div className="text-xs text-muted">{p.reference}</div>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '8px' }}>
-                      <div style={{ fontWeight: '700', fontSize: '14px', color: '#10b981' }}>{p.selling_price?.toFixed(2)} MAD</div>
-                      <div style={{ fontSize: '11px', color: stock <= 0 ? '#ef4444' : stock <= (p.min_stock ?? 0) ? '#f59e0b' : '#6b7280' }}>
-                        Stock: {stock}
-                      </div>
+                    <div className="text-right" style={{ flexShrink: 0, marginLeft: 'var(--space-2)' }}>
+                      <div className="money font-semibold text-sm text-success">{p.selling_price?.toFixed(2)} MAD</div>
+                      <div className={`text-xs qty ${stockLevelClass(stock, p.min_stock ?? 0)}`}>Stock: {stock}</div>
                     </div>
                   </div>
                 </div>
@@ -375,91 +348,84 @@ export const POSPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Payment modal */}
-      {showPayment && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', borderRadius: '20px', width: '480px', padding: '32px', boxShadow: '0 25px 50px rgba(0,0,0,0.4)' }}>
-            <h2 style={{ margin: '0 0 24px', fontSize: '22px', color: '#0f172a' }}>💳 Encaissement</h2>
+      <Modal open={showPayment} onClose={() => { setShowPayment(false); setCashGiven(0); }} width={480}>
+        <ModalHeader icon="💳" title="Encaissement" />
+        <ModalBody>
+          <div className="text-center mb-4">
+            <div className="text-sm text-muted">Total à payer</div>
+            <div className="money" style={{ fontSize: 42, fontWeight: 800 }}>{subtotal.toFixed(2)} MAD</div>
+          </div>
 
-            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-              <div style={{ fontSize: '14px', color: '#6b7280' }}>Total à payer</div>
-              <div style={{ fontSize: '42px', fontWeight: '800', color: '#0f172a' }}>{subtotal.toFixed(2)} MAD</div>
+          <div className="grid-3">
+            {([['CASH', '💵 Espèces'], ['CHECK', '🏦 Chèque'], ['TRANSFER', '📤 Virement']] as const).map(([method, label]) => (
+              <button
+                key={method}
+                type="button"
+                className={`btn ${paymentMethod === method ? 'btn-success' : 'btn-secondary'}`}
+                onClick={() => setPaymentMethod(method)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {paymentMethod === 'CASH' && (
+            <Input
+              label="Montant reçu"
+              type="number"
+              min={0}
+              step={0.01}
+              value={cashGiven || ''}
+              onChange={e => setCashGiven(Number(e.target.value))}
+              placeholder={`Minimum : ${subtotal.toFixed(2)} MAD`}
+              inputSize="lg"
+              className="money"
+              autoFocus
+            />
+          )}
+          {paymentMethod === 'CASH' && cashGiven >= subtotal && (
+            <div className="surface-success text-center" style={{ padding: 'var(--space-3)' }}>
+              <span className="text-sm text-success font-semibold">
+                💰 Monnaie : <strong className="money">{change.toFixed(2)} MAD</strong>
+              </span>
             </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => { setShowPayment(false); setCashGiven(0); }}>Annuler</Button>
+          <Button variant="success" size="lg" onClick={handleValidateSale} disabled={paymentDisabled}>
+            ✓ Valider la vente
+          </Button>
+        </ModalFooter>
+      </Modal>
 
-            {/* Payment method buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px' }}>
-              {([['CASH', '💵 Espèces'], ['CHECK', '🏦 Chèque'], ['TRANSFER', '📤 Virement']] as const).map(([method, label]) => (
-                <button key={method} onClick={() => setPaymentMethod(method)}
-                  style={{ padding: '14px', borderRadius: '12px', border: `2px solid ${paymentMethod === method ? '#10b981' : '#e5e7eb'}`, background: paymentMethod === method ? '#f0fdf4' : 'white', fontWeight: '700', fontSize: '14px', cursor: 'pointer', color: paymentMethod === method ? '#065f46' : '#374151' }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Cash input */}
-            {paymentMethod === 'CASH' && (
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Montant reçu</label>
-                <input type="number" min="0" step="0.01" value={cashGiven || ''}
-                  onChange={e => setCashGiven(Number(e.target.value))}
-                  placeholder={`Minimum : ${subtotal.toFixed(2)} MAD`}
-                  autoFocus
-                  style={{ width: '100%', padding: '14px', fontSize: '22px', fontWeight: '700', border: '2px solid #e5e7eb', borderRadius: '10px', boxSizing: 'border-box' }} />
-                {cashGiven >= subtotal && (
-                  <div style={{ marginTop: '8px', padding: '10px', background: '#f0fdf4', borderRadius: '8px', textAlign: 'center' }}>
-                    <span style={{ fontSize: '14px', color: '#065f46', fontWeight: '600' }}>
-                      💰 Monnaie : <strong>{change.toFixed(2)} MAD</strong>
-                    </span>
+      <Modal open={showReceipt && !!lastSale} onClose={() => { setShowReceipt(false); setLastSale(null); barcodeRef.current?.focus(); }} width={400}>
+        <ModalBody className="text-center">
+          <div style={{ fontSize: 48, marginBottom: 'var(--space-3)' }}>✅</div>
+          <h2 className="text-success" style={{ margin: '0 0 var(--space-2)' }}>Vente enregistrée !</h2>
+          {lastSale && (
+            <>
+              <div className="text-sm text-muted mb-4">{lastSale.docNumber}</div>
+              <div className="money mb-5" style={{ fontSize: 36, fontWeight: 800 }}>{lastSale.total.toFixed(2)} MAD</div>
+              <div className="surface-muted text-left mb-5" style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                {lastSale.items.map((it, i) => (
+                  <div key={i} className="flex justify-between" style={{ padding: '4px 0', borderBottom: '1px dashed var(--border)' }}>
+                    <span>{it.quantity}× {it.reference}</span>
+                    <span className="money">{(it.quantity * it.unit_price * (1 - it.discount / 100)).toFixed(2)}</span>
                   </div>
-                )}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button onClick={() => { setShowPayment(false); setCashGiven(0); }}
-                style={{ flex: 1, padding: '14px', background: '#f3f4f6', border: 'none', borderRadius: '10px', fontSize: '16px', cursor: 'pointer', fontWeight: '600' }}>
-                Annuler
-              </button>
-              <button onClick={handleValidateSale}
-                disabled={paymentMethod === 'CASH' && cashGiven < subtotal}
-                style={{ flex: 2, padding: '14px', background: (paymentMethod === 'CASH' && cashGiven < subtotal) ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: '800', cursor: (paymentMethod === 'CASH' && cashGiven < subtotal) ? 'not-allowed' : 'pointer' }}>
-                ✓ Valider la vente
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Receipt modal */}
-      {showReceipt && lastSale && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', borderRadius: '20px', width: '400px', padding: '32px', boxShadow: '0 25px 50px rgba(0,0,0,0.4)', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
-            <h2 style={{ margin: '0 0 8px', color: '#065f46' }}>Vente enregistrée !</h2>
-            <div style={{ fontSize: '15px', color: '#6b7280', marginBottom: '16px' }}>{lastSale.docNumber}</div>
-            <div style={{ fontSize: '36px', fontWeight: '800', color: '#0f172a', marginBottom: '24px' }}>{lastSale.total.toFixed(2)} MAD</div>
-
-            {/* Mini receipt */}
-            <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '16px', textAlign: 'left', marginBottom: '20px', fontFamily: 'monospace', fontSize: '13px' }}>
-              {lastSale.items.map((it, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px dashed #e5e7eb' }}>
-                  <span>{it.quantity}× {it.reference}</span>
-                  <span>{(it.quantity * it.unit_price * (1 - it.discount / 100)).toFixed(2)}</span>
+                ))}
+                <div className="flex justify-between font-semibold money" style={{ marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '2px solid var(--text)' }}>
+                  <span>TOTAL</span>
+                  <span>{lastSale.total.toFixed(2)} MAD</span>
                 </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '15px', marginTop: '8px', paddingTop: '8px', borderTop: '2px solid #0f172a' }}>
-                <span>TOTAL</span>
-                <span>{lastSale.total.toFixed(2)} MAD</span>
               </div>
-            </div>
-
-            <button onClick={() => { setShowReceipt(false); setLastSale(null); barcodeRef.current?.focus(); }}
-              style={{ width: '100%', padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>
-              Nouvelle vente
-            </button>
-          </div>
-        </div>
-      )}
+            </>
+          )}
+          <Button variant="primary" block size="lg" onClick={() => { setShowReceipt(false); setLastSale(null); barcodeRef.current?.focus(); }}>
+            Nouvelle vente
+          </Button>
+        </ModalBody>
+      </Modal>
     </div>
   );
 };

@@ -3,17 +3,24 @@ import { usePurchaseStore } from '../stores/usePurchaseStore';
 import { useSupplierStore } from '../stores/useSupplierStore';
 import { useProductStore } from '../stores/useProductStore';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import {
+  Button,
+  Card,
+  Badge,
+  Input,
+  Select,
+  PageHeader,
+  Modal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  PURCHASE_STATUS_BADGE,
+} from '../components/ui';
 import { toast } from '../stores/useToastStore';
 import type { PurchaseOrder, PurchaseStatus } from '../stores/usePurchaseStore';
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<PurchaseStatus, { label: string; color: string; bg: string }> = {
-  DRAFT:     { label: 'Brouillon',   color: '#374151', bg: '#f3f4f6' },
-  CONFIRMED: { label: 'Confirmée',   color: '#1e40af', bg: '#dbeafe' },
-  RECEIVED:  { label: 'Réceptionnée', color: '#065f46', bg: '#d1fae5' },
-  CANCELLED: { label: 'Annulée',     color: '#6b7280', bg: '#f3f4f6' },
-};
+const getPurchaseBadge = (status: PurchaseStatus) =>
+  PURCHASE_STATUS_BADGE[status] ?? PURCHASE_STATUS_BADGE.DRAFT;
 
 // ─── Formulaire Nouvelle Commande ────────────────────────────────────────────
 
@@ -70,116 +77,104 @@ const NewOrderModal: React.FC<{
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: 'white', borderRadius: '16px', width: '800px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column' }}>
+    <Modal open onClose={onClose} width={800}>
+      <ModalHeader icon="🛒" title="Nouvelle Commande d'Achat" />
 
-        {/* Header */}
-        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '24px' }}>🛒</span>
-          <h2 style={{ margin: 0, color: '#0f172a' }}>Nouvelle Commande d'Achat</h2>
+      <ModalBody>
+        <div className="form-row">
+          <Select label="Fournisseur *" value={supplierId} onChange={e => setSupplierId(e.target.value)}>
+            <option value="">— Sélectionnez un fournisseur —</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+          <Input label="Date *" type="date" value={date} onChange={e => setDate(e.target.value)} />
         </div>
+        <Input label="Notes" type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Remarques, instructions..." />
 
-        <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Informations générales */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Fournisseur *</label>
-              <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px' }}>
-                <option value="">— Sélectionnez un fournisseur —</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Date *</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
-            </div>
-            <div style={{ gridColumn: '1 / 3' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Notes</label>
-              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Remarques, instructions..."
-                style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
-            </div>
-          </div>
-
-          {/* Recherche produit */}
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Ajouter un produit</label>
-            <input type="text" placeholder="Tapez une référence ou désignation..."
-              value={productSearch} onChange={e => setProductSearch(e.target.value)}
-              style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
-            {productSearch && filteredProducts.length > 0 && (
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', overflowY: 'auto', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                {filteredProducts.slice(0, 8).map(p => (
-                  <div key={p.id} onClick={() => addLine(p)}
-                    style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <span><strong>{p.reference}</strong> — {p.designation}</span>
-                    <span style={{ color: '#6b7280' }}>{p.purchase_price?.toFixed(2) ?? '—'} MAD</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Lignes de produits */}
-          {items.length > 0 && (
-            <div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-                    <th style={{ padding: '10px', borderBottom: '2px solid #e5e7eb' }}>Produit</th>
-                    <th style={{ padding: '10px', width: '100px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Qté</th>
-                    <th style={{ padding: '10px', width: '130px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>P.U. (MAD)</th>
-                    <th style={{ padding: '10px', width: '120px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>Total</th>
-                    <th style={{ padding: '10px', width: '40px', borderBottom: '2px solid #e5e7eb' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => {
-                    const lineTotal = item.quantity * item.unit_price;
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '8px 10px' }}>{item._name}</td>
-                        <td style={{ padding: '4px 8px' }}>
-                          <input type="number" min="1" value={item.quantity} onChange={e => updateLine(idx, 'quantity', Number(e.target.value))}
-                            style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                        </td>
-                        <td style={{ padding: '4px 8px' }}>
-                          <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateLine(idx, 'unit_price', Number(e.target.value))}
-                            style={{ width: '100%', padding: '6px', textAlign: 'right', border: '1px solid #d1d5db', borderRadius: '6px' }} />
-                        </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600' }}>{lineTotal.toFixed(2)}</td>
-                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <button onClick={() => removeLine(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px' }}>×</button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
-                    <td colSpan={3} style={{ padding: '12px 10px', textAlign: 'right', fontSize: '16px' }}>TOTAL :</td>
-                    <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: '#0f172a' }}>{total.toFixed(2)} MAD</td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
+        <div className="form-group">
+          <label className="form-label">Ajouter un produit</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="Tapez une référence ou désignation..."
+            value={productSearch}
+            onChange={e => setProductSearch(e.target.value)}
+          />
+          {productSearch && filteredProducts.length > 0 && (
+            <div className="card card-body-compact" style={{ marginTop: 6, maxHeight: 180, overflowY: 'auto' }}>
+              {filteredProducts.slice(0, 8).map(p => (
+                <div key={p.id} onClick={() => addLine(p)} className="list-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span><strong>{p.reference}</strong> — {p.designation}</span>
+                  <span className="money text-muted">{p.purchase_price?.toFixed(2) ?? '—'} MAD</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Footer */}
-        <div style={{ padding: '20px 28px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button onClick={onClose} style={{ padding: '12px 24px', background: '#f3f4f6', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleSave} disabled={!supplierId || items.length === 0}
-            style={{ padding: '12px 28px', background: !supplierId || items.length === 0 ? '#9ca3af' : '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: !supplierId || items.length === 0 ? 'not-allowed' : 'pointer' }}>
-            🛒 Créer la commande
-          </button>
-        </div>
-      </div>
-    </div>
+        {items.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th className="text-center" style={{ width: 100 }}>Qté</th>
+                  <th className="text-right" style={{ width: 130 }}>P.U. (MAD)</th>
+                  <th className="text-right" style={{ width: 120 }}>Total</th>
+                  <th style={{ width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => {
+                  const lineTotal = item.quantity * item.unit_price;
+                  return (
+                    <tr key={idx}>
+                      <td>{item._name}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={e => updateLine(idx, 'quantity', Number(e.target.value))}
+                          className="input input-sm text-center"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_price}
+                          onChange={e => updateLine(idx, 'unit_price', Number(e.target.value))}
+                          className="input input-sm text-right"
+                        />
+                      </td>
+                      <td className="money text-right font-semibold">{lineTotal.toFixed(2)}</td>
+                      <td className="text-center">
+                        <Button variant="ghost" size="sm" onClick={() => removeLine(idx)} className="text-danger">×</Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="text-right font-semibold" style={{ fontSize: 'var(--font-size-lg)' }}>TOTAL :</td>
+                  <td className="money text-right font-semibold" style={{ fontSize: 'var(--font-size-xl)' }}>{total.toFixed(2)} MAD</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </ModalBody>
+
+      <ModalFooter>
+        <Button variant="secondary" onClick={onClose}>Annuler</Button>
+        <Button onClick={handleSave} disabled={!supplierId || items.length === 0}>
+          🛒 Créer la commande
+        </Button>
+      </ModalFooter>
+    </Modal>
   );
 };
 
@@ -192,96 +187,82 @@ const OrderDetailPanel: React.FC<{
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
 }> = ({ order, onConfirm, onReceive, onCancel, onDelete }) => {
-  const statusInfo = STATUS_LABELS[order.status] || STATUS_LABELS.DRAFT;
+  const statusInfo = getPurchaseBadge(order.status);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Résumé */}
-      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div className="flex flex-col gap-4">
+      <Card padding>
+        <div className="flex justify-between items-center">
           <div>
-            <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a' }}>{order.order_number}</div>
-            <div style={{ color: '#6b7280', marginTop: '4px' }}>{order.supplier_name} · {order.date?.split('T')[0]}</div>
+            <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700 }}>{order.order_number}</div>
+            <div className="text-muted text-sm" style={{ marginTop: 4 }}>{order.supplier_name} · {order.date?.split('T')[0]}</div>
           </div>
-          <span style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
+          <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
         </div>
-        <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div style={{ textAlign: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>Total</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{order.total?.toFixed(2) ?? '0.00'} MAD</div>
+        <div className="grid-3 mt-4">
+          <div className="surface-muted text-center">
+            <div className="text-xs text-muted">Total</div>
+            <div className="money" style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700 }}>{order.total?.toFixed(2) ?? '0.00'} MAD</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>Articles</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{order.items?.length ?? 0}</div>
+          <div className="surface-muted text-center">
+            <div className="text-xs text-muted">Articles</div>
+            <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700 }}>{order.items?.length ?? 0}</div>
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* Lignes produits */}
       {(order.items ?? []).length > 0 && (
-        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <Card padding>
           <h3 style={{ marginTop: 0 }}>Produits</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+          <table className="table">
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Produit</th>
-                <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Qté</th>
-                <th style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>P.U.</th>
-                <th style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>Total</th>
-                {order.status === 'CONFIRMED' && (
-                  <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Qté reçue</th>
-                )}
+              <tr>
+                <th>Produit</th>
+                <th className="text-center">Qté</th>
+                <th className="text-right">P.U.</th>
+                <th className="text-right">Total</th>
+                {order.status === 'CONFIRMED' && <th className="text-center">Qté reçue</th>}
               </tr>
             </thead>
             <tbody>
               {(order.items ?? []).map(item => (
-                <tr key={item.id ?? item.product_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 10px' }}><strong>{item.product_ref}</strong> {item.product_name}</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>{item.quantity}</td>
-                  <td style={{ padding: '8px', textAlign: 'right' }}>{item.unit_price?.toFixed(2)}</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '600' }}>{item.total?.toFixed(2) ?? (item.quantity * item.unit_price).toFixed(2)} MAD</td>
+                <tr key={item.id ?? item.product_id}>
+                  <td><strong>{item.product_ref}</strong> {item.product_name}</td>
+                  <td className="qty text-center">{item.quantity}</td>
+                  <td className="money text-right">{item.unit_price?.toFixed(2)}</td>
+                  <td className="money text-right font-semibold">
+                    {item.total?.toFixed(2) ?? (item.quantity * item.unit_price).toFixed(2)} MAD
+                  </td>
                   {order.status === 'CONFIRMED' && (
-                    <td style={{ padding: '8px', textAlign: 'center', color: '#10b981', fontWeight: '600' }}>{item.received_qty ?? 0}</td>
+                    <td className="qty text-center text-success font-semibold">{item.received_qty ?? 0}</td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
 
-      {/* Notes */}
       {order.notes && (
-        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <Card padding>
           <h3 style={{ marginTop: 0 }}>Notes</h3>
-          <p style={{ margin: 0, color: '#374151' }}>{order.notes}</p>
-        </div>
+          <p className="text-secondary" style={{ margin: 0 }}>{order.notes}</p>
+        </Card>
       )}
 
-      {/* Boutons d'action */}
-      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+      <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
         {order.status === 'DRAFT' && (
           <>
-            <button onClick={() => onConfirm(order.id)}
-              style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-              ✅ Confirmer la commande
-            </button>
-            <button onClick={() => onDelete(order.id)}
-              style={{ flex: 1, padding: '14px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-              🗑️ Supprimer
-            </button>
+            <Button block onClick={() => onConfirm(order.id)}>✅ Confirmer la commande</Button>
+            <Button variant="danger" block onClick={() => onDelete(order.id)}>🗑️ Supprimer</Button>
           </>
         )}
         {order.status === 'CONFIRMED' && (
           <>
-            <button onClick={() => onReceive(order.id)}
-              style={{ flex: 1, padding: '14px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-              📦 Réceptionner la commande
-            </button>
-            <button onClick={() => onCancel(order.id)}
-              style={{ flex: 1, padding: '14px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+            <Button variant="success" block onClick={() => onReceive(order.id)}>📦 Réceptionner la commande</Button>
+            <Button variant="secondary" block onClick={() => onCancel(order.id)} style={{ background: 'var(--warning)', color: 'var(--on-primary)', borderColor: 'transparent' }}>
               ❌ Annuler
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -381,62 +362,70 @@ export const PurchasesPage: React.FC = () => {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f8fafc', height: '100vh', overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ padding: '20px 28px 16px', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h1 style={{ margin: 0, fontSize: '26px', color: '#0f172a', flex: 1 }}>🛒 Commandes d'Achat</h1>
-          <button onClick={() => setShowNewForm(true)}
-            style={{ padding: '10px 22px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
-            + Nouvelle commande
-          </button>
-        </div>
+    <div className="page-shell">
+      <PageHeader
+        icon="🛒"
+        title="Commandes d'Achat"
+        actions={
+          <Button onClick={() => setShowNewForm(true)}>+ Nouvelle commande</Button>
+        }
+      />
+
+      <div style={{ padding: '12px 28px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <input
+          type="text"
+          className="input input-lg"
+          placeholder="Rechercher par numéro, fournisseur..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
       </div>
 
-      {/* Barre de recherche */}
-      <div style={{ padding: '12px 28px', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
-        <input type="text" placeholder="Rechercher par numéro, fournisseur..."
-          value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }} />
-      </div>
-
-      {/* Contenu */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Liste commandes */}
-        <div style={{ width: '360px', borderRight: '1px solid #e5e7eb', overflowY: 'auto', background: 'white', flexShrink: 0 }}>
-          {isLoading && <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>Chargement...</div>}
+      <div className="flex flex-1" style={{ overflow: 'hidden' }}>
+        <div style={{ width: 360, borderRight: '1px solid var(--border)', overflowY: 'auto', background: 'var(--surface)', flexShrink: 0 }}>
+          {isLoading && <div className="state-box" style={{ padding: 20 }}>Chargement...</div>}
           {orders.length === 0 && !isLoading && (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af' }}>
-              <div style={{ fontSize: '48px', marginBottom: '12px' }}>🛒</div>
-              <div>Aucune commande d'achat trouvée.</div>
+            <div className="state-box">
+              <div className="state-icon">🛒</div>
+              <div className="state-text">Aucune commande d'achat trouvée.</div>
             </div>
           )}
           {orders.map(order => {
-            const statusInfo = STATUS_LABELS[order.status] || STATUS_LABELS.DRAFT;
+            const statusInfo = getPurchaseBadge(order.status);
             const isSelected = selectedOrder?.id === order.id;
             return (
-              <div key={order.id} onClick={() => selectOrder(order)}
-                style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isSelected ? '#eff6ff' : 'transparent', borderLeft: isSelected ? '4px solid #3b82f6' : '4px solid transparent', transition: 'all 0.15s' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{order.order_number}</span>
-                  <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
+              <div
+                key={order.id}
+                onClick={() => selectOrder(order)}
+                className={isSelected ? 'list-item-selected' : ''}
+                style={{
+                  padding: '14px 20px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid var(--border)',
+                  borderLeft: isSelected ? '4px solid var(--primary)' : '4px solid transparent',
+                  background: isSelected ? 'var(--primary-soft)' : 'transparent',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold">{order.order_number}</span>
+                  <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
                 </div>
-                <div style={{ fontSize: '13px', color: '#374151', marginTop: '4px' }}>{order.supplier_name}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                  <span style={{ fontSize: '13px', color: '#9ca3af' }}>{order.date?.split('T')[0]}</span>
-                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>{order.total?.toFixed(2) ?? '0.00'} MAD</span>
+                <div className="text-sm text-secondary" style={{ marginTop: 4 }}>{order.supplier_name}</div>
+                <div className="flex justify-between" style={{ marginTop: 6 }}>
+                  <span className="text-sm text-muted">{order.date?.split('T')[0]}</span>
+                  <span className="money font-semibold">{order.total?.toFixed(2) ?? '0.00'} MAD</span>
                 </div>
               </div>
             );
           })}
         </div>
 
-        {/* Détail */}
-        <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+        <div className="page-content" style={{ flex: 1, padding: '24px' }}>
           {!selectedOrder ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af', fontSize: '18px', flexDirection: 'column', gap: '12px' }}>
-              <span style={{ fontSize: '64px' }}>🛒</span>
-              ← Sélectionnez une commande pour voir les détails
+            <div className="state-box" style={{ height: '100%' }}>
+              <div className="state-icon">🛒</div>
+              <div className="state-text">← Sélectionnez une commande pour voir les détails</div>
             </div>
           ) : (
             <OrderDetailPanel

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, session } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireId, requireString, validateFilePath, validatePathWithinDataDir, hasPathTraversal, toHumanError } from './ipcValidation';
@@ -53,6 +53,30 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST;
 
 let win: BrowserWindow | null;
+
+/** CSP alignée sur vite.config.ts (build prod) — images produits en data:, styles inline React. */
+const PRODUCTION_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: file:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+].join('; ');
+
+function installContentSecurityPolicy(): void {
+  // En dev, Vite injecte un préambule inline (react-refresh) : une CSP stricte casse le HMR.
+  if (VITE_DEV_SERVER_URL) return;
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [PRODUCTION_CSP],
+      },
+    });
+  });
+}
 
 /**
  * Sécurité Chromium/Electron :
@@ -118,6 +142,8 @@ app.on('activate', () => {
 });
 
 app.whenReady().then(() => {
+  installContentSecurityPolicy();
+
   // ─── Data Storage / Onboarding ────────────────────────────────────────────
   ipcMain.handle('storage:getConfig', async () => {
     return DataStorageService.getConfig();

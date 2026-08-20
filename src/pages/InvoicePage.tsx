@@ -9,18 +9,18 @@ import type { Document, DocumentType } from '../repositories/DocumentRepository'
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
 const TYPE_LABELS: Record<DocumentType, { label: string; icon: string; color: string }> = {
-  QUOTE:         { label: 'Devis',          icon: '📋', color: '#8b5cf6' },
-  DELIVERY_NOTE: { label: 'Bon de livraison', icon: '🚚', color: '#f59e0b' },
-  INVOICE:       { label: 'Factures',       icon: '📄', color: '#3b82f6' },
-  CREDIT_NOTE:   { label: 'Avoirs',         icon: '↩️', color: '#10b981' },
+  QUOTE:         { label: 'Devis',          icon: '📋', color: 'var(--primary)' },
+  DELIVERY_NOTE: { label: 'Bon de livraison', icon: '🚚', color: 'var(--warning)' },
+  INVOICE:       { label: 'Factures',       icon: '📄', color: 'var(--info)' },
+  CREDIT_NOTE:   { label: 'Avoirs',         icon: '↩️', color: 'var(--success)' },
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  PAID:      { label: 'Payée',      color: '#065f46', bg: '#d1fae5' },
-  UNPAID:    { label: 'Impayée',    color: '#991b1b', bg: '#fee2e2' },
-  PARTIAL:   { label: 'Partielle',  color: '#92400e', bg: '#fef3c7' },
-  DRAFT:     { label: 'Brouillon',  color: '#374151', bg: '#f3f4f6' },
-  CANCELLED: { label: 'Annulée',    color: '#6b7280', bg: '#f3f4f6' },
+  PAID:      { label: 'Payée',      color: 'var(--success)', bg: 'var(--success-soft)' },
+  UNPAID:    { label: 'Impayée',    color: 'var(--danger)', bg: 'var(--danger-soft)' },
+  PARTIAL:   { label: 'Partielle',  color: 'var(--warning)', bg: 'var(--warning-soft)' },
+  DRAFT:     { label: 'Brouillon',  color: 'var(--text-secondary)', bg: 'var(--surface-2)' },
+  CANCELLED: { label: 'Annulée',    color: 'var(--muted)', bg: 'var(--surface-2)' },
 };
 
 // ─── Modal de Retour Partiel (Avoir) ────────────────────────────────────────
@@ -85,35 +85,35 @@ const PartialReturnModal: React.FC<{
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: 'white', borderRadius: '16px', width: '700px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-xl)', width: '700px', maxHeight: '85vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
-        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '24px' }}>↩️</span>
           <div>
-            <h2 style={{ margin: 0, color: '#0f172a' }}>Créer un Avoir</h2>
-            <div style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>Facture : {doc.document_number}</div>
+            <h2 style={{ margin: 0, color: 'var(--text)' }}>Créer un Avoir</h2>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Facture : {doc.document_number}</div>
           </div>
         </div>
 
         <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Motif */}
           <div>
-            <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Motif du retour</label>
+            <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Motif du retour</label>
             <input type="text" value={reason} onChange={e => setReason(e.target.value)}
               placeholder="Ex: Produit défectueux, Annulation commande..."
-              style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
+              className="input" />
           </div>
 
           {/* Sélection retour total/partiel */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button onClick={handleToggleAll}
               style={{ padding: '8px 16px', borderRadius: '8px', border: '2px solid', fontWeight: '600', fontSize: '14px', cursor: 'pointer',
-                borderColor: returnAll ? '#10b981' : '#d1d5db', background: returnAll ? '#d1fae5' : 'white', color: returnAll ? '#065f46' : '#6b7280' }}>
+                borderColor: returnAll ? 'var(--success)' : 'var(--border-strong)', background: returnAll ? 'var(--success-soft)' : 'var(--surface)', color: returnAll ? 'var(--success)' : 'var(--text-secondary)' }}>
               {returnAll ? '✓ Tout retourner' : 'Tout sélectionner'}
             </button>
-            <span style={{ fontSize: '13px', color: '#9ca3af' }}>
+            <span style={{ fontSize: '13px', color: 'var(--muted)' }}>
               {isFullReturn ? 'Retour total — la facture sera annulée' : 'Retour partiel — la facture reste active'}
             </span>
           </div>
@@ -122,12 +122,12 @@ const PartialReturnModal: React.FC<{
           <div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-                  <th style={{ padding: '10px', borderBottom: '2px solid #e5e7eb' }}>Produit</th>
-                  <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Qté facture</th>
-                  <th style={{ padding: '10px', width: '100px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Qté retour</th>
-                  <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>P.U.</th>
-                  <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>Total retour</th>
+                <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
+                  <th style={{ padding: '10px', borderBottom: '2px solid var(--border)' }}>Produit</th>
+                  <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>Qté facture</th>
+                  <th style={{ padding: '10px', width: '100px', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>Qté retour</th>
+                  <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid var(--border)', textAlign: 'right' }}>P.U.</th>
+                  <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid var(--border)', textAlign: 'right' }}>Total retour</th>
                 </tr>
               </thead>
               <tbody>
@@ -135,16 +135,16 @@ const PartialReturnModal: React.FC<{
                   const qty = returnQty[item.product_id] ?? 0;
                   const lineTotal = qty * item.unit_price * (1 - item.discount / 100);
                   return (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9', background: qty > 0 ? '#f0fdf4' : 'transparent' }}>
+                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', background: qty > 0 ? 'var(--success-soft)' : 'transparent' }}>
                       <td style={{ padding: '8px 10px' }}><strong>{item.product_ref}</strong> {item.product_name}</td>
-                      <td style={{ padding: '8px', textAlign: 'center', color: '#6b7280' }}>{item.quantity}</td>
+                      <td style={{ padding: '8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{item.quantity}</td>
                       <td style={{ padding: '4px 8px' }}>
                         <input type="number" min="0" max={item.quantity} value={qty}
                           onChange={e => updateQty(item.product_id, Number(e.target.value), item.quantity)}
-                          style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px', boxSizing: 'border-box' }} />
+                          className="input" />
                       </td>
-                      <td style={{ padding: '8px', textAlign: 'right', color: '#6b7280' }}>{item.unit_price.toFixed(2)} MAD</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600', color: qty > 0 ? '#dc2626' : '#6b7280' }}>
+                      <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)' }}>{item.unit_price.toFixed(2)} MAD</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600', color: qty > 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
                         {lineTotal.toFixed(2)} MAD
                       </td>
                     </tr>
@@ -152,9 +152,9 @@ const PartialReturnModal: React.FC<{
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+                <tr style={{ background: 'var(--surface-2)', fontWeight: 'bold' }}>
                   <td colSpan={4} style={{ padding: '12px 10px', textAlign: 'right', fontSize: '16px' }}>TOTAL AVOIR :</td>
-                  <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: '#dc2626' }}>{totalReturn.toFixed(2)} MAD</td>
+                  <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: 'var(--danger)' }}>{totalReturn.toFixed(2)} MAD</td>
                 </tr>
               </tfoot>
             </table>
@@ -162,19 +162,19 @@ const PartialReturnModal: React.FC<{
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '20px 28px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: '13px', color: '#6b7280' }}>
+        <div style={{ padding: '20px 28px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
             {isFullReturn
               ? '⚠️ La facture originale sera annulée.'
               : '✅ La facture originale restera active.'}
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
             <button onClick={onClose}
-              style={{ padding: '12px 24px', background: '#f3f4f6', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' }}>
+              className="btn btn-secondary">
               Annuler
             </button>
             <button onClick={handleConfirm} disabled={selectedItems.length === 0}
-              style={{ padding: '12px 28px', background: selectedItems.length === 0 ? '#9ca3af' : '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: selectedItems.length === 0 ? 'not-allowed' : 'pointer' }}>
+              className="btn btn-danger" >
               ↩️ Créer l'avoir ({totalReturn.toFixed(2)} MAD)
             </button>
           </div>
@@ -243,60 +243,60 @@ const NewDocumentModal: React.FC<{
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: 'white', borderRadius: '16px', width: '800px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-xl)', width: '800px', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
-        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '24px' }}>{TYPE_LABELS[type].icon}</span>
-          <h2 style={{ margin: 0, color: '#0f172a' }}>Nouveau {TYPE_LABELS[type].label}</h2>
+          <h2 style={{ margin: 0, color: 'var(--text)' }}>Nouveau {TYPE_LABELS[type].label}</h2>
         </div>
 
         <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Informations générales */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Client *</label>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Client *</label>
               <select value={entityId} onChange={e => setEntityId(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px' }}>
+                className="select">
                 <option value="">— Sélectionnez un client —</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Date *</label>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Date *</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
+                className="input" />
             </div>
             {type === 'INVOICE' && (
               <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Échéance</label>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Échéance</label>
                 <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
-                  style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
+                  className="input" />
               </div>
             )}
             <div style={{ gridColumn: type === 'INVOICE' ? '2 / 3' : '1 / 3' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Notes</label>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Notes</label>
               <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Remarques, instructions..."
-                style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
+                className="input" />
             </div>
           </div>
 
           {/* Recherche produit */}
           <div>
-            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px', color: '#374151' }}>Ajouter un produit</label>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Ajouter un produit</label>
             <input type="text" placeholder="Tapez une référence ou désignation..."
               value={productSearch} onChange={e => setProductSearch(e.target.value)}
-              style={{ width: '100%', padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }} />
+              className="input" />
             {productSearch && filteredProducts.length > 0 && (
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', overflowY: 'auto', background: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', marginTop: '6px', maxHeight: '180px', overflowY: 'auto', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
                 {filteredProducts.slice(0, 8).map(p => (
                   <div key={p.id} onClick={() => addLine(p)}
-                    style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                    style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <span><strong>{p.reference}</strong> — {p.designation}</span>
-                    <span style={{ color: '#6b7280' }}>{p.selling_price?.toFixed(2)} MAD</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{p.selling_price?.toFixed(2)} MAD</span>
                   </div>
                 ))}
               </div>
@@ -308,45 +308,45 @@ const NewDocumentModal: React.FC<{
             <div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-                    <th style={{ padding: '10px', borderBottom: '2px solid #e5e7eb' }}>Produit</th>
-                    <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Qté</th>
-                    <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>P.U. (MAD)</th>
-                    <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid #e5e7eb', textAlign: 'center' }}>Rem%</th>
-                    <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid #e5e7eb', textAlign: 'right' }}>Total</th>
-                    <th style={{ padding: '10px', width: '40px', borderBottom: '2px solid #e5e7eb' }}></th>
+                  <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
+                    <th style={{ padding: '10px', borderBottom: '2px solid var(--border)' }}>Produit</th>
+                    <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>Qté</th>
+                    <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid var(--border)', textAlign: 'right' }}>P.U. (MAD)</th>
+                    <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>Rem%</th>
+                    <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid var(--border)', textAlign: 'right' }}>Total</th>
+                    <th style={{ padding: '10px', width: '40px', borderBottom: '2px solid var(--border)' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
                     const lineTotal = item.quantity * item.unit_price * (1 - item.discount / 100);
                     return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '8px 10px' }}>{item._name}</td>
                         <td style={{ padding: '4px 8px' }}>
                           <input type="number" min="1" value={item.quantity} onChange={e => { updateLine(idx, 'quantity', Number(e.target.value)); applyVolumeDiscount(item, idx); }}
-                            style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                            className="input" />
                         </td>
                         <td style={{ padding: '4px 8px' }}>
                           <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateLine(idx, 'unit_price', Number(e.target.value))}
-                            style={{ width: '100%', padding: '6px', textAlign: 'right', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                            className="input" />
                         </td>
                         <td style={{ padding: '4px 8px' }}>
                           <input type="number" min="0" max="100" value={item.discount} onChange={e => updateLine(idx, 'discount', Number(e.target.value))}
-                            style={{ width: '100%', padding: '6px', textAlign: 'center', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+                            className="input" />
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600' }}>{lineTotal.toFixed(2)}</td>
                         <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <button onClick={() => removeLine(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '18px' }}>×</button>
+                          <button onClick={() => removeLine(idx)} className="btn btn-ghost" style={{ color: 'var(--danger)', fontSize: '18px' }}>×</button>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#f8fafc', fontWeight: 'bold' }}>
+                  <tr style={{ background: 'var(--surface-2)', fontWeight: 'bold' }}>
                     <td colSpan={4} style={{ padding: '12px 10px', textAlign: 'right', fontSize: '16px' }}>TOTAL HT :</td>
-                    <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: '#0f172a' }}>{total.toFixed(2)} MAD</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: 'var(--text)' }}>{total.toFixed(2)} MAD</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -356,10 +356,10 @@ const NewDocumentModal: React.FC<{
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '20px 28px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button onClick={onClose} style={{ padding: '12px 24px', background: '#f3f4f6', border: 'none', borderRadius: '8px', fontSize: '15px', cursor: 'pointer' }}>Annuler</button>
+        <div style={{ padding: '20px 28px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button onClick={onClose} className="btn btn-secondary">Annuler</button>
           <button onClick={handleSave} disabled={!entityId || items.length === 0}
-            style={{ padding: '12px 28px', background: !entityId || items.length === 0 ? '#9ca3af' : TYPE_LABELS[type].color, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: !entityId || items.length === 0 ? 'not-allowed' : 'pointer' }}>
+            className="btn btn-primary">
             Enregistrer {TYPE_LABELS[type].label}
           </button>
         </div>
@@ -385,47 +385,47 @@ const DocumentDetailPanel: React.FC<{
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       {/* Résumé */}
-      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+      <div className="card card-body">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#0f172a' }}>{doc.document_number}</div>
-            <div style={{ color: '#6b7280', marginTop: '4px' }}>{doc.customer_name} · {doc.date?.split('T')[0]}</div>
+            <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--text)' }}>{doc.document_number}</div>
+            <div style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{doc.customer_name} · {doc.date?.split('T')[0]}</div>
           </div>
           <span style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
         </div>
         <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-          <div style={{ textAlign: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>Total HT</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>{doc.total_excl_tax?.toFixed(2)} MAD</div>
+          <div style={{ textAlign: 'center', padding: '12px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total HT</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text)' }}>{doc.total_excl_tax?.toFixed(2)} MAD</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '12px', background: '#f0fdf4', borderRadius: '8px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>Payé</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#10b981' }}>{(doc.amount_paid ?? 0).toFixed(2)} MAD</div>
+          <div style={{ textAlign: 'center', padding: '12px', background: 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payé</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--success)' }}>{(doc.amount_paid ?? 0).toFixed(2)} MAD</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '12px', background: remaining > 0 ? '#fef2f2' : '#f0fdf4', borderRadius: '8px' }}>
-            <div style={{ fontSize: '12px', color: '#6b7280' }}>Reste dû</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: remaining > 0 ? '#ef4444' : '#10b981' }}>{remaining.toFixed(2)} MAD</div>
+          <div style={{ textAlign: 'center', padding: '12px', background: remaining > 0 ? 'var(--danger-soft)' : 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reste dû</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: remaining > 0 ? 'var(--danger)' : 'var(--success)' }}>{remaining.toFixed(2)} MAD</div>
           </div>
         </div>
       </div>
 
       {/* Lignes produits */}
       {(doc.items ?? []).length > 0 && (
-        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div className="card card-body">
           <h3 style={{ marginTop: 0 }}>Produits</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Produit</th>
-                <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Qté</th>
-                <th style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>P.U.</th>
-                <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Rem%</th>
-                <th style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid #e5e7eb' }}>Total</th>
+              <tr style={{ background: 'var(--surface-2)' }}>
+                <th style={{ padding: '8px 10px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Produit</th>
+                <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>Qté</th>
+                <th style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>P.U.</th>
+                <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>Rem%</th>
+                <th style={{ padding: '8px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Total</th>
               </tr>
             </thead>
             <tbody>
               {(doc.items ?? []).map(item => (
-                <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '8px 10px' }}><strong>{item.product_ref}</strong> {item.product_name}</td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>{item.quantity}</td>
                   <td style={{ padding: '8px', textAlign: 'right' }}>{item.unit_price.toFixed(2)}</td>
@@ -440,20 +440,20 @@ const DocumentDetailPanel: React.FC<{
 
       {/* Paiement (uniquement si document pas encore payé) */}
       {doc.status !== 'PAID' && doc.status !== 'CANCELLED' && doc.type !== 'CREDIT_NOTE' && (
-        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div className="card card-body">
           <h3 style={{ marginTop: 0 }}>Encaisser un paiement</h3>
           <div style={{ display: 'flex', gap: '12px' }}>
             <input type="number" placeholder={`Max : ${remaining.toFixed(2)} MAD`} value={payAmount || ''}
               onChange={e => setPayAmount(Number(e.target.value))}
-              style={{ flex: 1, padding: '12px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px' }} />
+              className="input" />
             <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
-              style={{ padding: '12px', fontSize: '15px', border: '2px solid #e5e7eb', borderRadius: '8px' }}>
+              className="select">
               <option value="CASH">💵 Espèces</option>
               <option value="CHECK">🏦 Chèque</option>
               <option value="TRANSFER">📤 Virement</option>
             </select>
             <button onClick={() => { if (payAmount > 0) { onPayment(payAmount, payMethod); setPayAmount(0); } }}
-              style={{ padding: '12px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              className="btn btn-success">
               ✓ Encaisser
             </button>
           </div>
@@ -463,18 +463,18 @@ const DocumentDetailPanel: React.FC<{
       {/* Boutons d'action */}
       <div style={{ display: 'flex', gap: '12px' }}>
         <button onClick={onPrint}
-          style={{ flex: 1, padding: '14px', background: '#0f172a', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+          className="btn btn-secondary" style={{ flex: 1 }}>
           🖨️ Imprimer / Export PDF
         </button>
         {doc.type === 'DELIVERY_NOTE' && onConvert && (
           <button onClick={onConvert}
-            style={{ flex: 1, padding: '14px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+            className="btn btn-primary" style={{ flex: 1 }}>
             📄 Convertir en Facture
           </button>
         )}
         {doc.type === 'INVOICE' && doc.status !== 'CANCELLED' && onCreditNote && (
           <button onClick={onCreditNote}
-            style={{ flex: 1, padding: '14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+            className="btn btn-danger" style={{ flex: 1 }}>
             ↩️ Créer un Avoir
           </button>
         )}
@@ -562,13 +562,12 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#f8fafc', height: '100vh', overflow: 'hidden' }}>
+    <div className="page-shell" style={{ height: '100vh' }}>
       {/* Header */}
-      <div style={{ padding: '20px 28px 16px', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ padding: '20px 28px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-          <h1 style={{ margin: 0, fontSize: '26px', color: '#0f172a', flex: 1 }}>📄 Facturation</h1>
-          <button onClick={() => setShowNewForm(true)}
-            style={{ padding: '10px 22px', background: TYPE_LABELS[activeType].color, color: 'white', border: 'none', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}>
+          <h1 style={{ margin: 0, fontSize: '26px', color: 'var(--text)', flex: 1 }}>📄 Facturation</h1>
+          <button onClick={() => setShowNewForm(true)} className="btn btn-primary">
             + Nouveau {TYPE_LABELS[activeType].label}
           </button>
         </div>
@@ -576,7 +575,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
         <div style={{ display: 'flex', gap: '4px' }}>
           {(Object.entries(TYPE_LABELS) as [DocumentType, any][]).map(([type, { label, icon }]) => (
             <button key={type} onClick={() => setActiveType(type)}
-              style={{ padding: '8px 18px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', background: activeType === type ? TYPE_LABELS[type].color : '#f3f4f6', color: activeType === type ? 'white' : '#6b7280', transition: 'all 0.15s' }}>
+              className={`btn ${activeType === type ? 'btn-primary' : 'btn-secondary'}`}>
               {icon} {label}
             </button>
           ))}
@@ -584,10 +583,10 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
       </div>
 
       {/* Barre de recherche */}
-      <div style={{ padding: '12px 28px', background: 'white', borderBottom: '1px solid #e5e7eb' }}>
+      <div style={{ padding: '12px 28px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <input type="text" placeholder={`Rechercher dans les ${TYPE_LABELS[activeType].label}...`}
           value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          style={{ width: '100%', padding: '12px 16px', fontSize: '16px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box', outline: 'none' }} />
+          className="input" />
       </div>
 
       {/* Contenu */}
@@ -596,10 +595,10 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
         <div ref={documentListRef} onScroll={(event) => {
           const el = event.currentTarget;
           if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadMoreDocuments();
-        }} style={{ width: '360px', borderRight: '1px solid #e5e7eb', overflowY: 'auto', background: 'white', flexShrink: 0 }}>
-          {isLoading && <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>Chargement...</div>}
+        }} style={{ width: '360px', borderRight: '1px solid var(--border)', overflowY: 'auto', background: 'var(--surface)', flexShrink: 0 }}>
+          {isLoading && <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Chargement...</div>}
           {documents.length === 0 && !isLoading && (
-            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af' }}>
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--muted)' }}>
               <div style={{ fontSize: '48px', marginBottom: '12px' }}>{TYPE_LABELS[activeType].icon}</div>
               <div>Aucun {TYPE_LABELS[activeType].label} trouvé.</div>
             </div>
@@ -610,15 +609,15 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
             const isSelected = selectedDocument?.id === doc.id;
             return (
               <div key={doc.id} onClick={() => selectDocument(doc)}
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)`, padding: '14px 20px', boxSizing: 'border-box', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isSelected ? '#eff6ff' : 'transparent', borderLeft: isSelected ? `4px solid ${TYPE_LABELS[activeType].color}` : '4px solid transparent', transition: 'all 0.15s' }}>
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)`, padding: '14px 20px', boxSizing: 'border-box', cursor: 'pointer', borderBottom: '1px solid var(--border)', background: isSelected ? 'var(--info-soft)' : 'transparent', borderLeft: isSelected ? `4px solid ${TYPE_LABELS[activeType].color}` : '4px solid transparent', transition: 'all 0.15s' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{doc.document_number}</span>
+                  <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)' }}>{doc.document_number}</span>
                   <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
                 </div>
-                <div style={{ fontSize: '13px', color: '#374151', marginTop: '4px' }}>{doc.customer_name}</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>{doc.customer_name}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                  <span style={{ fontSize: '13px', color: '#9ca3af' }}>{doc.date?.split('T')[0]}</span>
-                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>{doc.total_incl_tax?.toFixed(2)} MAD</span>
+                  <span style={{ fontSize: '13px', color: 'var(--muted)' }}>{doc.date?.split('T')[0]}</span>
+                  <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)' }}>{doc.total_incl_tax?.toFixed(2)} MAD</span>
                 </div>
               </div>
             );
@@ -628,7 +627,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
         {/* Détail */}
         <div style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
           {!selectedDocument ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#9ca3af', fontSize: '18px', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--muted)', fontSize: '18px', flexDirection: 'column', gap: '12px' }}>
               <span style={{ fontSize: '64px' }}>{TYPE_LABELS[activeType].icon}</span>
               ← Sélectionnez un document pour voir les détails
             </div>

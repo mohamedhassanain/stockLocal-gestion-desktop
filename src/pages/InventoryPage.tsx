@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { useInventoryStore, INVENTORY_STATUS_LABELS, type InventorySession } from '../stores/useInventoryStore';
+import { useInventoryStore, type InventorySession } from '../stores/useInventoryStore';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import {
+  Button,
+  Card,
+  Badge,
+  Input,
+  Textarea,
+  PageHeader,
+  INVENTORY_STATUS_BADGE,
+} from '../components/ui';
 import { toast } from '../stores/useToastStore';
 
 // ─── Workflow Steps ──────────────────────────────────────────────────────────
@@ -11,6 +20,18 @@ const WORKFLOW_STEPS = [
   { key: 'CALCUL', label: 'Écarts calculés', icon: '📊' },
   { key: 'VALIDATION', label: 'Validé', icon: '🔒' },
 ];
+
+const INVENTORY_BADGE_KEY: Record<string, keyof typeof INVENTORY_STATUS_BADGE> = {
+  DRAFT: 'DRAFT',
+  COMPTAGE: 'COUNTING',
+  CALCUL: 'GAPS_CALCULATED',
+  VALIDATION: 'VALIDATED',
+};
+
+const getInventoryBadge = (status: string) => {
+  const key = INVENTORY_BADGE_KEY[status.trim()] ?? 'DRAFT';
+  return INVENTORY_STATUS_BADGE[key] ?? INVENTORY_STATUS_BADGE.DRAFT;
+};
 
 const getStepIndex = (status: string): number => {
   const idx = WORKFLOW_STEPS.findIndex((s) => s.key === status.trim());
@@ -23,7 +44,7 @@ const StepIndicator: React.FC<{ currentStatus: string }> = ({ currentStatus }) =
   const currentIdx = getStepIndex(currentStatus);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0', margin: '20px 0', overflowX: 'auto' }}>
+    <div className="flex items-center" style={{ margin: '20px 0', overflowX: 'auto' }}>
       {WORKFLOW_STEPS.map((step, idx) => {
         const isActive = idx === currentIdx;
         const isCompleted = idx < currentIdx;
@@ -36,36 +57,36 @@ const StepIndicator: React.FC<{ currentStatus: string }> = ({ currentStatus }) =
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                minWidth: '100px',
+                minWidth: 100,
                 opacity: isPending ? 0.4 : 1,
               }}
             >
               <div
                 style={{
-                  width: '44px',
-                  height: '44px',
+                  width: 44,
+                  height: 44,
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '20px',
-                  backgroundColor: isCompleted ? '#10b981' : isActive ? '#3b82f6' : '#e2e8f0',
-                  color: isCompleted || isActive ? 'white' : '#94a3b8',
+                  fontSize: 20,
+                  backgroundColor: isCompleted ? 'var(--success)' : isActive ? 'var(--primary)' : 'var(--border)',
+                  color: isCompleted || isActive ? 'var(--on-primary)' : 'var(--muted)',
                   fontWeight: 'bold',
                   transition: 'all 0.3s ease',
-                  border: isActive ? '3px solid #93c5fd' : 'none',
+                  border: isActive ? '3px solid var(--primary-soft)' : 'none',
                 }}
               >
                 {isCompleted ? '✓' : step.icon}
               </div>
               <span
+                className="text-xs"
                 style={{
-                  marginTop: '6px',
-                  fontSize: '11px',
-                  color: isActive ? '#1e40af' : isCompleted ? '#065f46' : '#94a3b8',
+                  marginTop: 6,
+                  color: isActive ? 'var(--info)' : isCompleted ? 'var(--success)' : 'var(--muted)',
                   fontWeight: isActive ? 'bold' : 'normal',
                   textAlign: 'center',
-                  lineHeight: '1.2',
+                  lineHeight: 1.2,
                 }}
               >
                 {step.label}
@@ -75,10 +96,10 @@ const StepIndicator: React.FC<{ currentStatus: string }> = ({ currentStatus }) =
               <div
                 style={{
                   flex: 1,
-                  height: '3px',
-                  backgroundColor: idx < currentIdx ? '#10b981' : '#e2e8f0',
-                  marginTop: '-18px',
-                  minWidth: '20px',
+                  height: 3,
+                  backgroundColor: idx < currentIdx ? 'var(--success)' : 'var(--border)',
+                  marginTop: -18,
+                  minWidth: 20,
                   transition: 'background-color 0.3s ease',
                 }}
               />
@@ -109,7 +130,6 @@ export const InventoryPage: React.FC = () => {
     selectSession,
   } = useInventoryStore();
 
-  // Local state
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newNotes, setNewNotes] = useState('');
@@ -117,12 +137,10 @@ export const InventoryPage: React.FC = () => {
   const [countInput, setCountInput] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load sessions on mount
   useEffect(() => {
     loadSessions();
   }, []);
 
-  // Handlers
   const handleCreateSession = async () => {
     if (!newName.trim()) return;
     try {
@@ -238,542 +256,280 @@ export const InventoryPage: React.FC = () => {
   const status = selectedSession?.status ?? 'DRAFT';
   const canCount = status === 'COMPTAGE';
 
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const diffBadgeVariant = (diff: number): 'success' | 'info' | 'danger' => {
+    if (diff === 0) return 'success';
+    if (diff > 0) return 'info';
+    return 'danger';
+  };
 
   return (
-    <div style={{ padding: '30px', flex: 1, backgroundColor: '#f8fafc', height: '100vh', overflowY: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-        <h1 style={{ fontSize: '32px', color: '#0f172a', margin: 0 }}>📋 Inventaire Physique</h1>
-        <button
-          onClick={() => setShowCreateForm(true)}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            cursor: 'pointer',
-          }}
-        >
-          + Nouvelle Session
-        </button>
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        icon="📋"
+        title="Inventaire Physique"
+        actions={
+          <Button onClick={() => setShowCreateForm(true)}>+ Nouvelle Session</Button>
+        }
+      />
 
-      {error && (
-        <div style={{
-          padding: '12px 20px',
-          backgroundColor: '#fef2f2',
-          border: '1px solid #fecaca',
-          borderRadius: '8px',
-          color: '#991b1b',
-          marginBottom: '20px',
-          fontSize: '14px',
-        }}>
-          ⚠️ {error}
-        </div>
-      )}
-
-      {/* Create Session Form */}
-      {showCreateForm && (
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '24px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          marginBottom: '24px',
-          border: '1px solid #e2e8f0',
-        }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '18px', color: '#0f172a' }}>Nouvelle Session d'Inventaire</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <input
-              type="text"
-              placeholder="Nom de la session (ex: Inventaire mensuel Janvier 2025)"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              style={{
-                padding: '14px',
-                fontSize: '16px',
-                borderRadius: '8px',
-                border: '2px solid #cbd5e1',
-              }}
-              autoFocus
-            />
-            <textarea
-              placeholder="Notes (optionnel)"
-              value={newNotes}
-              onChange={(e) => setNewNotes(e.target.value)}
-              rows={2}
-              style={{
-                padding: '14px',
-                fontSize: '14px',
-                borderRadius: '8px',
-                border: '2px solid #cbd5e1',
-                resize: 'vertical',
-                fontFamily: 'inherit',
-              }}
-            />
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                onClick={handleCreateSession}
-                disabled={!newName.trim() || isLoading}
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: newName.trim() ? '#10b981' : '#94a3b8',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  fontWeight: 'bold',
-                  cursor: newName.trim() ? 'pointer' : 'not-allowed',
-                }}
-              >
-                Créer la Session
-              </button>
-              <button
-                onClick={() => { setShowCreateForm(false); setNewName(''); setNewNotes(''); }}
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: '#f1f5f9',
-                  color: '#64748b',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '15px',
-                  cursor: 'pointer',
-                }}
-              >
-                Annuler
-              </button>
-            </div>
+      <div className="page-content">
+        {error && (
+          <div className="surface-danger" style={{ padding: '12px 20px', marginBottom: 20, fontSize: 'var(--font-size-sm)' }}>
+            <span className="text-danger">⚠️ {error}</span>
           </div>
-        </div>
-      )}
+        )}
 
-      <div style={{ display: 'flex', gap: '20px' }}>
-        {/* ─── Sessions List ──────────────────────────────────────── */}
-        <div style={{
-          width: '340px',
-          minWidth: '340px',
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          maxHeight: 'calc(100vh - 160px)',
-          overflowY: 'auto',
-        }}>
-          <h2 style={{ margin: '0 0 16px', fontSize: '18px', color: '#0f172a' }}>
-            Sessions ({sessions.length})
-          </h2>
-          {sessions.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
-              <div style={{ fontSize: '40px', marginBottom: '12px' }}>📋</div>
-              <p>Aucune session d'inventaire</p>
-              <p style={{ fontSize: '13px' }}>Créez une nouvelle session pour commencer</p>
+        {showCreateForm && (
+          <Card padding className="mb-4">
+            <h3 style={{ margin: '0 0 16px' }}>Nouvelle Session d'Inventaire</h3>
+            <div className="flex flex-col gap-3">
+              <Input
+                placeholder="Nom de la session (ex: Inventaire mensuel Janvier 2025)"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                inputSize="lg"
+                autoFocus
+              />
+              <Textarea
+                placeholder="Notes (optionnel)"
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                rows={2}
+              />
+              <div className="flex gap-2">
+                <Button variant="success" onClick={handleCreateSession} disabled={!newName.trim() || isLoading}>
+                  Créer la Session
+                </Button>
+                <Button variant="secondary" onClick={() => { setShowCreateForm(false); setNewName(''); setNewNotes(''); }}>
+                  Annuler
+                </Button>
+              </div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {sessions.map((session) => {
-                const isActive = selectedSession?.id === session.id;
-                const stepIdx = getStepIndex(session.status);
-                const isDone = stepIdx >= 3;
-                return (
-                  <div
-                    key={session.id}
-                    onClick={() => handleSelectSession(session)}
-                    style={{
-                      padding: '14px',
-                      borderRadius: '10px',
-                      cursor: 'pointer',
-                      backgroundColor: isActive ? '#eff6ff' : '#f8fafc',
-                      border: isActive ? '2px solid #3b82f6' : '2px solid transparent',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontSize: '15px',
-                          fontWeight: isActive ? 'bold' : '600',
-                          color: '#0f172a',
-                          marginBottom: '4px',
-                        }}>
-                          {session.name}
+          </Card>
+        )}
+
+        <div className="flex gap-4">
+          <Card padding style={{ width: 340, minWidth: 340, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: 'var(--font-size-lg)' }}>
+              Sessions ({sessions.length})
+            </h2>
+            {sessions.length === 0 ? (
+              <div className="state-box" style={{ padding: '40px 20px' }}>
+                <div className="state-icon">📋</div>
+                <div className="state-text">Aucune session d'inventaire</div>
+                <div className="text-sm text-muted">Créez une nouvelle session pour commencer</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {sessions.map((session) => {
+                  const isActive = selectedSession?.id === session.id;
+                  const badgeInfo = getInventoryBadge(session.status);
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => handleSelectSession(session)}
+                      className={isActive ? 'list-item-selected' : 'list-item'}
+                      style={{ padding: 14 }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="font-semibold" style={{ marginBottom: 4 }}>
+                            {session.name}
+                          </div>
+                          <div className="text-xs text-muted">
+                            {new Date(session.created_at).toLocaleDateString('fr-FR', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                          {new Date(session.created_at).toLocaleDateString('fr-FR', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                        <div className="flex flex-col items-center gap-1">
+                          <Badge variant={badgeInfo.variant}>{badgeInfo.label}</Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
+                            title="Supprimer"
+                          >
+                            🗑️
+                          </Button>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                        <span style={{
-                          padding: '3px 10px',
-                          borderRadius: '12px',
-                          fontSize: '11px',
-                          fontWeight: 'bold',
-                          backgroundColor: isDone ? '#dcfce7' : stepIdx >= 1 ? '#dbeafe' : '#f1f5f9',
-                          color: isDone ? '#166534' : stepIdx >= 1 ? '#1e40af' : '#64748b',
-                        }}>
-                          {INVENTORY_STATUS_LABELS[session.status] ?? session.status}
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            color: '#94a3b8',
-                          }}
-                          title="Supprimer"
-                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#94a3b8'; }}
-                        >
-                          🗑️
-                        </button>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ─── Session Detail ────────────────────────────────────── */}
-        <div style={{
-          flex: 1,
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          padding: '24px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-          maxHeight: 'calc(100vh - 160px)',
-          overflowY: 'auto',
-        }}>
-          {!selectedSession ? (
-            <div style={{ textAlign: 'center', padding: '80px 40px', color: '#94a3b8' }}>
-              <div style={{ fontSize: '60px', marginBottom: '16px' }}>📋</div>
-              <h3 style={{ color: '#64748b', margin: '0 0 8px' }}>Sélectionnez une session</h3>
-              <p style={{ fontSize: '14px' }}>Choisissez une session dans la liste ou créez-en une nouvelle</p>
-            </div>
-          ) : (
-            <>
-              {/* Session Header */}
-              <div style={{ marginBottom: '20px' }}>
-                <h2 style={{ margin: '0 0 4px', fontSize: '22px', color: '#0f172a' }}>
-                  {selectedSession.name}
-                </h2>
-                {selectedSession.notes && (
-                  <p style={{ margin: '0 0 8px', fontSize: '14px', color: '#6b7280' }}>
-                    {selectedSession.notes}
-                  </p>
-                )}
-                <div style={{ fontSize: '13px', color: '#94a3b8' }}>
-                  Créée le {new Date(selectedSession.created_at).toLocaleDateString('fr-FR', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </div>
+                  );
+                })}
               </div>
+            )}
+          </Card>
 
-              {/* Step Indicator */}
-              <StepIndicator currentStatus={status} />
-
-              {/* Action Buttons based on status */}
-              <div style={{
-                display: 'flex',
-                gap: '10px',
-                margin: '16px 0',
-                flexWrap: 'wrap',
-              }}>
-                {status === 'DRAFT' && (
-                  <button
-                    onClick={handleStartCounting}
-                    disabled={isLoading}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '15px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    🔄 Démarrer le Comptage
-                  </button>
-                )}
-
-                {status === 'COMPTAGE' && (
-                  <button
-                    onClick={handleCalculateGaps}
-                    disabled={isLoading}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: '#f59e0b',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '15px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    📊 Calculer les Écarts
-                  </button>
-                )}
-
-                {status === 'CALCUL' && (
-                  <button
-                    onClick={handleValidate}
-                    disabled={isLoading}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '15px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ✅ Valider l'Inventaire
-                  </button>
-                )}
+          <Card padding className="flex-1" style={{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
+            {!selectedSession ? (
+              <div className="state-box" style={{ padding: '80px 40px' }}>
+                <div className="state-icon">📋</div>
+                <div className="state-title">Sélectionnez une session</div>
+                <div className="state-text">Choisissez une session dans la liste ou créez-en une nouvelle</div>
               </div>
-
-              {/* Progress Bar */}
-              {selectedSession.items && selectedSession.items.length > 0 && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#6b7280', marginBottom: '6px' }}>
-                    <span>Progression du comptage</span>
-                    <span>{countedItems} / {totalItems} articles comptés</span>
-                  </div>
-                  <div style={{
-                    width: '100%',
-                    height: '8px',
-                    backgroundColor: '#e2e8f0',
-                    borderRadius: '4px',
-                    overflow: 'hidden',
-                  }}>
-                    <div style={{
-                      width: `${totalItems > 0 ? (countedItems / totalItems) * 100 : 0}%`,
-                      height: '100%',
-                      backgroundColor: countedItems === totalItems ? '#10b981' : '#3b82f6',
-                      borderRadius: '4px',
-                      transition: 'width 0.3s ease',
-                    }} />
+            ) : (
+              <>
+                <div className="mb-4">
+                  <h2 style={{ margin: '0 0 4px' }}>{selectedSession.name}</h2>
+                  {selectedSession.notes && (
+                    <p className="text-sm text-secondary" style={{ margin: '0 0 8px' }}>
+                      {selectedSession.notes}
+                    </p>
+                  )}
+                  <div className="text-sm text-muted">
+                    Créée le {new Date(selectedSession.created_at).toLocaleDateString('fr-FR', {
+                      day: '2-digit',
+                      month: 'long',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </div>
                 </div>
-              )}
 
-              {/* Search */}
-              {selectedSession.items && selectedSession.items.length > 0 && (
-                <input
-                  type="text"
-                  placeholder="🔍 Rechercher un produit..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    fontSize: '14px',
-                    borderRadius: '8px',
-                    border: '2px solid #e2e8f0',
-                    marginBottom: '16px',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              )}
+                <StepIndicator currentStatus={status} />
 
-              {/* Items Table */}
-              {selectedSession.items && selectedSession.items.length > 0 ? (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{
-                    width: '100%',
-                    borderCollapse: 'separate',
-                    borderSpacing: '0',
-                    fontSize: '14px',
-                  }}>
-                    <thead>
-                      <tr>
-                        {[
-                          { label: 'Réf', width: '100px' },
-                          { label: 'Désignation', width: 'auto' },
-                          { label: 'Unité', width: '80px' },
-                          { label: 'Stock Attendu', width: '120px' },
-                          { label: 'Compté', width: '120px' },
-                          { label: 'Écart', width: '100px' },
-                          { label: 'Actions', width: '100px' },
-                        ].map((col) => (
-                          <th key={col.label} style={{
-                            textAlign: 'left',
-                            padding: '12px 14px',
-                            backgroundColor: '#0f172a',
-                            color: 'white',
-                            fontWeight: '600',
-                            fontSize: '13px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.5px',
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {col.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredItems.map((item, idx) => {
-                        const isEditing = editingItemId === item.id;
-                        const diff = item.difference;
-                        return (
-                          <tr
-                            key={item.id}
-                            style={{
-                              backgroundColor: idx % 2 === 0 ? 'white' : '#f8fafc',
-                            }}
-                          >
-                            <td style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', fontWeight: '600', color: '#334155' }}>
-                              {item.product_reference || '—'}
-                            </td>
-                            <td style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', color: '#0f172a' }}>
-                              {item.product_designation || '—'}
-                            </td>
-                            <td style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', color: '#6b7280' }}>
-                              {item.unit || 'PIÈCE'}
-                            </td>
-                            <td style={{
-                              padding: '12px 14px',
-                              borderBottom: '1px solid #f1f5f9',
-                              textAlign: 'center',
-                              fontWeight: 'bold',
-                              color: '#334155',
-                            }}>
-                              {item.expected_qty}
-                            </td>
-                            <td style={{
-                              padding: '12px 14px',
-                              borderBottom: '1px solid #f1f5f9',
-                              textAlign: 'center',
-                            }}>
-                              {isEditing ? (
-                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={countInput}
-                                    onChange={(e) => setCountInput(Number(e.target.value))}
-                                    style={{
-                                      width: '80px',
-                                      padding: '6px 10px',
-                                      fontSize: '14px',
-                                      borderRadius: '6px',
-                                      border: '2px solid #3b82f6',
-                                      textAlign: 'center',
-                                    }}
-                                    autoFocus
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') handleCountItem(item.id);
-                                      if (e.key === 'Escape') setEditingItemId(null);
-                                    }}
-                                  />
-                                  <button
-                                    onClick={() => handleCountItem(item.id)}
-                                    style={{
-                                      padding: '6px 10px',
-                                      backgroundColor: '#10b981',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      cursor: 'pointer',
-                                      fontSize: '13px',
+                <div className="flex gap-2 mb-4" style={{ flexWrap: 'wrap' }}>
+                  {status === 'DRAFT' && (
+                    <Button onClick={handleStartCounting} disabled={isLoading}>
+                      🔄 Démarrer le Comptage
+                    </Button>
+                  )}
+                  {status === 'COMPTAGE' && (
+                    <Button onClick={handleCalculateGaps} disabled={isLoading} style={{ background: 'var(--warning)', borderColor: 'transparent' }}>
+                      📊 Calculer les Écarts
+                    </Button>
+                  )}
+                  {status === 'CALCUL' && (
+                    <Button variant="success" onClick={handleValidate} disabled={isLoading}>
+                      ✅ Valider l'Inventaire
+                    </Button>
+                  )}
+                </div>
+
+                {selectedSession.items && selectedSession.items.length > 0 && (
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm text-secondary mb-2">
+                      <span>Progression du comptage</span>
+                      <span>{countedItems} / {totalItems} articles comptés</span>
+                    </div>
+                    <div style={{ width: '100%', height: 8, backgroundColor: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${totalItems > 0 ? (countedItems / totalItems) * 100 : 0}%`,
+                          height: '100%',
+                          backgroundColor: countedItems === totalItems ? 'var(--success)' : 'var(--primary)',
+                          borderRadius: 4,
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {selectedSession.items && selectedSession.items.length > 0 && (
+                  <Input
+                    placeholder="🔍 Rechercher un produit..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="mb-4"
+                  />
+                )}
+
+                {selectedSession.items && selectedSession.items.length > 0 ? (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Réf</th>
+                          <th>Désignation</th>
+                          <th>Unité</th>
+                          <th className="text-center">Stock Attendu</th>
+                          <th className="text-center">Compté</th>
+                          <th className="text-center">Écart</th>
+                          <th className="text-center">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredItems.map((item) => {
+                          const isEditing = editingItemId === item.id;
+                          const diff = item.difference;
+                          return (
+                            <tr key={item.id}>
+                              <td className="font-semibold text-secondary">{item.product_reference || '—'}</td>
+                              <td>{item.product_designation || '—'}</td>
+                              <td className="text-muted">{item.unit || 'PIÈCE'}</td>
+                              <td className="qty text-center font-semibold">{item.expected_qty}</td>
+                              <td className="text-center">
+                                {isEditing ? (
+                                  <div className="flex gap-2 items-center justify-center">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={countInput}
+                                      onChange={(e) => setCountInput(Number(e.target.value))}
+                                      className="input input-sm text-center"
+                                      style={{ width: 80 }}
+                                      autoFocus
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleCountItem(item.id);
+                                        if (e.key === 'Escape') setEditingItemId(null);
+                                      }}
+                                    />
+                                    <Button variant="success" size="sm" onClick={() => handleCountItem(item.id)}>✓</Button>
+                                  </div>
+                                ) : (
+                                  <span className={`qty font-semibold ${item.counted_qty !== null ? '' : 'text-muted'}`}>
+                                    {item.counted_qty !== null ? item.counted_qty : '—'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                {diff !== null && diff !== undefined ? (
+                                  <Badge variant={diffBadgeVariant(diff)}>
+                                    {diff > 0 ? '+' : ''}{diff}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted">—</span>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                {!isEditing && canCount && (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingItemId(item.id);
+                                      setCountInput(item.counted_qty ?? item.expected_qty);
                                     }}
                                   >
-                                    ✓
-                                  </button>
-                                </div>
-                              ) : (
-                                <span style={{
-                                  fontWeight: 'bold',
-                                  color: item.counted_qty !== null ? '#0f172a' : '#cbd5e1',
-                                  fontSize: '15px',
-                                }}>
-                                  {item.counted_qty !== null ? item.counted_qty : '—'}
-                                </span>
-                              )}
-                            </td>
-                            <td style={{
-                              padding: '12px 14px',
-                              borderBottom: '1px solid #f1f5f9',
-                              textAlign: 'center',
-                              fontWeight: 'bold',
-                            }}>
-                              {diff !== null && diff !== undefined ? (
-                                <span style={{
-                                  padding: '3px 10px',
-                                  borderRadius: '12px',
-                                  fontSize: '13px',
-                                  backgroundColor: diff === 0 ? '#dcfce7' : diff > 0 ? '#dbeafe' : '#fee2e2',
-                                  color: diff === 0 ? '#166534' : diff > 0 ? '#1e40af' : '#991b1b',
-                                }}>
-                                  {diff > 0 ? '+' : ''}{diff}
-                                </span>
-                              ) : (
-                                <span style={{ color: '#cbd5e1' }}>—</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
-                              {!isEditing && canCount && (
-                                <button
-                                  onClick={() => {
-                                    setEditingItemId(item.id);
-                                    setCountInput(item.counted_qty ?? item.expected_qty);
-                                  }}
-                                  style={{
-                                    padding: '6px 14px',
-                                    backgroundColor: '#eff6ff',
-                                    color: '#3b82f6',
-                                    border: '1px solid #bfdbfe',
-                                    borderRadius: '6px',
-                                    fontSize: '13px',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                  }}
-                                >
-                                  Compter
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8' }}>
-                  <div style={{ fontSize: '40px', marginBottom: '12px' }}>📦</div>
-                  <p>
-                    {status === 'DRAFT'
-                      ? 'Démarrez le comptage pour voir les articles'
-                      : 'Aucun article dans cette session'
-                    }
-                  </p>
-                </div>
-              )}
-            </>
-          )}
+                                    Compter
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="state-box" style={{ padding: 40 }}>
+                    <div className="state-icon">📦</div>
+                    <div className="state-text">
+                      {status === 'DRAFT'
+                        ? 'Démarrez le comptage pour voir les articles'
+                        : 'Aucun article dans cette session'}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
         </div>
       </div>
 

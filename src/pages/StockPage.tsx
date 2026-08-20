@@ -4,6 +4,8 @@ import { useStockStore } from '../stores/useStockStore';
 import { useProductStore } from '../stores/useProductStore';
 import { DataTable } from '../components/ui/DataTable';
 import { toast } from '../stores/useToastStore';
+import { Button, Card, CardHeader, Badge, Select, PageHeader } from '../components/ui';
+import { stockLevelClass } from '../components/ui/statusMaps';
 
 export type ExitType = 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
 
@@ -76,11 +78,11 @@ const GlobalHistoryTab: React.FC = () => {
   };
 
   return (
-    <div className="card" style={{ overflow: 'hidden', alignSelf: 'stretch' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Card overflow className="align-self-stretch">
+      <CardHeader>
         <h3 style={{ margin: 0 }}>Historique global des mouvements</h3>
         <span className="text-sm text-muted">{movements.length} mouvement(s) chargés</span>
-      </div>
+      </CardHeader>
       {isLoading && movements.length === 0 ? (
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton skeleton-row" />)}
@@ -116,9 +118,9 @@ const GlobalHistoryTab: React.FC = () => {
                     {m.product_ref && <span className="text-muted">{m.product_ref}</span>} {m.product_name ?? '—'}
                   </div>
                   <div style={{ flex: 1, padding: '6px 14px' }}>
-                    <span className={`badge ${isIn ? 'badge-success' : 'badge-danger'}`} style={{ marginRight: 6 }}>
+                    <Badge variant={isIn ? 'success' : 'danger'} style={{ marginRight: 6 }}>
                       {isIn ? 'IN' : 'OUT'}
-                    </span>
+                    </Badge>
                     <span className="text-sm">{MOVEMENT_TYPE_LABELS[m.movement_type] ?? m.movement_type}</span>
                   </div>
                   <div className="qty" style={{ flex: 0.6, padding: '6px 14px', textAlign: 'center', fontWeight: 700 }}>{m.quantity}</div>
@@ -131,7 +133,7 @@ const GlobalHistoryTab: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 };
 
@@ -225,164 +227,181 @@ export const StockPage: React.FC = () => {
   const selectedProduct = products.find(p => p.id === selectedProductId);
 
   return (
-    <div style={{ padding: '30px', flex: 1, backgroundColor: '#f8fafc', height: '100vh', overflowY: 'auto' }}>
-      <h1 style={{ fontSize: '32px', color: '#0f172a', marginBottom: '30px' }}>Gestion des Mouvements de Stock</h1>
+    <div className="page-shell" style={{ overflowY: 'auto' }}>
+      <PageHeader title="Gestion des Mouvements de Stock" />
 
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '30px' }}>
+      <div className="page-content">
         <input
           type="text"
+          className="input input-lg w-full"
           placeholder="Scanner le code-barres ou taper la référence... (Entrée pour chercher)"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearch}
-          style={{ flex: 1, padding: '20px', fontSize: '20px', borderRadius: '8px', border: '2px solid #cbd5e1' }}
           autoFocus
         />
-      </div>
 
-      {/* Onglets : opérations par produit / historique global virtualisé */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
-        {([
-          { key: 'operations' as const, label: 'Opérations' },
-          { key: 'history' as const, label: 'Historique global' },
-        ]).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              padding: '8px 18px',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: activeTab === tab.key ? 'bold' : '600',
-              background: activeTab === tab.key ? '#0e7667' : '#e2e8f0',
-              color: activeTab === tab.key ? 'white' : '#475569',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'history' ? (
-        <GlobalHistoryTab />
-      ) : (
-      <div style={{ display: 'flex', gap: '20px' }}>
-        {/* Liste des produits trouvés */}
-        <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
-          <h2 style={{ marginTop: 0 }}>Résultats</h2>
-          <DataTable
-            columns={[
-              { key: 'reference', label: 'Réf', sortable: true },
-              { key: 'designation', label: 'Désignation', sortable: true },
-              {
-                key: 'current_stock',
-                label: 'Stock',
-                sortable: true,
-                render: (p: any) => (
-                  <span style={{ color: (p.current_stock ?? 0) <= p.min_stock ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>
-                    {p.current_stock ?? 0} {p.unit || 'PIÈCE'}
-                  </span>
-                ),
-              },
-            ]}
-            rows={products as any}
-            getRowId={(p: any) => p.id}
-            searchableKeys={['reference', 'designation', 'barcode']}
-            searchPlaceholder="Filtrer dans les résultats…"
-            pageSize={10}
-            onRowClick={(p: any) => handleSelectProduct(p.id)}
-          />
+        <div style={{ display: 'flex', gap: 4 }}>
+          {([
+            { key: 'operations' as const, label: 'Opérations' },
+            { key: 'history' as const, label: 'Historique global' },
+          ]).map(tab => (
+            <Button
+              key={tab.key}
+              variant={activeTab === tab.key ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </Button>
+          ))}
         </div>
 
-        {/* Actions sur le produit sélectionné */}
-        {selectedProductId && (
-          <div style={{ flex: 1.4, backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
-            {selectedProduct && (
-              <div style={{ fontSize: '15px', color: '#6b7280', marginBottom: '12px' }}>
-                {selectedProduct.reference} — {selectedProduct.designation} ({selectedProduct.unit || 'PIÈCE'})
-              </div>
-            )}
-            <div style={{ fontSize: '24px', marginBottom: '20px' }}>
-              Stock Actuel : <strong style={{ color: currentProductStock > 0 ? '#10b981' : '#ef4444' }}>{currentProductStock}</strong>
-            </div>
+        {activeTab === 'history' ? (
+          <GlobalHistoryTab />
+        ) : (
+          <div style={{ display: 'flex', gap: 20 }}>
+            <Card padding className="flex-1">
+              <h2 style={{ marginTop: 0 }}>Résultats</h2>
+              <DataTable
+                columns={[
+                  { key: 'reference', label: 'Réf', sortable: true },
+                  { key: 'designation', label: 'Désignation', sortable: true },
+                  {
+                    key: 'current_stock',
+                    label: 'Stock',
+                    sortable: true,
+                    render: (p: any) => (
+                      <span className={`${stockLevelClass(p.current_stock ?? 0, p.min_stock ?? 0)} font-semibold`}>
+                        {p.current_stock ?? 0} {p.unit || 'PIÈCE'}
+                      </span>
+                    ),
+                  },
+                ]}
+                rows={products as any}
+                getRowId={(p: any) => p.id}
+                searchableKeys={['reference', 'designation', 'barcode']}
+                searchPlaceholder="Filtrer dans les résultats…"
+                pageSize={10}
+                onRowClick={(p: any) => handleSelectProduct(p.id)}
+              />
+            </Card>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input type="number" value={qty} onChange={e => setQty(Number(e.target.value))} placeholder="Quantité" style={{ flex: 1, padding: '15px', fontSize: '18px' }} />
-                <input type="number" value={price} onChange={e => setPrice(Number(e.target.value))} placeholder="Prix unitaire" style={{ flex: 1, padding: '15px', fontSize: '18px' }} />
-              </div>
-              {/* Réf BL (entrées) */}
-              <input type="text" value={blRef} onChange={e => setBlRef(e.target.value)} placeholder="Réf BL (entrée achat, optionnel)" style={{ padding: '12px', fontSize: '15px' }} />
-              {/* Type de sortie */}
-              <select value={exitType} onChange={e => setExitType(e.target.value as ExitType)} style={{ padding: '12px', fontSize: '15px' }}>
-                <option value="VENTE">Sortie : Vente</option>
-                <option value="CASSE">Sortie : Casse</option>
-                <option value="PERTE">Sortie : Perte</option>
-                <option value="RETOUR">Sortie : Retour</option>
-              </select>
-              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes (optionnel)" style={{ padding: '12px', fontSize: '15px' }} />
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button onClick={handleAddEntry} style={{ flex: 1, padding: '20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  + ENTREE (Achat)
-                </button>
-                <button onClick={handleAddExit} style={{ flex: 1, padding: '20px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  - SORTIE ({exitType})
-                </button>
-              </div>
-
-              {/* Inventaire */}
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '15px', marginTop: '5px' }}>
-                <h3 style={{ margin: '0 0 10px', fontSize: '16px', color: '#0f172a' }}>📋 Inventaire (comptage physique)</h3>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <input
-                    type="number"
-                    value={actualCount}
-                    onChange={e => setActualCount(Number(e.target.value))}
-                    placeholder="Quantité comptée"
-                    style={{ flex: 1, padding: '15px', fontSize: '18px' }}
-                  />
-                  <button onClick={handleInventory} style={{ flex: 1, padding: '15px', backgroundColor: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}>
-                    ✓ Valider l'inventaire
-                  </button>
-                </div>
-              </div>
-
-              {/* Historique */}
-              {stockHistory.length > 0 && (
-                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '15px' }}>
-                  <h3 style={{ margin: '0 0 10px', fontSize: '16px', color: '#0f172a' }}>🕘 Historique des mouvements</h3>
-                  <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                    {stockHistory.map(h => (
-                      <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f1f5f9', fontSize: '14px' }}>
-                        <span>
-                          <span style={{
-                            fontWeight: 'bold',
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontSize: '12px',
-                            background: h.type === 'IN' ? '#dcfce7' : h.type === 'OUT' ? '#fee2e2' : '#ede9fe',
-                            color: h.type === 'IN' ? '#166534' : h.type === 'OUT' ? '#991b1b' : '#5b21b6',
-                          }}>
-                            {h.type === 'IN' ? 'ENTRÉE' : h.type === 'OUT' ? 'SORTIE' : 'INVENTAIRE'}
-                          </span>{' '}
-                          {h.notes ? h.notes.substring(0, 50) : `Qté: ${h.quantity}`}
-                        </span>
-                        <span style={{ textAlign: 'right', color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                          {new Date(h.date ?? Date.now()).toLocaleDateString('fr-MA')}
-                        </span>
-                      </div>
-                    ))}
+            {selectedProductId && (
+              <Card padding className="flex-1" style={{ flex: 1.4 }}>
+                {selectedProduct && (
+                  <div className="text-sm text-muted" style={{ marginBottom: 12 }}>
+                    {selectedProduct.reference} — {selectedProduct.designation} ({selectedProduct.unit || 'PIÈCE'})
                   </div>
+                )}
+                <div style={{ fontSize: 24, marginBottom: 20 }}>
+                  Stock Actuel :{' '}
+                  <strong className={currentProductStock > 0 ? 'text-success' : 'text-danger'}>
+                    {currentProductStock}
+                  </strong>
                 </div>
-              )}
-            </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input
+                      type="number"
+                      className="input input-lg flex-1"
+                      value={qty}
+                      onChange={e => setQty(Number(e.target.value))}
+                      placeholder="Quantité"
+                    />
+                    <input
+                      type="number"
+                      className="input input-lg flex-1"
+                      value={price}
+                      onChange={e => setPrice(Number(e.target.value))}
+                      placeholder="Prix unitaire"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    className="input"
+                    value={blRef}
+                    onChange={e => setBlRef(e.target.value)}
+                    placeholder="Réf BL (entrée achat, optionnel)"
+                  />
+                  <Select value={exitType} onChange={e => setExitType(e.target.value as ExitType)}>
+                    <option value="VENTE">Sortie : Vente</option>
+                    <option value="CASSE">Sortie : Casse</option>
+                    <option value="PERTE">Sortie : Perte</option>
+                    <option value="RETOUR">Sortie : Retour</option>
+                  </Select>
+                  <input
+                    type="text"
+                    className="input"
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Notes (optionnel)"
+                  />
+
+                  <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                    <Button variant="primary" size="lg" block onClick={handleAddEntry}>
+                      + ENTREE (Achat)
+                    </Button>
+                    <Button variant="danger" size="lg" block onClick={handleAddExit}>
+                      - SORTIE ({exitType})
+                    </Button>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 15, marginTop: 5 }}>
+                    <h3 style={{ margin: '0 0 10px' }}>📋 Inventaire (comptage physique)</h3>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <input
+                        type="number"
+                        className="input input-lg flex-1"
+                        value={actualCount}
+                        onChange={e => setActualCount(Number(e.target.value))}
+                        placeholder="Quantité comptée"
+                      />
+                      <Button variant="primary" size="lg" block onClick={handleInventory}>
+                        ✓ Valider l'inventaire
+                      </Button>
+                    </div>
+                  </div>
+
+                  {stockHistory.length > 0 && (
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 15 }}>
+                      <h3 style={{ margin: '0 0 10px' }}>🕘 Historique des mouvements</h3>
+                      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                        {stockHistory.map(h => (
+                          <div
+                            key={h.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              padding: '8px 0',
+                              borderBottom: '1px solid var(--border)',
+                              fontSize: 14,
+                            }}
+                          >
+                            <span>
+                              <Badge
+                                variant={h.type === 'IN' ? 'success' : h.type === 'OUT' ? 'danger' : 'primary'}
+                                style={{ marginRight: 6 }}
+                              >
+                                {h.type === 'IN' ? 'ENTRÉE' : h.type === 'OUT' ? 'SORTIE' : 'INVENTAIRE'}
+                              </Badge>
+                              {h.notes ? h.notes.substring(0, 50) : `Qté: ${h.quantity}`}
+                            </span>
+                            <span className="text-sm text-muted" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              {new Date(h.date ?? Date.now()).toLocaleDateString('fr-MA')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
           </div>
         )}
       </div>
-      )}
     </div>
   );
 };

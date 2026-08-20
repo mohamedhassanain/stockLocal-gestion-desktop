@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from '../stores/useToastStore';
+import { Button, Card, CardFooter, CardHeader, PageHeader, StatCard } from '../components/ui';
 import type { PaymentRecord } from '../repositories/DocumentRepository';
 
 const PAGE_SIZE = 50;
@@ -59,43 +60,28 @@ export const CashRegisterPage: React.FC = () => {
   const visible = payments.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)', height: '100vh', overflow: 'hidden' }}>
-      <div className="page-header">
-        <div>
-          <h1>Caisse</h1>
-          <div style={{ color: 'var(--muted)', marginTop: 4, fontSize: 13 }}>
-            Suivi des encaissements par mode de paiement
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-ghost" onClick={load}>Actualiser</button>
-        </div>
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        title="Caisse"
+        subtitle="Suivi des encaissements par mode de paiement"
+        actions={<Button variant="ghost" onClick={load}>Actualiser</Button>}
+      />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* KPI par mode de paiement */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          {[
-            { label: 'Espèces', value: totals.cash, soft: 'var(--success-soft)', color: 'var(--success)' },
-            { label: 'Chèques', value: totals.check, soft: 'var(--warning-soft)', color: 'var(--warning)' },
-            { label: 'Virements', value: totals.transfer, soft: 'var(--info-soft)', color: 'var(--info)' },
-            { label: 'Total encaissé', value: totals.total, soft: 'var(--primary-soft)', color: 'var(--primary)' },
-          ].map((kpi) => (
-            <div key={kpi.label} className="card" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{kpi.label}</span>
-              <span className="money" style={{ fontSize: 22, fontWeight: 800, color: kpi.color }}>{kpi.value.toFixed(2)} MAD</span>
-            </div>
-          ))}
+      <div className="page-content">
+        <div className="stat-grid">
+          <StatCard label="Espèces" value={`${totals.cash.toFixed(2)} MAD`} tone="success" />
+          <StatCard label="Chèques" value={`${totals.check.toFixed(2)} MAD`} tone="warning" />
+          <StatCard label="Virements" value={`${totals.transfer.toFixed(2)} MAD`} tone="info" />
+          <StatCard label="Total encaissé" value={`${totals.total.toFixed(2)} MAD`} tone="primary" />
         </div>
 
-        {/* Journal des paiements */}
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Card overflow>
+          <CardHeader>
             <h3 style={{ margin: 0 }}>Journal de caisse</h3>
             <span className="text-sm text-muted">{payments.length} encaissement(s)</span>
-          </div>
+          </CardHeader>
           {isLoading ? (
-            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="card-body flex gap-3" style={{ flexDirection: 'column' }}>
               {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton skeleton-row" />)}
             </div>
           ) : payments.length === 0 ? (
@@ -111,7 +97,7 @@ export const CashRegisterPage: React.FC = () => {
                     <th>Document</th>
                     <th>Client</th>
                     <th>Mode</th>
-                    <th style={{ textAlign: 'right' }}>Montant</th>
+                    <th className="text-right">Montant</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -122,11 +108,11 @@ export const CashRegisterPage: React.FC = () => {
                         <td className="text-sm" style={{ whiteSpace: 'nowrap' }}>{new Date(p.date).toLocaleDateString('fr-MA')}</td>
                         <td>
                           <span className={`badge ${badge.cls}`} style={{ marginRight: 8 }}>{badge.label}</span>
-                          <span style={{ fontWeight: 600 }}>{p.document_number}</span>
+                          <span className="font-semibold">{p.document_number}</span>
                         </td>
                         <td>{p.customer_name ?? '—'}</td>
                         <td>{METHOD_LABELS[p.payment_method] ?? p.payment_method}</td>
-                        <td className="money" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--success)' }}>{p.amount.toFixed(2)} MAD</td>
+                        <td className="money text-right font-semibold text-success">{p.amount.toFixed(2)} MAD</td>
                       </tr>
                     );
                   })}
@@ -135,13 +121,13 @@ export const CashRegisterPage: React.FC = () => {
             </div>
           )}
           {pageCount > 1 && (
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
-              <button className="btn btn-secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Précédent</button>
+            <CardFooter>
+              <Button variant="secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Précédent</Button>
               <span className="text-sm text-muted" style={{ alignSelf: 'center' }}>Page {page + 1} / {pageCount}</span>
-              <button className="btn btn-secondary" disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>Suivant →</button>
-            </div>
+              <Button variant="secondary" disabled={page >= pageCount - 1} onClick={() => setPage(p => p + 1)}>Suivant →</Button>
+            </CardFooter>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

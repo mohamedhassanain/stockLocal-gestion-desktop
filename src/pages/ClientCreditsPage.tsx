@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
+import { Button, Card, CardHeader, PageHeader, StatCard } from '../components/ui';
 import type { UpcomingDue } from '../repositories/DashboardRepository';
 
 export const ClientCreditsPage: React.FC = () => {
@@ -32,62 +33,40 @@ export const ClientCreditsPage: React.FC = () => {
   const totalDebt = debtors.reduce((s: number, d: any) => s + d.balance, 0);
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)', height: '100vh', overflow: 'hidden' }}>
-      <div className="page-header">
-        <div>
-          <h1>Crédits & échéances</h1>
-          <div style={{ color: 'var(--muted)', marginTop: 4, fontSize: 13 }}>
-            Dettes clients (نسيئة) et échéances à venir
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {[7, 30, 60].map(days => (
-              <button
-                key={days}
-                onClick={() => setDueDays(days)}
-                style={{
-                  padding: '4px 12px',
-                  border: '1px solid var(--border-strong)',
-                  borderRadius: 'var(--radius-md)',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  background: dueDays === days ? 'var(--primary)' : 'var(--surface)',
-                  color: dueDays === days ? '#fff' : 'var(--text-secondary)',
-                }}
-              >
-                {days} j
-              </button>
-            ))}
-          </div>
-          <button className="btn btn-ghost" onClick={load}>Actualiser</button>
-        </div>
-      </div>
+    <div className="page-shell">
+      <PageHeader
+        title="Crédits & échéances"
+        subtitle="Dettes clients (نسيئة) et échéances à venir"
+        actions={
+          <>
+            <div className="flex gap-1">
+              {[7, 30, 60].map(days => (
+                <button
+                  key={days}
+                  onClick={() => setDueDays(days)}
+                  className={`btn btn-sm ${dueDays === days ? 'btn-primary' : 'btn-secondary'}`}
+                >
+                  {days} j
+                </button>
+              ))}
+            </div>
+            <Button variant="ghost" onClick={load}>Actualiser</Button>
+          </>
+        }
+      />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* Résumé */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          <div className="card" style={{ padding: '16px 18px' }}>
-            <div className="text-sm" style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Total dû par les clients</div>
-            <div className="money" style={{ fontSize: 22, fontWeight: 800, color: 'var(--danger)' }}>{totalDebt.toFixed(2)} MAD</div>
-          </div>
-          <div className="card" style={{ padding: '16px 18px' }}>
-            <div className="text-sm" style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Clients débiteurs</div>
-            <div className="money" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{debtors.length}</div>
-          </div>
-          <div className="card" style={{ padding: '16px 18px' }}>
-            <div className="text-sm" style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Échéances ({dueDays} j)</div>
-            <div className="money" style={{ fontSize: 22, fontWeight: 800, color: 'var(--warning)' }}>{dues.length}</div>
-          </div>
+      <div className="page-content">
+        <div className="stat-grid">
+          <StatCard label="Total dû par les clients" value={`${totalDebt.toFixed(2)} MAD`} tone="danger" />
+          <StatCard label="Clients débiteurs" value={debtors.length} />
+          <StatCard label={`Échéances (${dueDays} j)`} value={dues.length} tone="warning" />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-          {/* Clients débiteurs */}
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+          <Card overflow>
+            <CardHeader>
               <h3 style={{ margin: 0 }}>Clients avec solde dû</h3>
-            </div>
+            </CardHeader>
             {debtors.length === 0 ? (
               <div className="state-box">
                 <div className="state-text">Aucune dette client en cours.</div>
@@ -98,29 +77,28 @@ export const ClientCreditsPage: React.FC = () => {
                   <thead>
                     <tr>
                       <th>Client</th>
-                      <th style={{ textAlign: 'right' }}>Solde</th>
+                      <th className="text-right">Solde</th>
                     </tr>
                   </thead>
                   <tbody>
                     {debtors.map((d: any) => (
                       <tr key={d.id}>
-                        <td style={{ fontWeight: 600 }}>{d.name}</td>
-                        <td className="money" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>{d.balance.toFixed(2)} MAD</td>
+                        <td className="font-semibold">{d.name}</td>
+                        <td className="money text-right font-semibold text-danger">{d.balance.toFixed(2)} MAD</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>
+          </Card>
 
-          {/* Échéances */}
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+          <Card overflow>
+            <CardHeader>
               <h3 style={{ margin: 0 }}>Échéances à venir</h3>
-            </div>
+            </CardHeader>
             {isLoading ? (
-              <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="card-body flex gap-3" style={{ flexDirection: 'column' }}>
                 {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton skeleton-row" />)}
               </div>
             ) : dues.length === 0 ? (
@@ -135,7 +113,7 @@ export const ClientCreditsPage: React.FC = () => {
                       <th>Document</th>
                       <th>Client</th>
                       <th>Échéance</th>
-                      <th style={{ textAlign: 'right' }}>Reste</th>
+                      <th className="text-right">Reste</th>
                       <th>Statut</th>
                     </tr>
                   </thead>
@@ -145,10 +123,10 @@ export const ClientCreditsPage: React.FC = () => {
                       const urgent = !overdue && due.days_left <= 7;
                       return (
                         <tr key={due.id}>
-                          <td style={{ fontWeight: 600 }}>{due.document_number}</td>
+                          <td className="font-semibold">{due.document_number}</td>
                           <td>{due.customer_name}</td>
                           <td className="text-sm text-muted" style={{ whiteSpace: 'nowrap' }}>{due.due_date?.split('T')[0]}</td>
-                          <td className="money" style={{ textAlign: 'right', fontWeight: 700, color: 'var(--danger)' }}>{due.remaining.toFixed(2)} MAD</td>
+                          <td className="money text-right font-semibold text-danger">{due.remaining.toFixed(2)} MAD</td>
                           <td>
                             <span className={overdue ? 'badge badge-danger' : urgent ? 'badge badge-warning' : 'badge badge-muted'}>
                               {overdue ? `En retard (${Math.abs(due.days_left)}j)` : `J-${due.days_left}`}
@@ -161,7 +139,7 @@ export const ClientCreditsPage: React.FC = () => {
                 </table>
               </div>
             )}
-          </div>
+          </Card>
         </div>
       </div>
     </div>
