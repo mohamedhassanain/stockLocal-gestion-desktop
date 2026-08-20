@@ -37,8 +37,8 @@ export const ClientCreateSchema = z.object({
   address: z.string().max(500).optional().nullable(),
   ice: z.string().max(30).optional().nullable(),
   payment_conditions: z.string().max(200).optional().nullable(),
-  credit_limit: z.number().min(0, 'Le plafond de crédit ne peut pas être négatif.').optional(),
-  category: z.enum(['DÉTAIL', 'GROSSISTE', 'VIP']).optional(),
+  credit_limit: z.number().min(0, 'Le plafond de crédit ne peut pas être négatif.').default(0),
+  category: z.enum(['DÉTAIL', 'GROSSISTE', 'VIP']).default('DÉTAIL'),
 });
 
 export const ClientUpdateSchema = ClientCreateSchema.partial();
@@ -84,7 +84,7 @@ export const PaymentSchema = z.object({
 export const StockEntrySchema = z.object({
   product_id: z.string().min(1).max(64),
   quantity: z.number().positive('La quantité doit être supérieure à 0.'),
-  unit_price: z.number().min(0).optional(),
+  unit_price: z.number().min(0).default(0),
   reference_doc: z.string().max(100).optional().nullable(),
   supplier_id: z.string().max(64).optional().nullable(),
   notes: z.string().max(500).optional().nullable(),
@@ -93,7 +93,7 @@ export const StockEntrySchema = z.object({
 export const StockExitSchema = z.object({
   product_id: z.string().min(1).max(64),
   quantity: z.number().positive('La quantité doit être supérieure à 0.'),
-  unit_price: z.number().min(0).optional(),
+  unit_price: z.number().min(0).default(0),
   exitType: z.enum(['VENTE', 'CASSE', 'PERTE', 'RETOUR']),
   notes: z.string().max(500).optional().nullable(),
 });
@@ -124,7 +124,7 @@ export const PurchaseSchema = z.object({
 export const IdSchema = z.string().min(1).max(64);
 
 /** Parse et renvoie les données nettoyées, ou lève une erreur lisible en français. */
-export function safeParse<T>(schema: z.ZodType<T>, data: unknown, label: string): T {
+export function safeParse<S extends z.ZodTypeAny>(schema: S, data: unknown, label: string): z.infer<S> {
   const result = schema.safeParse(data);
   if (!result.success) {
     const firstError = result.error.errors[0];
@@ -134,4 +134,29 @@ export function safeParse<T>(schema: z.ZodType<T>, data: unknown, label: string)
     throw new Error(message);
   }
   return result.data;
+}
+
+/** Transforme récursivement `T | null` en `T | undefined` au niveau du type. */
+export type NullToUndefined<T> = T extends null
+  ? undefined
+  : T extends (infer U)[]
+    ? NullToUndefined<U>[]
+    : T extends object
+      ? { [K in keyof T]: NullToUndefined<T[K]> }
+      : T;
+
+/** Remplace récursivement `null` par `undefined` (les services exigent `string | undefined`). */
+export function nullToUndefined<T>(value: T): NullToUndefined<T> {
+  if (value === null) return undefined as unknown as NullToUndefined<T>;
+  if (Array.isArray(value)) {
+    return value.map(item => nullToUndefined(item)) as unknown as NullToUndefined<T>;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = nullToUndefined(val);
+    }
+    return out as unknown as NullToUndefined<T>;
+  }
+  return value as unknown as NullToUndefined<T>;
 }

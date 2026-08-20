@@ -29,6 +29,7 @@ import { ExportService } from '../src/services/ExportService';
 import { GlobalSettingsService } from '../src/services/GlobalSettingsService';
 import {
   safeParse,
+  nullToUndefined,
   ProductCreateSchema,
   ProductUpdateSchema,
   ClientCreateSchema,
@@ -197,7 +198,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('products:create', async (_, productData: any) => {
     try {
-      const data = safeParse(ProductCreateSchema, productData, 'Création produit');
+      const data = nullToUndefined(safeParse(ProductCreateSchema, productData, 'Création produit'));
       const product = ProductService.createProduct(data);
       AuditService.log('PRODUCT_CREATE', 'product', product.id, `Création produit ${product.reference}`);
       return { success: true, data: product };
@@ -584,7 +585,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('stock:addEntry', async (_, data: any) => {
     try {
-      const safe = safeParse(StockEntrySchema, data, 'Entrée de stock');
+      const safe = nullToUndefined(safeParse(StockEntrySchema, data, 'Entrée de stock'));
       const mvt = StockService.addStockEntry(safe);
       AuditService.log('STOCK_IN', 'stock', safe.product_id, `Entrée de ${safe.quantity}`);
       return { success: true, data: mvt };
@@ -595,7 +596,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('stock:addExit', async (_, data: any) => {
     try {
-      const safe = safeParse(StockExitSchema, data, 'Sortie de stock');
+      const safe = nullToUndefined(safeParse(StockExitSchema, data, 'Sortie de stock'));
       const mvt = StockService.addStockExit({ ...safe, exitType: safe.exitType });
       AuditService.log('STOCK_OUT', 'stock', safe.product_id, `Sortie de ${safe.quantity} (${safe.exitType})`);
       return { success: true, data: mvt };
@@ -621,7 +622,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('clients:create', async (_, data: any) => {
     try {
-      const safe = safeParse(ClientCreateSchema, data, 'Création client');
+      const safe = nullToUndefined(safeParse(ClientCreateSchema, data, 'Création client'));
       const client = ClientService.createClient(safe);
       AuditService.log('CLIENT_CREATE', 'client', client.id, `Client ${client.name}`);
       return { success: true, data: client };
@@ -632,7 +633,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('clients:update', async (_, { id, data }: { id: string; data: any }) => {
     try {
-      const safe = safeParse(ClientUpdateSchema, data, 'Modification client');
+      const safe = nullToUndefined(safeParse(ClientUpdateSchema, data, 'Modification client'));
       return { success: true, data: ClientService.updateClient(id, safe) };
     } catch (error: any) {
       return { success: false, error: toHumanError(error) };
@@ -702,7 +703,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('suppliers:create', async (_, data: any) => {
     try {
-      const safe = safeParse(SupplierCreateSchema, data, 'Création fournisseur');
+      const safe = nullToUndefined(safeParse(SupplierCreateSchema, data, 'Création fournisseur'));
       const supplier = SupplierService.createSupplier(safe);
       AuditService.log('SUPPLIER_CREATE', 'supplier', supplier.id, `Fournisseur ${supplier.name}`);
       return { success: true, data: supplier };
@@ -713,7 +714,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('suppliers:update', async (_, { id, data }: any) => {
     try {
-      const safe = safeParse(SupplierUpdateSchema, data, 'Modification fournisseur');
+      const safe = nullToUndefined(safeParse(SupplierUpdateSchema, data, 'Modification fournisseur'));
       return { success: true, data: SupplierService.updateSupplier(id, safe) };
     } catch (error: any) {
       return { success: false, error: toHumanError(error) };
@@ -784,7 +785,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('documents:addPayment', async (_, data: any) => {
     try {
-      const safe = safeParse(PaymentSchema, data, 'Paiement document');
+      const safe = nullToUndefined(safeParse(PaymentSchema, data, 'Paiement document'));
       DocumentService.addPayment(safe);
       AuditService.log('DOCUMENT_PAYMENT', 'document', safe.document_id, `Paiement ${safe.amount} MAD`);
       return { success: true };
