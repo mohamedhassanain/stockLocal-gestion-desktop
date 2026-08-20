@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { useClientStore } from '../stores/useClientStore';
+import { toast } from '../stores/useToastStore';
 import type { Product } from '../repositories/ProductRepository';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -54,12 +55,12 @@ export const POSPage: React.FC = () => {
 
   const addToCart = useCallback((product: Product) => {
     if (product.status !== 'ACTIVE') {
-      alert(`❌ Produit "${product.designation}" n'est pas actif.`);
+      toast.error(`Produit "${product.designation}" n'est pas actif.`);
       return;
     }
     const stock = product.current_stock ?? 0;
     if (stock <= 0) {
-      alert(`⚠️ Stock insuffisant pour "${product.designation}" (stock: ${stock}).`);
+      toast.warning(`Stock insuffisant pour "${product.designation}" (stock: ${stock}).`);
       return;
     }
 
@@ -67,7 +68,7 @@ export const POSPage: React.FC = () => {
       const existing = prev.find(c => c.product_id === product.id);
       if (existing) {
         if (existing.quantity >= stock) {
-          alert(`⚠️ Stock insuffisant : "${product.designation}" n'a que ${stock} unité(s) disponible(s).`);
+          toast.warning(`Stock insuffisant : "${product.designation}" n'a que ${stock} unité(s) disponible(s).`);
           return prev;
         }
         return prev.map(c =>
@@ -209,7 +210,7 @@ export const POSPage: React.FC = () => {
       setShowReceipt(true);
       clearCart();
     } catch (e: any) {
-      alert(`❌ Erreur : ${e.message}`);
+      toast.error(`Erreur : ${e.message}`);
     }
   };
 

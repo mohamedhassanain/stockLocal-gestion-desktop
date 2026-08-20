@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { usePurchaseStore } from '../stores/usePurchaseStore';
 import { useSupplierStore } from '../stores/useSupplierStore';
 import { useProductStore } from '../stores/useProductStore';
+import { toast } from '../stores/useToastStore';
 import type { PurchaseOrder, PurchaseStatus } from '../stores/usePurchaseStore';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -304,24 +305,27 @@ export const PurchasesPage: React.FC = () => {
     try {
       await createOrder(data);
       setShowNewForm(false);
+      toast.success('Commande d\'achat créée avec succès.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
   const handleConfirm = async (id: string) => {
     try {
       await confirmOrder(id);
+      toast.success('Commande confirmée.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
   const handleReceive = async (id: string) => {
     try {
       await receiveOrder(id);
+      toast.success('Commande réceptionnée : le stock a été mis à jour.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -329,8 +333,9 @@ export const PurchasesPage: React.FC = () => {
     if (!window.confirm('Êtes-vous sûr de vouloir annuler cette commande ?')) return;
     try {
       await cancelOrder(id);
+      toast.success('Commande annulée.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -338,8 +343,9 @@ export const PurchasesPage: React.FC = () => {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette commande ?')) return;
     try {
       await deleteOrder(id);
+      toast.success('Commande supprimée.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
