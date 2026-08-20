@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useStockStore } from '../stores/useStockStore';
 import { useProductStore } from '../stores/useProductStore';
+import { DataTable } from '../components/ui/DataTable';
+import { toast } from '../stores/useToastStore';
 
 export type ExitType = 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
 
@@ -44,14 +46,14 @@ export const StockPage: React.FC = () => {
         reference_doc: blRef || undefined,
         notes: notes || undefined,
       });
-      alert('Entrée ajoutée avec succès !');
+      toast.success('Entrée de stock ajoutée avec succès.');
       setQty(1);
       setNotes('');
       setBlRef('');
       loadProductStock(selectedProductId);
       loadProducts();
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -65,13 +67,13 @@ export const StockPage: React.FC = () => {
         exitType,
         notes: notes || undefined,
       });
-      alert(`Sortie (${exitType}) effectuée avec succès !`);
+      toast.success(`Sortie (${exitType}) effectuée avec succès.`);
       setQty(1);
       setNotes('');
       loadProductStock(selectedProductId);
       loadProducts();
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -82,11 +84,11 @@ export const StockPage: React.FC = () => {
         product_id: selectedProductId,
         unit_price: 0,
       }, actualCount);
-      alert('Inventaire enregistré (écart ajusté).');
+      toast.success('Inventaire enregistré (écart ajusté).');
       loadProductStock(selectedProductId);
       loadProducts();
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -112,26 +114,28 @@ export const StockPage: React.FC = () => {
         {/* Liste des produits trouvés */}
         <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
           <h2 style={{ marginTop: 0 }}>Résultats</h2>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {products.map(p => (
-              <li
-                key={p.id}
-                onClick={() => handleSelectProduct(p.id)}
-                style={{
-                  padding: '15px',
-                  borderBottom: '1px solid #f1f5f9',
-                  cursor: 'pointer',
-                  backgroundColor: selectedProductId === p.id ? '#eff6ff' : 'transparent',
-                  fontWeight: selectedProductId === p.id ? 'bold' : 'normal'
-                }}
-              >
-                {p.reference} - {p.designation}
-                <span style={{ float: 'right', color: (p.current_stock ?? 0) <= p.min_stock ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>
-                  {p.current_stock ?? 0} {p.unit || 'PIÈCE'}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <DataTable
+            columns={[
+              { key: 'reference', label: 'Réf', sortable: true },
+              { key: 'designation', label: 'Désignation', sortable: true },
+              {
+                key: 'current_stock',
+                label: 'Stock',
+                sortable: true,
+                render: (p: any) => (
+                  <span style={{ color: (p.current_stock ?? 0) <= p.min_stock ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>
+                    {p.current_stock ?? 0} {p.unit || 'PIÈCE'}
+                  </span>
+                ),
+              },
+            ]}
+            rows={products as any}
+            getRowId={(p: any) => p.id}
+            searchableKeys={['reference', 'designation', 'barcode']}
+            searchPlaceholder="Filtrer dans les résultats…"
+            pageSize={10}
+            onRowClick={(p: any) => handleSelectProduct(p.id)}
+          />
         </div>
 
         {/* Actions sur le produit sélectionné */}
