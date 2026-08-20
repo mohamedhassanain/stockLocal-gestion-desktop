@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { ProductForm } from '../components/products/ProductForm';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { toast } from '../stores/useToastStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Product } from '../repositories/ProductRepository';
 
@@ -87,13 +88,13 @@ export const ProductsPage: React.FC = () => {
       ),
       confirmLabel: 'Archiver',
       action: async () => {
-        try { await archiveProduct(product.id); } catch (e: any) { alert(e.message); }
+        try { await archiveProduct(product.id); toast.success(`Produit « ${product.designation} » archivé.`); } catch (e: any) { toast.error(e.message); }
       },
     });
   };
 
   const handleActivate = async (product: Product) => {
-    try { await activateProduct(product.id); } catch (e: any) { alert(e.message); }
+    try { await activateProduct(product.id); toast.success(`Produit « ${product.designation} » réactivé.`); } catch (e: any) { toast.error(e.message); }
   };
 
   const handleDisable = (product: Product) => {
@@ -106,7 +107,7 @@ export const ProductsPage: React.FC = () => {
       ),
       confirmLabel: 'Désactiver',
       action: async () => {
-        try { await disableProduct(product.id); } catch (e: any) { alert(e.message); }
+        try { await disableProduct(product.id); toast.success(`Produit « ${product.designation} » désactivé.`); } catch (e: any) { toast.error(e.message); }
       },
     });
   };
@@ -124,17 +125,18 @@ export const ProductsPage: React.FC = () => {
       danger: true,
       confirmLabel: 'Supprimer définitivement',
       action: async () => {
-        try { await deleteProduct(product.id); } catch (e: any) { alert(e.message); }
+        try { await deleteProduct(product.id); toast.success(`Produit « ${product.designation} » supprimé.`); } catch (e: any) { toast.error(e.message); }
       },
     });
   };
 
   const handlePrintLabels = async () => {
-    if (filteredProducts.length === 0) { alert('Aucun produit à imprimer.'); return; }
+    if (filteredProducts.length === 0) { toast.warning('Aucun produit à imprimer.'); return; }
     try {
       const result = await window.api.products.printLabels(filteredProducts.map(p => p.id));
       if (!result.success) throw new Error(result.error);
-    } catch (e: any) { alert(e.message); }
+      toast.success(`Étiquettes générées pour ${filteredProducts.length} produit(s).`);
+    } catch (e: any) { toast.error(e.message); }
   };
 
   return (

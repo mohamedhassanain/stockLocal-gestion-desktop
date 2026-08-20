@@ -12,6 +12,7 @@ import { PurchasesPage } from './pages/PurchasesPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
+import { Toaster } from './components/ui/Toaster';
 
 export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'settings' | 'pos' | 'purchases' | 'inventory';
 
@@ -136,6 +137,7 @@ export const App: React.FC = () => {
       {currentPage === 'pos' && <POSPage />}
       {currentPage === 'purchases' && <PurchasesPage />}
       {currentPage === 'inventory' && <InventoryPage />}
+      <Toaster />
     </div>
   );
 };
