@@ -49,6 +49,19 @@ export interface Payment {
   reference?: string;
 }
 
+/** Paiement enrichi pour le registre (Caisse / Paiements) : document + client. */
+export interface PaymentRecord {
+  id: string;
+  document_id: string;
+  amount: number;
+  payment_method: PaymentMethod;
+  date: string;
+  reference?: string;
+  document_number: string;
+  document_type: DocumentType;
+  customer_name?: string;
+}
+
 interface ItemInput {
   product_id: string;
   quantity: number;
@@ -58,14 +71,14 @@ interface ItemInput {
 
 // ─── Requêtes préparées ───────────────────────────────────────────────────────
 
-const stmtGetAll = db.prepare<[string]>(`
+const stmtGetAll = db.prepare<[string, number, number]>(`
   SELECT d.*, c.name AS customer_name,
     COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0) AS amount_paid
   FROM documents d
   LEFT JOIN customers c ON c.id = d.entity_id
   WHERE d.type = ?
   ORDER BY d.date DESC
-  LIMIT 500
+  LIMIT ? OFFSET ?
 `);
 
 const stmtSearch = db.prepare<[string, string, string]>(`
@@ -142,6 +155,16 @@ const stmtGetPaidTotal = db.prepare(`
   SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE document_id = ?
 `);
 
+const stmtGetAllPayments = db.prepare<[number, number]>(`
+  SELECT p.id, p.document_id, p.amount, p.payment_method, p.date, p.reference,
+    d.document_number, d.type AS document_type, c.name AS customer_name
+  FROM payments p
+  JOIN documents d ON d.id = p.document_id
+  LEFT JOIN customers c ON c.id = d.entity_id
+  ORDER BY p.date DESC
+  LIMIT ? OFFSET ?
+`);
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function round2(value: number): number {
@@ -172,8 +195,8 @@ export const DocumentRepository = {
     return `${prefixes[type]}-${year}-${seq}`;
   },
 
-  getAll(type: DocumentType): Document[] {
-    return stmtGetAll.all(type) as Document[];
+  getAll(type: DocumentType, limit = 100, offset = 0): Document[] {
+    return stmtGetAll.all(type, limit, offset) as Document[];
   },
 
   search(type: DocumentType, query: string): Document[] {
@@ -439,6 +462,11 @@ export const DocumentRepository = {
 
   getPayments(documentId: string): Payment[] {
     return stmtGetPayments.all(documentId) as Payment[];
+  },
+
+  /** Registre complet des paiements (Caisse / Paiements) — SQL paginé. */
+  getAllPayments(limit: number = 100, offset: number = 0): PaymentRecord[] {
+    return stmtGetAllPayments.all(limit, offset) as PaymentRecord[];
   },
 
   cancelDocument(documentId: string): void {

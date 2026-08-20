@@ -54,7 +54,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
     label: 'Achats',
     items: [
       { page: 'purchases', icon: ShoppingBag, label: 'Commandes fournisseurs', shortcut: 'F9' },
-      { page: 'purchases', icon: PackageCheck, label: 'Réceptions' },
+      { page: 'receivings', icon: PackageCheck, label: 'Réceptions' },
       { page: 'suppliers', icon: Factory, label: 'Fournisseurs', shortcut: 'F5' },
     ],
   },
@@ -62,16 +62,17 @@ const NAV_SECTIONS: NavSectionConfig[] = [
     label: 'Clients',
     items: [
       { page: 'clients', icon: Users, label: 'Clients', shortcut: 'F4' },
-      { page: 'clients', icon: CreditCard, label: 'Crédits & échéances' },
+      { page: 'client-credits', icon: CreditCard, label: 'Crédits & échéances' },
     ],
   },
   {
     label: 'Finance',
     items: [
-      { page: 'invoices', icon: Wallet, label: 'Paiements' },
-      { page: 'dashboard', icon: Wallet, label: 'Caisse' },
+      { page: 'payments', icon: Wallet, label: 'Paiements' },
+      { page: 'cash-register', icon: Wallet, label: 'Caisse' },
     ],
   },
+
   {
     label: 'Analyse',
     items: [{ page: 'reports', icon: BarChart3, label: 'Rapports' }],

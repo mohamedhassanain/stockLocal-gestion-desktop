@@ -1,5 +1,37 @@
 import { autoUpdater } from 'electron-updater';
 import { BrowserWindow } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * URL de publication par défaut (placeholder) dans package.json → build.publish.
+ * Tant que cette valeur n'est pas remplacée par l'URL réelle d'hébergement des
+ * mises à jour, un avertissement est loggé au démarrage pour le développeur.
+ */
+const DEFAULT_PUBLISH_URL = 'https://mises-a-jour.stocklocal.ma/win';
+
+function warnIfPlaceholderPublishUrl(): void {
+  try {
+    const roots = [process.env.APP_ROOT, process.cwd()].filter(Boolean) as string[];
+    for (const root of roots) {
+      const pkgPath = path.join(root, 'package.json');
+      if (!fs.existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as {
+        build?: { publish?: Array<{ url?: string }> };
+      };
+      const publishUrl = pkg.build?.publish?.find((p: { url?: string }) => p.url)?.url;
+      if (publishUrl === DEFAULT_PUBLISH_URL) {
+        console.warn(
+          '[Updater] ⚠️ Attention développeur : l\'URL de publication des mises à jour est encore le placeholder par défaut ' +
+          `("${DEFAULT_PUBLISH_URL}"). Remplacez-la par l\'URL réelle dans package.json → build.publish avant un build de production.`
+        );
+      }
+      return;
+    }
+  } catch {
+    // Non bloquant : l'avertissement est un garde-fou dev uniquement.
+  }
+}
 
 /**
  * Infrastructure d'auto-update (2.3) — mécanique configurée, aucun déploiement.
@@ -26,6 +58,9 @@ function sendToRenderer(channel: string, payload?: unknown): void {
 }
 
 export function initAutoUpdater(): void {
+  // Garde-fou développeur : URL de publication restée à la valeur placeholder ?
+  warnIfPlaceholderPublishUrl();
+
   // En dev, electron-updater tenterait de contacter l'URL de publish :
   // on désactive explicitement (le paquet n'est pas signé ni versionné
   // comme release en mode `vite`).

@@ -31,8 +31,8 @@ export const DocumentService = {
     return DocumentRepository.create({ ...data, manageStock });
   },
 
-  getDocuments(type: DocumentType, query = ''): Document[] {
-    if (query.trim() === '') return DocumentRepository.getAll(type);
+  getDocuments(type: DocumentType, query = '', limit = 100, offset = 0): Document[] {
+    if (query.trim() === '') return DocumentRepository.getAll(type, limit, offset);
     return DocumentRepository.search(type, query.trim());
   },
 

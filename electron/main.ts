@@ -791,8 +791,10 @@ app.whenReady().then(() => {
   });
 
   // ─── Documents / Facturation ───────────────────────────────────────────────
-  ipcMain.handle('documents:getAll', async (_, type: string) => {
-    return DocumentService.getDocuments(type as any);
+  ipcMain.handle('documents:getAll', async (_, type: string, params?: { limit?: number; offset?: number }) => {
+    const limit = Math.min(Math.max(Number(params?.limit ?? 100) || 100, 1), 500);
+    const offset = Math.max(Number(params?.offset ?? 0) || 0, 0);
+    return DocumentService.getDocuments(type as any, '', limit, offset);
   });
 
   ipcMain.handle('documents:search', async (_, { type, query }: { type: string; query: string }) => {
@@ -846,6 +848,13 @@ app.whenReady().then(() => {
 
   ipcMain.handle('documents:getPayments', async (_, documentId: string) => {
     return DocumentService.getPayments(documentId);
+  });
+
+  // Registre des paiements (Caisse / Paiements) — SQL paginé, jamais tout en mémoire.
+  ipcMain.handle('documents:getAllPayments', async (_, params?: { limit?: number; offset?: number }) => {
+    const limit = Math.min(Math.max(Number(params?.limit ?? 100) || 100, 1), 500);
+    const offset = Math.max(Number(params?.offset ?? 0) || 0, 0);
+    return DocumentRepository.getAllPayments(limit, offset);
   });
 
   ipcMain.handle('documents:exportPdf', async (_, documentId: string) => {
@@ -952,6 +961,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('purchases:getById', async (_, id: string) => {
     return PurchaseOrderRepository.getById(id);
+  });
+
+  // Réceptions : commandes confirmées/partiellement/totalement reçues (avec lignes).
+  ipcMain.handle('purchases:getReceivings', async () => {
+    return PurchaseOrderRepository.getReceivings();
   });
 
   ipcMain.handle('purchases:create', async (_, data: any) => {

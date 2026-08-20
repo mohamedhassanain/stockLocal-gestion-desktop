@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useDocumentStore } from '../stores/useDocumentStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useClientStore } from '../stores/useClientStore';
@@ -485,9 +486,11 @@ const DocumentDetailPanel: React.FC<{
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
 export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialType }) => {
-  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, selectDocument, createDocument, addPayment, convertBL } = useDocumentStore();
+  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const documentListRef = useRef<HTMLDivElement>(null);
+  const documentVirtualizer = useVirtualizer({ count: documents.length, getScrollElement: () => documentListRef.current, estimateSize: () => 94, overscan: 8 });
 
   useEffect(() => {
     if (initialType) setActiveType(initialType);
@@ -590,7 +593,10 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
       {/* Contenu */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Liste documents */}
-        <div style={{ width: '360px', borderRight: '1px solid #e5e7eb', overflowY: 'auto', background: 'white', flexShrink: 0 }}>
+        <div ref={documentListRef} onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) loadMoreDocuments();
+        }} style={{ width: '360px', borderRight: '1px solid #e5e7eb', overflowY: 'auto', background: 'white', flexShrink: 0 }}>
           {isLoading && <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280' }}>Chargement...</div>}
           {documents.length === 0 && !isLoading && (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af' }}>
@@ -598,12 +604,13 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
               <div>Aucun {TYPE_LABELS[activeType].label} trouvé.</div>
             </div>
           )}
-          {documents.map(doc => {
+          <div style={{ height: `${documentVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+          {documentVirtualizer.getVirtualItems().map(virtualRow => { const doc = documents[virtualRow.index];
             const statusInfo = STATUS_LABELS[doc.status] || STATUS_LABELS.DRAFT;
             const isSelected = selectedDocument?.id === doc.id;
             return (
               <div key={doc.id} onClick={() => selectDocument(doc)}
-                style={{ padding: '14px 20px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isSelected ? '#eff6ff' : 'transparent', borderLeft: isSelected ? `4px solid ${TYPE_LABELS[activeType].color}` : '4px solid transparent', transition: 'all 0.15s' }}>
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)`, padding: '14px 20px', boxSizing: 'border-box', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isSelected ? '#eff6ff' : 'transparent', borderLeft: isSelected ? `4px solid ${TYPE_LABELS[activeType].color}` : '4px solid transparent', transition: 'all 0.15s' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <span style={{ fontWeight: '700', fontSize: '15px', color: '#0f172a' }}>{doc.document_number}</span>
                   <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
@@ -615,7 +622,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
                 </div>
               </div>
             );
-          })}
+          })}</div>
         </div>
 
         {/* Détail */}

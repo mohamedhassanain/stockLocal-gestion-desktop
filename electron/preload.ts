@@ -125,7 +125,7 @@ export const api = {
 
   // ─── Documents ─────────────────────────────────────────────────────────────
   documents: {
-    getAll: (type: string) => ipcRenderer.invoke('documents:getAll', type),
+    getAll: (type: string, params?: { limit?: number; offset?: number }) => ipcRenderer.invoke('documents:getAll', type, params),
     search: (type: string, query: string) => ipcRenderer.invoke('documents:search', { type, query }),
     getById: (id: string) => ipcRenderer.invoke('documents:getById', id),
     create: (data: any) => ipcRenderer.invoke('documents:create', data),
@@ -133,6 +133,8 @@ export const api = {
     convertBL: (deliveryNoteId: string) => ipcRenderer.invoke('documents:convertBL', deliveryNoteId),
     createCreditNote: (invoiceId: string, returnItems?: Array<{ product_id: string; quantity: number }>, reason?: string) => ipcRenderer.invoke('documents:createCreditNote', { invoiceId, returnItems, reason }),
     getPayments: (documentId: string) => ipcRenderer.invoke('documents:getPayments', documentId),
+    // Registre des paiements (Caisse / Paiements) — SQL paginé.
+    getAllPayments: (params?: { limit?: number; offset?: number }) => ipcRenderer.invoke('documents:getAllPayments', params),
     exportPdf: (documentId: string) => ipcRenderer.invoke('documents:exportPdf', documentId),
   },
 

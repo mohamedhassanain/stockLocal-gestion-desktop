@@ -113,6 +113,22 @@ export const PurchaseOrderRepository = {
     return stmtGetAll.all() as PurchaseOrder[];
   },
 
+  /** Réceptions (commandes au statut CONFIRMED/RECEIVED avec quantités reçues). */
+  getReceivings(): PurchaseOrder[] {
+    const orders = db.prepare(`
+      SELECT po.*, s.name AS supplier_name
+      FROM purchase_orders po
+      LEFT JOIN suppliers s ON s.id = po.supplier_id
+      WHERE po.status IN ('CONFIRMED', 'RECEIVED')
+      ORDER BY po.date DESC
+      LIMIT 300
+    `).all() as PurchaseOrder[];
+    for (const order of orders) {
+      order.items = stmtGetItems.all(order.id) as PurchaseOrderItem[];
+    }
+    return orders;
+  },
+
   /** Commandes d'achat d'un fournisseur précis (SQL ciblé, jamais tout chargé). */
   getBySupplier(supplierId: string): PurchaseOrder[] {
     return stmtGetBySupplier.all(supplierId) as PurchaseOrder[];

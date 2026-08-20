@@ -1,10 +1,139 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStockStore } from '../stores/useStockStore';
 import { useProductStore } from '../stores/useProductStore';
 import { DataTable } from '../components/ui/DataTable';
 import { toast } from '../stores/useToastStore';
 
 export type ExitType = 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+
+interface GlobalMovement {
+  id: string;
+  product_id: string;
+  type: 'IN' | 'OUT';
+  movement_type: string;
+  quantity: number;
+  unit_price: number;
+  date?: string;
+  reference_doc?: string;
+  notes?: string;
+  product_ref?: string;
+  product_name?: string;
+}
+
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  PURCHASE_IN: 'Entrée achat',
+  SALE_OUT: 'Vente',
+  RETURN_IN: 'Retour client',
+  RETURN_OUT: 'Retour fournisseur',
+  ADJUSTMENT_IN: 'Ajustement +',
+  ADJUSTMENT_OUT: 'Ajustement −',
+  TRANSFER_IN: 'Transfert reçu',
+  TRANSFER_OUT: 'Transfert envoyé',
+  DAMAGE_OUT: 'Casse',
+  LOSS_OUT: 'Perte',
+  OPENING_BALANCE: 'Stock initial',
+};
+
+const HISTORY_PAGE_SIZE = 200;
+
+const GlobalHistoryTab: React.FC = () => {
+  const [movements, setMovements] = useState<GlobalMovement[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: movements.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 46,
+    overscan: 6,
+  });
+
+  const loadNext = async () => {
+    const next = await window.api.stock.getAllHistory({ limit: HISTORY_PAGE_SIZE, offset: movements.length });
+    const rows = (next ?? []) as GlobalMovement[];
+    setMovements(prev => [...prev, ...rows]);
+    return rows.length;
+  };
+
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      await loadNext();
+      setIsLoading(false);
+    })();
+  }, []);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 240) {
+      loadNext().then(loaded => {
+        if (loaded === 0 && !isLoading) {
+          // Fin de l'historique : aucune action supplémentaire.
+        }
+      }).catch((err: any) => toast.error(`Erreur : ${err.message}`));
+    }
+  };
+
+  return (
+    <div className="card" style={{ overflow: 'hidden', alignSelf: 'stretch' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0 }}>Historique global des mouvements</h3>
+        <span className="text-sm text-muted">{movements.length} mouvement(s) chargés</span>
+      </div>
+      {isLoading && movements.length === 0 ? (
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="skeleton skeleton-row" />)}
+        </div>
+      ) : movements.length === 0 ? (
+        <div className="state-box">
+          <div className="state-text">Aucun mouvement de stock enregistré.</div>
+        </div>
+      ) : (
+        <div ref={scrollRef} onScroll={handleScroll} style={{ height: 480, overflowY: 'auto' }}>
+          <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 36, display: 'flex', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', zIndex: 1 }}>
+              <div style={{ flex: 1.2, padding: '8px 14px' }}>Produit</div>
+              <div style={{ flex: 1, padding: '8px 14px' }}>Type</div>
+              <div style={{ flex: 0.6, padding: '8px 14px', textAlign: 'center' }}>Qté</div>
+              <div style={{ flex: 0.8, padding: '8px 14px', textAlign: 'right' }}>P.U.</div>
+              <div style={{ flex: 0.9, padding: '8px 14px' }}>Réf doc</div>
+              <div style={{ flex: 0.8, padding: '8px 14px' }}>Date</div>
+            </div>
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const m = movements[virtualRow.index];
+              const isIn = m.type === 'IN';
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start + 36}px)`, display: 'flex', alignItems: 'center',
+                    borderBottom: '1px solid var(--border)', fontSize: 14, boxSizing: 'border-box',
+                  }}
+                >
+                  <div style={{ flex: 1.2, padding: '6px 14px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.product_ref && <span className="text-muted">{m.product_ref}</span>} {m.product_name ?? '—'}
+                  </div>
+                  <div style={{ flex: 1, padding: '6px 14px' }}>
+                    <span className={`badge ${isIn ? 'badge-success' : 'badge-danger'}`} style={{ marginRight: 6 }}>
+                      {isIn ? 'IN' : 'OUT'}
+                    </span>
+                    <span className="text-sm">{MOVEMENT_TYPE_LABELS[m.movement_type] ?? m.movement_type}</span>
+                  </div>
+                  <div className="qty" style={{ flex: 0.6, padding: '6px 14px', textAlign: 'center', fontWeight: 700 }}>{m.quantity}</div>
+                  <div className="money" style={{ flex: 0.8, padding: '6px 14px', textAlign: 'right' }}>{m.unit_price?.toFixed(2) ?? '0.00'}</div>
+                  <div className="text-sm text-muted" style={{ flex: 0.9, padding: '6px 14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.reference_doc || '—'}</div>
+                  <div className="text-sm text-muted" style={{ flex: 0.8, padding: '6px 14px' }}>{m.date ? new Date(m.date).toLocaleDateString('fr-MA') : '—'}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const StockPage: React.FC = () => {
   const { currentProductStock, stockHistory, loadProductStock, addEntry, addExit, addInventory } = useStockStore();
@@ -15,6 +144,7 @@ export const StockPage: React.FC = () => {
     loadProducts: state.loadProducts,
   }));
 
+  const [activeTab, setActiveTab] = useState<'operations' | 'history'>('operations');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [qty, setQty] = useState<number>(1);
   const [price, setPrice] = useState<number>(0);
@@ -110,6 +240,34 @@ export const StockPage: React.FC = () => {
         />
       </div>
 
+      {/* Onglets : opérations par produit / historique global virtualisé */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
+        {([
+          { key: 'operations' as const, label: 'Opérations' },
+          { key: 'history' as const, label: 'Historique global' },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '8px 18px',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: activeTab === tab.key ? 'bold' : '600',
+              background: activeTab === tab.key ? '#0e7667' : '#e2e8f0',
+              color: activeTab === tab.key ? 'white' : '#475569',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'history' ? (
+        <GlobalHistoryTab />
+      ) : (
       <div style={{ display: 'flex', gap: '20px' }}>
         {/* Liste des produits trouvés */}
         <div style={{ flex: 1, backgroundColor: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1)' }}>
@@ -224,6 +382,7 @@ export const StockPage: React.FC = () => {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

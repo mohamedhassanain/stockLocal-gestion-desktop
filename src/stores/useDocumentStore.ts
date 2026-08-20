@@ -12,6 +12,7 @@ interface DocumentState {
   setActiveType: (type: DocumentType) => void;
   setSearchQuery: (q: string) => void;
   loadDocuments: () => Promise<void>;
+  loadMoreDocuments: () => Promise<void>;
   selectDocument: (doc: Document) => Promise<void>;
   createDocument: (data: any) => Promise<Document>;
   addPayment: (documentId: string, amount: number, method: PaymentMethod, reference?: string) => Promise<void>;
@@ -42,8 +43,20 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const { activeType, searchQuery } = get();
       const data = searchQuery.trim()
         ? await window.api.documents.search(activeType, searchQuery)
-        : await window.api.documents.getAll(activeType);
+        : await window.api.documents.getAll(activeType, { limit: 100, offset: 0 });
       set({ documents: data, isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+    }
+  },
+
+  loadMoreDocuments: async () => {
+    const { activeType, searchQuery, documents, isLoading } = get();
+    if (isLoading || searchQuery.trim()) return;
+    set({ isLoading: true });
+    try {
+      const next = await window.api.documents.getAll(activeType, { limit: 100, offset: documents.length });
+      set({ documents: [...documents, ...next], isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }

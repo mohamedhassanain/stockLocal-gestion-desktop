@@ -12,12 +12,17 @@ import { PurchasesPage } from './pages/PurchasesPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
+import { ReceivingsPage } from './pages/ReceivingsPage';
+import { CashRegisterPage } from './pages/CashRegisterPage';
+import { PaymentsPage } from './pages/PaymentsPage';
+import { ClientCreditsPage } from './pages/ClientCreditsPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './stores/useToastStore';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register';
+
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
   F1: 'dashboard',
@@ -99,7 +104,9 @@ export const App: React.FC = () => {
       'dashboard', 'products', 'stock', 'clients', 'suppliers', 'invoices',
       'devis', 'delivery-notes', 'credit-notes', 'settings', 'pos',
       'purchases', 'inventory', 'reports', 'stock-alerts',
+      'receivings', 'client-credits', 'payments', 'cash-register',
     ]);
+
     const handleNavigate = (e: Event) => {
       const target = (e as CustomEvent).detail as Page;
       if (target && VALID_PAGES.has(target)) {
@@ -176,6 +183,10 @@ export const App: React.FC = () => {
       {currentPage === 'inventory' && <InventoryPage />}
       {currentPage === 'reports' && <ReportsPage />}
       {currentPage === 'stock-alerts' && <StockAlertsPage />}
+      {currentPage === 'receivings' && <ReceivingsPage />}
+      {currentPage === 'client-credits' && <ClientCreditsPage />}
+      {currentPage === 'payments' && <PaymentsPage />}
+      {currentPage === 'cash-register' && <CashRegisterPage />}
       <Toaster />
     </div>
   );
