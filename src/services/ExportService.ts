@@ -1,16 +1,21 @@
 import fs from 'fs';
 import path from 'path';
 import { DataStorageService } from './DataStorageService';
-import { ProductRepository } from '../repositories/ProductRepository';
-import { ClientRepository } from '../repositories/ClientRepository';
-import { SupplierRepository } from '../repositories/SupplierRepository';
-import { DocumentRepository } from '../repositories/DocumentRepository';
 import { DashboardRepository } from '../repositories/DashboardRepository';
+import { db } from '../database/config/connection';
 
 /**
  * Service d'export CSV pour tous les types de données.
- * Génère des fichiers CSV robusts avec BOM UTF-8 et séparateur point-virgule.
+ * Génère des fichiers CSV robustes avec BOM UTF-8 et séparateur point-virgule.
+ *
+ * Phase 4 — exports volumineux par batch SQL (jamais tout en mémoire) :
+ * les exports "complets" (produits, mouvements de stock) itèrent par lots
+ * de 10 000 lignes côté SQLite et écrivent progressivement dans le fichier.
+ * Aucun plafond silencieux n'est appliqué : le fichier contient TOUTES les
+ * données. La protection anti-injection de formule CSV est conservée.
  */
+
+// ─── Helpers CSV ─────────────────────────────────────────────────────────────
 
 function csvEscape(val: unknown): string {
   let s = String(val ?? '');
@@ -30,121 +35,197 @@ function csvRow(cols: unknown[]): string {
   return cols.map(csvEscape).join(';');
 }
 
+/** Crée le fichier CSV avec BOM UTF-8 et le header, retourne le chemin. */
+function createCsvFile(filename: string, header: unknown[]): string {
+  const exportsDir = DataStorageService.getExportsPath();
+  if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
+  const filePath = path.join(exportsDir, filename);
+  // BOM UTF-8 pour Excel + première ligne (header)
+  fs.writeFileSync(filePath, '\uFEFF' + csvRow(header) + '\r\n', 'utf-8');
+  return filePath;
+}
+
+/** Ajoute des lignes CSV à la fin du fichier (append, batch par batch). */
+function appendCsvLines(filePath: string, lines: string[]): void {
+  if (lines.length === 0) return;
+  fs.appendFileSync(filePath, lines.join('\r\n') + '\r\n', 'utf-8');
+}
+
+/** Export mono-lot (petits volumes) — conserve le comportement historique. */
 function writeCsv(filename: string, lines: string[]): string {
   const exportsDir = DataStorageService.getExportsPath();
   if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
   const filePath = path.join(exportsDir, filename);
-  // BOM UTF-8 pour Excel
   fs.writeFileSync(filePath, '\uFEFF' + lines.join('\r\n'), 'utf-8');
   return filePath;
 }
 
+// ─── Exports ─────────────────────────────────────────────────────────────────
+
 export const ExportService = {
-  /** Export de tous les produits actifs */
+  /** Export de TOUS les produits (par batch SQL — jamais tout en mémoire). */
   exportProducts(): string {
-    const products = ProductRepository.search('', 100000);
-    const lines: string[] = [
-      csvRow(['Référence', 'Désignation', 'Description', 'Catégorie', 'Code-barres', 'Unité', 'Prix Achat', 'Prix Vente', 'Prix Gros', 'Stock Min', 'Stock Actuel', 'Statut']),
-    ];
-    for (const p of products) {
-      lines.push(csvRow([
+    const filePath = createCsvFile(
+      `produits_${new Date().toISOString().split('T')[0]}.csv`,
+      ['Référence', 'Désignation', 'Description', 'Catégorie', 'Code-barres', 'Unité', 'Prix Achat', 'Prix Vente', 'Prix Gros', 'Stock Min', 'Stock Actuel', 'Statut']
+    );
+    const BATCH = 10000;
+    let offset = 0;
+    while (true) {
+      const rows = db.prepare(`
+        SELECT p.*,
+          COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
+                    FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
+        FROM products p
+        ORDER BY p.reference ASC
+        LIMIT ? OFFSET ?
+      `).all(BATCH, offset) as Array<Record<string, unknown>>;
+      if (rows.length === 0) break;
+      appendCsvLines(filePath, rows.map((p) => csvRow([
         p.reference, p.designation, p.description ?? '',
         p.category_id ?? '', p.barcode ?? '', p.unit ?? 'PIÈCE',
         p.purchase_price, p.selling_price, p.wholesale_price,
         p.min_stock, p.current_stock ?? 0, p.status
-      ]));
+      ])));
+      offset += rows.length;
     }
-    const date = new Date().toISOString().split('T')[0];
-    return writeCsv(`produits_${date}.csv`, lines);
+    return filePath;
   },
 
-  /** Export de tous les clients */
+  /** Export de tous les clients (volume limité par la recherche paginée — gros volumes en batch SQL aussi). */
   exportClients(): string {
-    const clients = ClientRepository.getAll();
-    const lines: string[] = [
-      csvRow(['Nom', 'Téléphone', 'Adresse', 'ICE', 'Conditions Paiement', 'Plafond Crédit', 'Solde', 'Catégorie']),
-    ];
-    for (const c of clients) {
-      lines.push(csvRow([
+    const filePath = createCsvFile(
+      `clients_${new Date().toISOString().split('T')[0]}.csv`,
+      ['Nom', 'Téléphone', 'Adresse', 'ICE', 'Conditions Paiement', 'Plafond Crédit', 'Solde', 'Catégorie']
+    );
+    const BATCH = 10000;
+    let offset = 0;
+    while (true) {
+      const rows = db.prepare(`
+        SELECT c.*,
+          COALESCE(
+            (SELECT SUM(CASE WHEN cc.type='CREDIT' THEN cc.amount ELSE -cc.amount END)
+             FROM client_credits cc WHERE cc.customer_id = c.id),
+          0) AS balance
+        FROM customers c
+        ORDER BY c.name ASC
+        LIMIT ? OFFSET ?
+      `).all(BATCH, offset) as Array<Record<string, unknown>>;
+      if (rows.length === 0) break;
+      appendCsvLines(filePath, rows.map((c) => csvRow([
         c.name, c.phone ?? '', c.address ?? '', c.ice ?? '',
         c.payment_conditions ?? '', c.credit_limit, c.balance ?? 0, c.category
-      ]));
+      ])));
+      offset += rows.length;
     }
-    const date = new Date().toISOString().split('T')[0];
-    return writeCsv(`clients_${date}.csv`, lines);
+    return filePath;
   },
 
-  /** Export de tous les fournisseurs */
+  /** Export de tous les fournisseurs (batch SQL). */
   exportSuppliers(): string {
-    const suppliers = SupplierRepository.getAll();
-    const lines: string[] = [
-      csvRow(['Nom', 'Téléphone', 'Adresse', 'ICE', 'Dette']),
-    ];
-    for (const s of suppliers) {
-      lines.push(csvRow([s.name, s.phone ?? '', s.address ?? '', s.ice ?? '', s.balance ?? 0]));
+    const filePath = createCsvFile(
+      `fournisseurs_${new Date().toISOString().split('T')[0]}.csv`,
+      ['Nom', 'Téléphone', 'Adresse', 'ICE', 'Dette']
+    );
+    const BATCH = 10000;
+    let offset = 0;
+    while (true) {
+      const rows = db.prepare(`
+        SELECT s.*,
+          COALESCE(
+            (SELECT SUM(CASE WHEN sc.type='DEBT' THEN sc.amount ELSE -sc.amount END)
+             FROM supplier_credits sc WHERE sc.supplier_id = s.id),
+          0) AS balance
+        FROM suppliers s
+        ORDER BY s.name ASC
+        LIMIT ? OFFSET ?
+      `).all(BATCH, offset) as Array<Record<string, unknown>>;
+      if (rows.length === 0) break;
+      appendCsvLines(filePath, rows.map((s) => csvRow([
+        s.name, s.phone ?? '', s.address ?? '', s.ice ?? '', s.balance ?? 0
+      ])));
+      offset += rows.length;
     }
-    const date = new Date().toISOString().split('T')[0];
-    return writeCsv(`fournisseurs_${date}.csv`, lines);
+    return filePath;
   },
 
-  /** Export de l'historique des mouvements de stock pour un produit */
+  /**
+   * Export de l'historique des mouvements de stock.
+   * - Si productId est fourni : export complet de CE produit.
+   * - Sinon : export complet de TOUS les mouvements, par batch (plus de
+   *   limite silencieuse de 50 000 lignes).
+   */
   exportStockMovements(productId?: string): string {
-    const lines: string[] = [
-      csvRow(['Date', 'Produit', 'Type', 'Quantité', 'Prix Unit.', 'Référence Doc', 'Notes']),
-    ];
-    // Si productId est fourni, on exporte pour ce produit, sinon on exporte tous les mouvements
-    // On utilise une requête SQL directe pour cet export bulk
-    const { db } = require('../database/config/connection');
-    const rows = productId
-      ? db.prepare(`
-          SELECT sm.*, p.reference, p.designation
-          FROM stock_movements sm
-          LEFT JOIN products p ON p.id = sm.product_id
-          WHERE sm.product_id = ?
-          ORDER BY sm.date DESC
-        `).all(productId)
-      : db.prepare(`
-          SELECT sm.*, p.reference, p.designation
-          FROM stock_movements sm
-          LEFT JOIN products p ON p.id = sm.product_id
-          ORDER BY sm.date DESC
-          LIMIT 50000
-        `).all();
+    const date = new Date().toISOString().split('T')[0];
+    const suffix = productId ? `_${productId.slice(0, 8)}` : '';
+    const filePath = createCsvFile(
+      `mouvements_stock${suffix}_${date}.csv`,
+      ['Date', 'Produit', 'Type', 'Quantité', 'Prix Unit.', 'Référence Doc', 'Notes']
+    );
 
-    for (const r of rows as any[]) {
-      lines.push(csvRow([
+    const baseSql = `
+      SELECT sm.*, p.reference, p.designation
+      FROM stock_movements sm
+      LEFT JOIN products p ON p.id = sm.product_id
+      ${productId ? 'WHERE sm.product_id = ?' : ''}
+      ORDER BY sm.date DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const BATCH = 10000;
+    let offset = 0;
+    while (true) {
+      const rows = (productId
+        ? db.prepare(baseSql).all(productId, BATCH, offset)
+        : db.prepare(baseSql).all(BATCH, offset)) as Array<Record<string, unknown>>;
+      if (rows.length === 0) break;
+      appendCsvLines(filePath, rows.map((r) => csvRow([
         r.date, `${r.reference ?? ''} - ${r.designation ?? ''}`,
         r.type, r.quantity, r.unit_price,
         r.reference_doc ?? '', r.notes ?? ''
-      ]));
+      ])));
+      offset += rows.length;
     }
-    const date = new Date().toISOString().split('T')[0];
-    const suffix = productId ? `_${productId.slice(0, 8)}` : '';
-    return writeCsv(`mouvements_stock${suffix}_${date}.csv`, lines);
+    return filePath;
   },
 
-  /** Export des documents (factures, avoirs, etc.) */
+  /** Export des documents (factures, avoirs, etc.) — par batch SQL. */
   exportDocuments(type?: string): string {
     const docType = (type || 'INVOICE') as any;
-    const documents = DocumentRepository.getAll(docType);
-    const lines: string[] = [
-      csvRow(['Numéro', 'Client', 'Date', 'Total HT', 'Total TTC', 'Statut', 'Payé', 'Reste Dû']),
-    ];
-    for (const d of documents) {
-      const paid = (d as any).amount_paid ?? 0;
-      const remaining = d.total_incl_tax - paid;
-      lines.push(csvRow([
-        d.document_number, d.customer_name ?? '', d.date,
-        d.total_excl_tax, d.total_incl_tax, d.status,
-        paid, remaining
-      ]));
-    }
     const date = new Date().toISOString().split('T')[0];
     const typeLabels: Record<string, string> = { INVOICE: 'factures', DELIVERY_NOTE: 'bons_livraison', QUOTE: 'devis', CREDIT_NOTE: 'avoirs' };
-    return writeCsv(`${typeLabels[docType] ?? 'documents'}_${date}.csv`, lines);
+    const filePath = createCsvFile(
+      `${typeLabels[docType] ?? 'documents'}_${date}.csv`,
+      ['Numéro', 'Client', 'Date', 'Total HT', 'Total TTC', 'Statut', 'Payé', 'Reste Dû']
+    );
+    const BATCH = 10000;
+    let offset = 0;
+    while (true) {
+      const rows = db.prepare(`
+        SELECT d.*, c.name AS customer_name,
+          COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0) AS amount_paid
+        FROM documents d
+        LEFT JOIN customers c ON c.id = d.entity_id
+        WHERE d.type = ?
+        ORDER BY d.date DESC
+        LIMIT ? OFFSET ?
+      `).all(docType, BATCH, offset) as Array<Record<string, unknown>>;
+      if (rows.length === 0) break;
+      appendCsvLines(filePath, rows.map((d) => {
+        const paid = Number(d.amount_paid ?? 0);
+        const remaining = Number(d.total_incl_tax ?? 0) - paid;
+        return csvRow([
+          d.document_number, d.customer_name ?? '', d.date,
+          d.total_excl_tax, d.total_incl_tax, d.status,
+          paid, remaining
+        ]);
+      }));
+      offset += rows.length;
+    }
+    return filePath;
   },
 
-  /** Export complet du dashboard */
+  /** Export du rapport de gestion (données agrégées — petits volumes). */
   exportDashboard(): string {
     const stats = DashboardRepository.getStats();
     const topProducts = DashboardRepository.getTopProducts();

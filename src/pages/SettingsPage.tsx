@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
 type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
@@ -82,6 +83,13 @@ const SectionTitle: React.FC<{ icon: string; title: string }> = ({ icon, title }
 export const SettingsPage: React.FC = () => {
   const [tab, setTab] = useState<Tab>('company');
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: React.ReactNode;
+    danger?: boolean;
+    confirmLabel: string;
+    action: () => void;
+  } | null>(null);
 
   // Entreprise
   const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '' });
@@ -193,11 +201,24 @@ export const SettingsPage: React.FC = () => {
     } else notify(`❌ ${result.error}`);
   };
 
-  const deleteCategory = async (id: string) => {
-    if (!confirm('Supprimer cette catégorie et ses sous-catégories ?')) return;
+  const doDeleteCategory = async (id: string) => {
     const result = await window.api.categories.delete(id);
     if (result.success) { loadAll(); notify('🗑️ Catégorie supprimée'); }
     else notify(`❌ ${result.error}`);
+  };
+
+  const deleteCategory = async (id: string) => {
+    setPendingConfirm({
+      title: 'Supprimer cette catégorie ?',
+      message: (
+        <>
+          La catégorie et <strong>toutes ses sous-catégories</strong> seront supprimées.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer',
+      action: () => doDeleteCategory(id),
+    });
   };
 
   // ─── Remises ────────────────────────────────────────────────────────────────
@@ -216,11 +237,24 @@ export const SettingsPage: React.FC = () => {
     } else notify(`❌ ${result.error}`);
   };
 
-  const deleteDiscount = async (id: string) => {
-    if (!confirm('Supprimer cette règle de remise ?')) return;
+  const doDeleteDiscount = async (id: string) => {
     const result = await window.api.discounts.delete(id);
     if (result.success) { loadAll(); notify('🗑️ Règle supprimée'); }
     else notify(`❌ ${result.error}`);
+  };
+
+  const deleteDiscount = async (id: string) => {
+    setPendingConfirm({
+      title: 'Supprimer cette règle de remise ?',
+      message: (
+        <>
+          La règle de remise sera <strong>définitivement supprimée</strong>.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer',
+      action: () => doDeleteDiscount(id),
+    });
   };
 
   // ─── Données ────────────────────────────────────────────────────────────────
@@ -293,8 +327,7 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleRestoreBackup = async (backupPath: string, backupName: string) => {
-    if (!confirm(`⚠️ Restaurer le backup "${backupName}" ?\n\nL'état actuel sera sauvegardé avant la restauration.\nL'application devra être redémarrée.`)) return;
+  const doRestoreBackup = async (backupPath: string) => {
     try {
       const result = await window.api.backup.restore(backupPath);
       if (result.success) {
@@ -307,19 +340,46 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleRestoreBackup = async (backupPath: string, backupName: string) => {
+    setPendingConfirm({
+      title: 'Restaurer cette sauvegarde ?',
+      message: (
+        <>
+          <strong>{backupName}</strong> sera restaurée.
+          <br />L'état actuel sera sauvegardé avant la restauration.
+          <br /><span style={{ color: 'var(--danger)', fontWeight: 700 }}>L'application devra être redémarrée.</span>
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Restaurer',
+      action: () => doRestoreBackup(backupPath),
+    });
+  };
+
   const handleDeleteBackup = async (backupPath: string) => {
-    if (!confirm('Supprimer cette sauvegarde ?')) return;
-    try {
-      const result = await window.api.backup.delete(backupPath);
-      if (result.success) {
-        notify('🗑️ Sauvegarde supprimée');
-        loadBackups();
-      } else {
-        notify(`❌ ${result.error}`);
-      }
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
-    }
+    setPendingConfirm({
+      title: 'Supprimer cette sauvegarde ?',
+      message: (
+        <>
+          La sauvegarde sera <strong>définitivement supprimée</strong>. Cette action est irréversible.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer',
+      action: async () => {
+        try {
+          const result = await window.api.backup.delete(backupPath);
+          if (result.success) {
+            notify('🗑️ Sauvegarde supprimée');
+            loadBackups();
+          } else {
+            notify(`❌ ${result.error}`);
+          }
+        } catch (e: any) {
+          notify(`❌ ${e.message}`);
+        }
+      },
+    });
   };
 
   const [csvFilePath, setCsvFilePath] = useState('');
@@ -386,11 +446,24 @@ export const SettingsPage: React.FC = () => {
     setConversionForm({ from_unit: '', to_unit: '', factor: 1, product_id: '' });
   };
 
-  const deleteConversion = async (id: string) => {
-    if (!confirm('Supprimer cette conversion ?')) return;
+  const doDeleteConversion = async (id: string) => {
     const result = await window.api.conversions.delete(id);
     if (result.success) { loadAll(); notify('🗑️ Conversion supprimée'); }
     else notify(`❌ ${result.error}`);
+  };
+
+  const deleteConversion = async (id: string) => {
+    setPendingConfirm({
+      title: 'Supprimer cette conversion ?',
+      message: (
+        <>
+          La conversion d'unité sera <strong>définitivement supprimée</strong>.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer',
+      action: () => doDeleteConversion(id),
+    });
   };
 
   // ─── Global Settings ────────────────────────────────────────────────────────
@@ -935,6 +1008,21 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {pendingConfirm && (
+        <ConfirmDialog
+          open
+          title={pendingConfirm.title}
+          message={pendingConfirm.message}
+          danger={pendingConfirm.danger}
+          confirmLabel={pendingConfirm.confirmLabel}
+          onConfirm={() => {
+            pendingConfirm.action();
+            setPendingConfirm(null);
+          }}
+          onCancel={() => setPendingConfirm(null)}
+        />
+      )}
     </div>
   );
 };

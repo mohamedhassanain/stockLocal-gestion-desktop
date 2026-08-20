@@ -67,7 +67,11 @@ const DANGEROUS_PATH_CHARS = /[<>"|?*\x00-\x1f]/;
  * complémentaire précoce (rejet rapide avant les vérifications lourdes).
  */
 export function hasPathTraversal(filePath: string): boolean {
-  return filePath.includes('..') || filePath.includes('~');
+  if (filePath.includes('..')) return true;
+  // Bloque `~` uniquement en DÉBUT de segment (`~/fichier`, `sous-dossier/~/x`),
+  // pas dans un nom de dossier légitime (ex. chemin court Windows 8.3 `MOHAME~1`)
+  if (/(^|[\\/])~([\\/]|$)/.test(filePath)) return true;
+  return false;
 }
 
 export function validateFilePath(filePath: string, fieldName: string): string {

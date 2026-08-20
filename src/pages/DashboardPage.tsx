@@ -194,7 +194,8 @@ export const DashboardPage: React.FC = () => {
           <KpiCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} soft="var(--success-soft)" />
           <KpiCard icon="💹" label="Marge (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} soft="var(--accent-soft)" />
           <KpiCard icon="📦" label="Valeur du stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} soft="var(--info-soft)" />
-          <KpiCard icon="⚠️" label="Impayés" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" soft="var(--danger-soft)" tone="danger" />
+          <KpiCard icon="⚠️" label="Impayés clients" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" soft="var(--danger-soft)" tone="danger" />
+          <KpiCard icon="🏭" label="Dettes fournisseurs" value={`${stats?.supplier_debt_total.toFixed(2) ?? '0.00'} MAD`} sub="Crédits fournisseurs en cours" soft="var(--warning-soft)" tone="warning" />
         </div>
 
         {/* Résumé des alertes */}

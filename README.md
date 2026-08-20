@@ -184,7 +184,13 @@ npm test
 ```
 
 Couverture actuelle : validation des schémas (20), moteur de stock / inventaire /
-transferts / produits (25), backup / restore (4).
+transferts / produits (25), backup / restore (4), hardening / recherche barcode /
+exports batch / dettes fournisseurs / confinement des chemins (15).
+
+```
+Test Files  4 passed (4)
+     Tests  64 passed (64)
+```
 
 ---
 
@@ -284,6 +290,13 @@ Sur la page Produits : `Ctrl+F` focus recherche, `F8` nouveau produit.
   données agrégées existantes
 - **Multi-dépôts / lots** : les tables `warehouses` et `product_batches` sont
   préparées dans le schéma, sans UI ni service actif pour l'instant
+- **Chiffrement de la base — NON IMPLÉMENTÉ** : SQLCipher a été évalué puis
+  écarté pour ne pas casser la compatibilité ABI du module natif
+  `better-sqlite3` avec Electron et le pipeline `install-app-deps`. La base
+  `.db` est donc en clair sur le disque. Protection recommandée : chiffrement
+  au niveau du système d'exploitation (BitLocker / FileVault) sur la machine
+  du commerçant. À traiter dans une phase dédiée (validation ABI + build NSIS
+  complet) avant de prétendre au « production ready » complet.
 - Pas de script `lint` à ce stade
 
 ---

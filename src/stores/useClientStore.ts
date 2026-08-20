@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Customer, ClientCredit } from '../repositories/ClientRepository';
+import { toast } from './useToastStore';
 
 interface ClientState {
   clients: Customer[];
@@ -133,7 +134,8 @@ export const useClientStore = create<ClientState>((set, get) => ({
       const result = await window.api.clients.exportStatement(customerId);
       if (!result.success) throw new Error(result.error);
     } catch (err: any) {
-      alert("Erreur lors de l'export: " + err.message);
+      // Phase 7 : toast plutôt qu'alert() natif.
+      toast.error(`Erreur lors de l'export : ${err.message}`);
     }
   }
 }));

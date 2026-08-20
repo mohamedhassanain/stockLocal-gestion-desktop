@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSupplierStore } from '../stores/useSupplierStore';
 import { SupplierDetailPanel } from '../components/SupplierDetailPanel';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../stores/useToastStore';
 import type { Supplier } from '../repositories/SupplierRepository';
 
@@ -44,6 +45,7 @@ const SupplierFormModal: React.FC<{ initial?: Supplier; onClose: () => void; onS
 export const SuppliersPage: React.FC = () => {
   const { suppliers, selectedSupplier, searchQuery, isLoading, setSearchQuery, loadSuppliers, selectSupplier, createSupplier, updateSupplier, deleteSupplier, addDebt, addPayment } = useSupplierStore();
   const [modalState, setModalState] = useState<{ mode: 'create' } | { mode: 'edit'; supplier: Supplier } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => { loadSuppliers(); }, []);
 
@@ -62,14 +64,16 @@ export const SuppliersPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    const ok = window.confirm('Supprimer le fournisseur « ' + name + ' » ? Cette action est irréversible.');
-    if (!ok) return;
+  const confirmDeleteSupplier = async () => {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
     try {
       await deleteSupplier(id);
       toast.success(`Fournisseur « ${name} » supprimé.`);
     } catch (e: any) {
       toast.error(e.message);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -147,7 +151,7 @@ export const SuppliersPage: React.FC = () => {
                   style={{ padding: '10px 18px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
                   ✏️ Modifier
                 </button>
-                <button onClick={() => handleDelete(selectedSupplier.id, selectedSupplier.name)}
+                <button onClick={() => setDeleteTarget({ id: selectedSupplier.id, name: selectedSupplier.name })}
                   style={{ padding: '10px 18px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
                   🗑️ Supprimer
                 </button>
@@ -163,6 +167,24 @@ export const SuppliersPage: React.FC = () => {
       </div>
 
       {modalState && (<SupplierFormModal initial={modalState.mode === 'edit' ? modalState.supplier : undefined} onClose={() => setModalState(null)} onSave={handleSaveForm} />)}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          title="Suppression définitive"
+          message={
+            <>
+              Supprimer le fournisseur <strong>{deleteTarget.name}</strong> ?
+              <br /><span style={{ color: 'var(--danger)', fontWeight: 700 }}>Cette action est irréversible.</span>
+              <br />Sera bloquée si le fournisseur possède des documents ou mouvements liés.
+            </>
+          }
+          danger
+          confirmLabel="Supprimer définitivement"
+          onConfirm={confirmDeleteSupplier}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 };

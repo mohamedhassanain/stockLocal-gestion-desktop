@@ -9,6 +9,7 @@ export interface DashboardStats {
   gross_margin_month: number;
   total_stock_value: number;
   unpaid_total: number;
+  supplier_debt_total: number;
 }
 
 export interface TopProduct {
@@ -95,6 +96,12 @@ const stmtUnpaid = db.prepare<[]>(`
   WHERE d.type = 'INVOICE' AND d.status IN ('UNPAID', 'PARTIAL')
 `);
 
+// §Phase 10 — Total des dettes fournisseurs (SQL agrégé, jamais chargé en mémoire)
+const stmtSupplierDebt = db.prepare<[]>(`
+  SELECT COALESCE(SUM(CASE WHEN sc.type='DEBT' THEN sc.amount ELSE -sc.amount END), 0) AS supplier_debt_total
+  FROM supplier_credits sc
+`);
+
 const stmtTopProducts = db.prepare<[]>(`
   SELECT di.product_id, p.designation, p.reference,
     SUM(di.quantity) AS total_qty,
@@ -158,6 +165,7 @@ export const DashboardRepository = {
     const margin = stmtMargin.get() as any;
     const stockVal = stmtStockValue.get() as any;
     const unpaid = stmtUnpaid.get() as any;
+    const supplierDebt = stmtSupplierDebt.get() as any;
 
     return {
       revenue_today: revenue.revenue_today,
@@ -168,6 +176,7 @@ export const DashboardRepository = {
       gross_margin_month: margin.gross_margin_month,
       total_stock_value: stockVal.total_stock_value,
       unpaid_total: unpaid.unpaid_total,
+      supplier_debt_total: supplierDebt.supplier_debt_total,
     };
   },
 

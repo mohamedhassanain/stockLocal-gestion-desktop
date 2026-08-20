@@ -122,21 +122,29 @@ export const POSPage: React.FC = () => {
   const subtotal = cart.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - it.discount / 100), 0);
   const change = paymentMethod === 'CASH' ? Math.max(0, cashGiven - subtotal) : 0;
 
-  // ─── Barcode handling ──────────────────────────────────────────────────────
+  // ─── Barcode handling (Phase 1) ─────────────────────────────────────────────
+  // Recherche d'abord côté SQLite (1 produit, zéro scan de la liste chargée) :
+  // un scanner USB émulant un clavier tape le code puis Entrée → requête exacte
+  // `WHERE barcode = ?`. Seuls la référence (exacte) et le texte retombent sur
+  // la petite liste paginée déjà en mémoire.
 
-  const handleBarcodeSubmit = () => {
+  const handleBarcodeSubmit = async () => {
     const code = barcodeInput.trim();
     if (!code) return;
 
-    // Try barcode first
-    const product = products.find(p => p.barcode === code);
-    if (product) {
-      addToCart(product);
-      setBarcodeInput('');
-      return;
+    try {
+      // 1. Code-barres exact côté SQLite
+      const byBarcode = await window.api.products.getByBarcode(code);
+      if (byBarcode) {
+        addToCart(byBarcode);
+        setBarcodeInput('');
+        return;
+      }
+    } catch {
+      // En mode navigateur pur (dev sans Electron), on retombe sur la liste.
     }
 
-    // Try reference
+    // 2. Référence exacte (parmi les produits déjà chargés/paginés)
     const byRef = products.find(p => p.reference.toLowerCase() === code.toLowerCase());
     if (byRef) {
       addToCart(byRef);
@@ -144,7 +152,7 @@ export const POSPage: React.FC = () => {
       return;
     }
 
-    // Not found — switch to text search
+    // 3. Introuvable — bascule sur la recherche texte (LIMIT 50 côté SQL)
     setProductSearch(code);
     setBarcodeInput('');
   };

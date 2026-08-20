@@ -196,7 +196,16 @@ app.whenReady().then(() => {
 
   // ─── Produits ──────────────────────────────────────────────────────────────
   ipcMain.handle('products:search', async (_, query: string) => {
+    // §2.6/Phase 3 : recherche SQL paginée (LIMIT 50 par défaut) — le renderer
+    // ne reçoit jamais plus de `limit` produits.
     return ProductService.searchProducts(query);
+  });
+
+  // Phase 1 : recherche exacte par code-barres côté SQLite (1 seul produit en
+  // mémoire, zéro scan de la liste chargée côté renderer).
+  ipcMain.handle('products:getByBarcode', async (_, barcode: string) => {
+    if (!barcode || typeof barcode !== 'string') return null;
+    return ProductRepository.findByBarcode(barcode.trim()) ?? null;
   });
 
   ipcMain.handle('products:create', async (_, productData: any) => {

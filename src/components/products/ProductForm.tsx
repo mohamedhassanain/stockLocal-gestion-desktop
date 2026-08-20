@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { useProductStore } from '../../stores/useProductStore';
+import { toast } from '../../stores/useToastStore';
 import type { Product } from '../../repositories/ProductRepository';
 
 const UNITS = ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'];
@@ -129,7 +130,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
         });
         setErrors(newErrors);
       } else {
-        alert(error.message);
+        toast.error(error.message);
       }
     }
   };

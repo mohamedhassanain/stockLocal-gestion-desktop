@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useInventoryStore, INVENTORY_STATUS_LABELS, type InventorySession } from '../stores/useInventoryStore';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../stores/useToastStore';
 
 // ─── Workflow Steps ──────────────────────────────────────────────────────────
@@ -172,25 +173,55 @@ export const InventoryPage: React.FC = () => {
     }
   };
 
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: React.ReactNode;
+    danger?: boolean;
+    confirmLabel: string;
+    action: () => void;
+  } | null>(null);
+
   const handleValidate = async () => {
     if (!selectedSession) return;
-    if (!confirm('Valider cette session d\'inventaire ? Cette action est irréversible et ajustera les stocks.')) return;
-    try {
-      await validateSession(selectedSession.id);
-      toast.success('Session d\'inventaire validée. Les stocks ont été ajustés.');
-    } catch (e: any) {
-      toast.error(e.message);
-    }
+    setPendingConfirm({
+      title: 'Valider cette session d\'inventaire ?',
+      message: (
+        <>
+          <strong>Cette action est irréversible</strong> : les stocks seront définitivement ajustés selon les écarts comptés.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Valider l\'inventaire',
+      action: async () => {
+        try {
+          await validateSession(selectedSession!.id);
+          toast.success('Session d\'inventaire validée. Les stocks ont été ajustés.');
+        } catch (e: any) {
+          toast.error(e.message);
+        }
+      },
+    });
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Supprimer cette session d\'inventaire ?')) return;
-    try {
-      await deleteSession(id);
-      toast.success('Session d\'inventaire supprimée.');
-    } catch (e: any) {
-      toast.error(e.message);
-    }
+    setPendingConfirm({
+      title: 'Supprimer cette session ?',
+      message: (
+        <>
+          La session et ses résultats de comptage seront <strong>définitivement supprimés</strong>.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer',
+      action: async () => {
+        try {
+          await deleteSession(id);
+          toast.success('Session d\'inventaire supprimée.');
+        } catch (e: any) {
+          toast.error(e.message);
+        }
+      },
+    });
   };
 
   const filteredItems = selectedSession?.items?.filter((item) => {
@@ -745,6 +776,21 @@ export const InventoryPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {pendingConfirm && (
+        <ConfirmDialog
+          open
+          title={pendingConfirm.title}
+          message={pendingConfirm.message}
+          danger={pendingConfirm.danger}
+          confirmLabel={pendingConfirm.confirmLabel}
+          onConfirm={() => {
+            pendingConfirm.action();
+            setPendingConfirm(null);
+          }}
+          onCancel={() => setPendingConfirm(null)}
+        />
+      )}
     </div>
   );
 };

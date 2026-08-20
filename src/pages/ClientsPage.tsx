@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { ClientDetailPanel } from '../components/ClientDetailPanel';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../stores/useToastStore';
 import type { Customer } from '../repositories/ClientRepository';
 
@@ -75,6 +76,7 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
 export const ClientsPage: React.FC = () => {
   const { clients, selectedClient, searchQuery, isLoading, setSearchQuery, loadClients, selectClient, createClient, updateClient, deleteClient, addDebt, addPayment } = useClientStore();
   const [modalState, setModalState] = useState<{ mode: 'create' } | { mode: 'edit'; client: Customer } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => { loadClients(); }, []);
 
@@ -93,14 +95,16 @@ export const ClientsPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    const ok = window.confirm('Supprimer le client « ' + name + ' » ? Cette action est irréversible.');
-    if (!ok) return;
+  const confirmDeleteClient = async () => {
+    if (!deleteTarget) return;
+    const { id, name } = deleteTarget;
     try {
       await deleteClient(id);
       toast.success(`Client « ${name} » supprimé.`);
     } catch (e: any) {
       toast.error(e.message);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -181,7 +185,7 @@ export const ClientsPage: React.FC = () => {
                   style={{ padding: '10px 18px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
                   ✏️ Modifier
                 </button>
-                <button onClick={() => handleDelete(selectedClient.id, selectedClient.name)}
+                <button onClick={() => setDeleteTarget({ id: selectedClient.id, name: selectedClient.name })}
                   style={{ padding: '10px 18px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
                   🗑️ Supprimer
                 </button>
@@ -197,6 +201,24 @@ export const ClientsPage: React.FC = () => {
       </div>
 
       {modalState && (<ClientFormModal initial={modalState.mode === 'edit' ? modalState.client : undefined} onClose={() => setModalState(null)} onSave={handleSaveForm} />)}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          title="Suppression définitive"
+          message={
+            <>
+              Supprimer le client <strong>{deleteTarget.name}</strong> ?
+              <br /><span style={{ color: 'var(--danger)', fontWeight: 700 }}>Cette action est irréversible.</span>
+              <br />Sera bloquée si le client possède des documents liés.
+            </>
+          }
+          danger
+          confirmLabel="Supprimer définitivement"
+          onConfirm={confirmDeleteClient}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 };

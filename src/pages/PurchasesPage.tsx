@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { usePurchaseStore } from '../stores/usePurchaseStore';
 import { useSupplierStore } from '../stores/useSupplierStore';
 import { useProductStore } from '../stores/useProductStore';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../stores/useToastStore';
 import type { PurchaseOrder, PurchaseStatus } from '../stores/usePurchaseStore';
 
@@ -329,24 +330,54 @@ export const PurchasesPage: React.FC = () => {
     }
   };
 
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: React.ReactNode;
+    danger?: boolean;
+    confirmLabel: string;
+    action: () => void;
+  } | null>(null);
+
   const handleCancel = async (id: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir annuler cette commande ?')) return;
-    try {
-      await cancelOrder(id);
-      toast.success('Commande annulée.');
-    } catch (e: any) {
-      toast.error(e.message);
-    }
+    setPendingConfirm({
+      title: 'Annuler cette commande ?',
+      message: (
+        <>
+          La commande sera marquée <strong>annulée</strong> et ne pourra plus être réceptionnée.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Annuler la commande',
+      action: async () => {
+        try {
+          await cancelOrder(id);
+          toast.success('Commande annulée.');
+        } catch (e: any) {
+          toast.error(e.message);
+        }
+      },
+    });
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette commande ?')) return;
-    try {
-      await deleteOrder(id);
-      toast.success('Commande supprimée.');
-    } catch (e: any) {
-      toast.error(e.message);
-    }
+    setPendingConfirm({
+      title: 'Supprimer cette commande ?',
+      message: (
+        <>
+          La commande sera <strong>définitivement supprimée</strong>. Cette action est irréversible.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer définitivement',
+      action: async () => {
+        try {
+          await deleteOrder(id);
+          toast.success('Commande supprimée.');
+        } catch (e: any) {
+          toast.error(e.message);
+        }
+      },
+    });
   };
 
   return (
@@ -421,6 +452,21 @@ export const PurchasesPage: React.FC = () => {
 
       {showNewForm && (
         <NewOrderModal onClose={() => setShowNewForm(false)} onSave={handleCreate} />
+      )}
+
+      {pendingConfirm && (
+        <ConfirmDialog
+          open
+          title={pendingConfirm.title}
+          message={pendingConfirm.message}
+          danger={pendingConfirm.danger}
+          confirmLabel={pendingConfirm.confirmLabel}
+          onConfirm={() => {
+            pendingConfirm.action();
+            setPendingConfirm(null);
+          }}
+          onCancel={() => setPendingConfirm(null)}
+        />
       )}
     </div>
   );
