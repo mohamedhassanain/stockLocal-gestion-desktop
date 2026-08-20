@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useInventoryStore, INVENTORY_STATUS_LABELS, type InventorySession } from '../stores/useInventoryStore';
+import { toast } from '../stores/useToastStore';
 
 // ─── Workflow Steps ──────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ export const InventoryPage: React.FC = () => {
     if (!newName.trim()) return;
     try {
       const session = await createSession(newName.trim(), newNotes.trim() || undefined);
+      toast.success(`Session « ${newName.trim()} » créée.`);
       setNewName('');
       setNewNotes('');
       setShowCreateForm(false);
@@ -132,7 +134,7 @@ export const InventoryPage: React.FC = () => {
         await loadSessionById(session.id);
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -145,8 +147,9 @@ export const InventoryPage: React.FC = () => {
     if (!selectedSession) return;
     try {
       await startCounting(selectedSession.id);
+      toast.success('Comptage démarré.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -155,7 +158,7 @@ export const InventoryPage: React.FC = () => {
       await countItem(itemId, countInput);
       setEditingItemId(null);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -163,8 +166,9 @@ export const InventoryPage: React.FC = () => {
     if (!selectedSession) return;
     try {
       await calculateGaps(selectedSession.id);
+      toast.success('Écarts calculés avec succès.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -173,8 +177,9 @@ export const InventoryPage: React.FC = () => {
     if (!confirm('Valider cette session d\'inventaire ? Cette action est irréversible et ajustera les stocks.')) return;
     try {
       await validateSession(selectedSession.id);
+      toast.success('Session d\'inventaire validée. Les stocks ont été ajustés.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -182,8 +187,9 @@ export const InventoryPage: React.FC = () => {
     if (!confirm('Supprimer cette session d\'inventaire ?')) return;
     try {
       await deleteSession(id);
+      toast.success('Session d\'inventaire supprimée.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
