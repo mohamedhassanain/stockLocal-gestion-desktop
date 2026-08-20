@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useDocumentStore } from '../stores/useDocumentStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useClientStore } from '../stores/useClientStore';
+import { toast } from '../stores/useToastStore';
 import type { Document, DocumentType } from '../repositories/DocumentRepository';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -494,17 +495,21 @@ export const InvoicePage: React.FC = () => {
     try {
       await createDocument(data);
       setShowNewForm(false);
+      toast.success('Document créé avec succès.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
+
+
 
   const handlePayment = async (amount: number, method: string) => {
     if (!selectedDocument) return;
     try {
       await addPayment(selectedDocument.id, amount, method as any);
+      toast.success(`Paiement de ${amount.toFixed(2)} MAD encaissé.`);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -512,9 +517,9 @@ export const InvoicePage: React.FC = () => {
     if (!selectedDocument) return;
     try {
       await convertBL(selectedDocument.id);
-      alert('Bon de livraison converti en facture avec succès !');
+      toast.success('Bon de livraison converti en facture avec succès.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
@@ -523,8 +528,9 @@ export const InvoicePage: React.FC = () => {
     try {
       const result = await window.api.documents.exportPdf(selectedDocument.id);
       if (!result.success) throw new Error(result.error);
+      toast.success('PDF exporté avec succès.');
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message);
     }
   };
 
