@@ -5,4 +5,7 @@ declare global {
   }
 }
 
+// Import CSS (design system)
+declare module '*.css';
+
 export {};
