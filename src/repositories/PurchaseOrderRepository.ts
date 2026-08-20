@@ -48,6 +48,15 @@ const stmtSearch = db.prepare(`
   LIMIT 200
 `);
 
+const stmtGetBySupplier = db.prepare(`
+  SELECT po.*, s.name AS supplier_name
+  FROM purchase_orders po
+  LEFT JOIN suppliers s ON s.id = po.supplier_id
+  WHERE po.supplier_id = ?
+  ORDER BY po.date DESC
+  LIMIT 200
+`);
+
 const stmtGetById = db.prepare(`
   SELECT po.*, s.name AS supplier_name
   FROM purchase_orders po
@@ -102,6 +111,11 @@ export const PurchaseOrderRepository = {
 
   getAll(): PurchaseOrder[] {
     return stmtGetAll.all() as PurchaseOrder[];
+  },
+
+  /** Commandes d'achat d'un fournisseur précis (SQL ciblé, jamais tout chargé). */
+  getBySupplier(supplierId: string): PurchaseOrder[] {
+    return stmtGetBySupplier.all(supplierId) as PurchaseOrder[];
   },
 
   search(query: string): PurchaseOrder[] {

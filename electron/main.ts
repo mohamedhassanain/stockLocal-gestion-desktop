@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { requireId, validateFilePath, validatePathWithinDataDir, hasPathTraversal, toHumanError } from './ipcValidation';
+import { requireId, requireString, validateFilePath, validatePathWithinDataDir, hasPathTraversal, toHumanError } from './ipcValidation';
 import { ErrorLogService } from '../src/services/ErrorLogService';
 import { initAutoUpdater, checkForUpdatesManually, installUpdate } from './autoUpdater';
 import { ProductService } from '../src/services/ProductService';
@@ -198,7 +198,8 @@ app.whenReady().then(() => {
   ipcMain.handle('products:search', async (_, query: string) => {
     // §2.6/Phase 3 : recherche SQL paginée (LIMIT 50 par défaut) — le renderer
     // ne reçoit jamais plus de `limit` produits.
-    return ProductService.searchProducts(query);
+    const safeQuery = typeof query === 'string' ? query.trim().slice(0, 200) : '';
+    return ProductService.searchProducts(safeQuery);
   });
 
   // Phase 1 : recherche exacte par code-barres côté SQLite (1 seul produit en
@@ -206,6 +207,11 @@ app.whenReady().then(() => {
   ipcMain.handle('products:getByBarcode', async (_, barcode: string) => {
     if (!barcode || typeof barcode !== 'string') return null;
     return ProductRepository.findByBarcode(barcode.trim()) ?? null;
+  });
+
+  ipcMain.handle('products:getByReference', async (_, reference: string) => {
+    const safeReference = requireString(reference, 'référence produit').slice(0, 200);
+    return ProductRepository.findByReference(safeReference) ?? null;
   });
 
   ipcMain.handle('products:create', async (_, productData: any) => {
@@ -235,7 +241,7 @@ app.whenReady().then(() => {
       );
       return { success: true, data: product };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
@@ -270,7 +276,7 @@ app.whenReady().then(() => {
       AuditService.log('PRODUCT_UPDATE', 'product', id, `Modification produit ${product.reference}${stockAdjustment !== 0 ? ` (stock ajusté de ${stockAdjustment})` : ''}`);
       return { success: true, data: product };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
@@ -341,7 +347,9 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('products:getAll', async () => {
-    return ProductRepository.search('', 10000);
+    // Compatibilité historique : ce point d'entrée reste borné et ne doit pas
+    // servir à constituer un catalogue complet côté renderer.
+    return ProductRepository.search('', 50);
   });
 
   // ─── Catégories ────────────────────────────────────────────────────────────
@@ -934,6 +942,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('purchases:search', async (_, query: string) => {
     return PurchaseOrderRepository.search(query);
+  });
+
+  // Lignes d'achat d'un fournisseur précis — SQL ciblé (jamais tout chargé).
+  ipcMain.handle('purchases:getBySupplier', async (_, supplierId: string) => {
+    const safeId = requireId(supplierId, 'id fournisseur');
+    return PurchaseOrderRepository.getBySupplier(safeId);
   });
 
   ipcMain.handle('purchases:getById', async (_, id: string) => {

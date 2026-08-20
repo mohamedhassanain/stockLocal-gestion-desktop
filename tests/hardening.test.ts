@@ -45,6 +45,13 @@ describe('Phase 1 — Recherche barcode côté SQLite (POS)', () => {
     expect(ProductRepository.findByBarcode('9999999999999')).toBeUndefined();
   });
 
+  it('retrouve une référence exacte côté SQLite sans parcourir une liste renderer', () => {
+    createProduct('REF-EXACT');
+    createProduct('REF-AUTRE');
+    expect(ProductRepository.findByReference('ref-exact')?.reference).toBe('REF-EXACT');
+    expect(ProductRepository.findByReference('inconnue')).toBeUndefined();
+  });
+
   it('findByBarcode ignore les espaces (trim côté handler)', () => {
     createProduct('BAR-3', { barcode: '6333333333333' });
     // Le handler IPC fait barcode.trim() avant la requête SQL

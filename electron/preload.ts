@@ -27,6 +27,7 @@ export const api = {
     search: (query: string) => ipcRenderer.invoke('products:search', query),
     // Phase 1 : recherche exacte par code-barres côté SQLite (1 produit, pas de scan de liste).
     getByBarcode: (barcode: string) => ipcRenderer.invoke('products:getByBarcode', barcode),
+    getByReference: (reference: string) => ipcRenderer.invoke('products:getByReference', reference),
     getAll: () => ipcRenderer.invoke('products:getAll'),
     create: (data: any) => ipcRenderer.invoke('products:create', data),
     createWithStock: (productData: any, initialStock: number) => ipcRenderer.invoke('products:createWithStock', { productData, initialStock }),
@@ -175,6 +176,8 @@ export const api = {
   purchases: {
     getAll: () => ipcRenderer.invoke('purchases:getAll'),
     search: (query: string) => ipcRenderer.invoke('purchases:search', query),
+    // Commandes d'achat d'un fournisseur précis — SQL ciblé (jamais tout chargé).
+    getBySupplier: (supplierId: string) => ipcRenderer.invoke('purchases:getBySupplier', supplierId),
     getById: (id: string) => ipcRenderer.invoke('purchases:getById', id),
     create: (data: any) => ipcRenderer.invoke('purchases:create', data),
     confirm: (id: string) => ipcRenderer.invoke('purchases:confirm', id),

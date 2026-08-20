@@ -41,6 +41,13 @@ export class ProductRepository {
                   FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
       FROM products p WHERE p.barcode = ?
     `),
+    findByReference: db.prepare(`
+      SELECT p.*,
+        COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
+                  FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
+      FROM products p
+      WHERE p.reference = ? COLLATE NOCASE
+    `),
     search: db.prepare(`
       SELECT p.*,
         COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
@@ -71,6 +78,11 @@ export class ProductRepository {
 
   static findByBarcode(barcode: string): Product | undefined {
     return this.stmts.findByBarcode.get(barcode) as Product | undefined;
+  }
+
+  /** Recherche exacte SQL pour les références saisies/scannées au POS. */
+  static findByReference(reference: string): Product | undefined {
+    return this.stmts.findByReference.get(reference) as Product | undefined;
   }
 
   static search(query: string, limit: number = 50, offset: number = 0): Product[] {

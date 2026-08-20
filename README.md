@@ -183,13 +183,14 @@ l'application.
 npm test
 ```
 
-Couverture actuelle : validation des schémas (20), moteur de stock / inventaire /
-transferts / produits (25), backup / restore (4), hardening / recherche barcode /
-exports batch / dettes fournisseurs / confinement des chemins (15).
+Couverture actuelle : validation des schémas, moteur de stock / inventaire /
+transferts / produits, backup / restore, hardening (barcode et référence SQL,
+exports batch, confinement des chemins) et volumétrie (10 000 produits,
+50 000 mouvements).
 
 ```
-Test Files  4 passed (4)
-     Tests  64 passed (64)
+Test Files  5 passed (5)
+     Tests  70 passed (70)
 ```
 
 ---

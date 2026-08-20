@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { toast } from '../stores/useToastStore';
 import type { Customer, ClientCredit } from '../repositories/ClientRepository';
 
 interface ClientDocument {
@@ -149,7 +150,7 @@ export const ClientDetailPanel: React.FC<Props> = ({ client, onDebt, onPayment }
       </div>
 
       {/* ── Export Statement Button ── */}
-      <button onClick={() => window.api.clients.exportStatement(client.id).then((r: { success: boolean; error?: string; filePath?: string }) => { if (!r.success) alert(r.error); })} style={{ width: '100%', padding: '12px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+      <button onClick={() => window.api.clients.exportStatement(client.id).then((r: { success: boolean; error?: string; filePath?: string }) => { if (!r.success) toast.error(r.error || 'Erreur lors de l\'export.'); })} style={{ width: '100%', padding: '12px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
         📄 Exporter Relevé PDF
       </button>
 

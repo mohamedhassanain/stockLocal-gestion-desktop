@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useProductStore } from '../stores/useProductStore';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
 import type { Product } from '../repositories/ProductRepository';
@@ -21,8 +20,9 @@ type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
 // ─── Page Point de Vente ──────────────────────────────────────────────────────
 
 export const POSPage: React.FC = () => {
-  const { products, loadProducts } = useProductStore();
-  const { clients, loadClients } = useClientStore();
+  const clients = useClientStore((state) => state.clients);
+  const loadClients = useClientStore((state) => state.loadClients);
+  const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -35,10 +35,20 @@ export const POSPage: React.FC = () => {
   const barcodeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadProducts();
     loadClients();
     barcodeRef.current?.focus();
   }, []);
+
+  // Le POS ne conserve qu'une page de résultats, demandée directement à SQLite.
+  // Un délai court évite une requête IPC à chaque frappe sans charger le catalogue.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      window.api.products.search(productSearch)
+        .then((results: Product[]) => setProducts(results))
+        .catch(() => setProducts([]));
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [productSearch]);
 
   // Re-focus barcode input on any key press
   useEffect(() => {
@@ -125,8 +135,8 @@ export const POSPage: React.FC = () => {
   // ─── Barcode handling (Phase 1) ─────────────────────────────────────────────
   // Recherche d'abord côté SQLite (1 produit, zéro scan de la liste chargée) :
   // un scanner USB émulant un clavier tape le code puis Entrée → requête exacte
-  // `WHERE barcode = ?`. Seuls la référence (exacte) et le texte retombent sur
-  // la petite liste paginée déjà en mémoire.
+  // `WHERE barcode = ?`. La référence exacte suit la même chaîne SQL; la
+  // recherche texte renvoie au plus 50 résultats depuis SQLite.
 
   const handleBarcodeSubmit = async () => {
     const code = barcodeInput.trim();
@@ -140,33 +150,25 @@ export const POSPage: React.FC = () => {
         setBarcodeInput('');
         return;
       }
-    } catch {
-      // En mode navigateur pur (dev sans Electron), on retombe sur la liste.
-    }
+      // 2. Référence exacte côté SQLite, sans scan de liste renderer.
+      const byReference = await window.api.products.getByReference(code);
+      if (byReference) {
+        addToCart(byReference);
+        setBarcodeInput('');
+        return;
+      }
 
-    // 2. Référence exacte (parmi les produits déjà chargés/paginés)
-    const byRef = products.find(p => p.reference.toLowerCase() === code.toLowerCase());
-    if (byRef) {
-      addToCart(byRef);
+      // 3. Introuvable — bascule sur la recherche texte (LIMIT 50 côté SQL).
+      setProductSearch(code);
       setBarcodeInput('');
-      return;
+    } catch {
+      toast.error('La recherche du produit a échoué. Réessayez.');
     }
-
-    // 3. Introuvable — bascule sur la recherche texte (LIMIT 50 côté SQL)
-    setProductSearch(code);
-    setBarcodeInput('');
   };
 
   // ─── Filtered products for search ──────────────────────────────────────────
 
-  const filteredProducts = products.filter(p =>
-    p.status === 'ACTIVE' && (
-      productSearch === '' ||
-      p.designation.toLowerCase().includes(productSearch.toLowerCase()) ||
-      p.reference.toLowerCase().includes(productSearch.toLowerCase()) ||
-      (p.barcode && p.barcode.includes(productSearch))
-    )
-  );
+  const filteredProducts = products.filter((product) => product.status === 'ACTIVE');
 
   // ─── Validation & payment ──────────────────────────────────────────────────
 

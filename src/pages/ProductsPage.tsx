@@ -27,18 +27,19 @@ export const ProductsPage: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [imageCache, setImageCache] = useState<Record<string, string>>({});
 
-  // Pré-charger les images des produits
-  useEffect(() => {
-    products.forEach(p => {
-      if (p.image_path && !imageCache[p.image_path]) {
-        window.api.products.getImageBase64(p.image_path).then((r: any) => {
-          if (r && r.success && r.dataUrl) {
-            setImageCache(prev => ({ ...prev, [p.image_path!]: r.dataUrl }));
-          }
-        }).catch(() => {});
+  // Phase 5 — chargement des images à la demande (lazy) : on ne charge que les
+  // images visibles (celles rendues par le virtualizer), jamais tout le catalogue.
+  const getProductImage = (imagePath: string | null | undefined): string => {
+    if (!imagePath) return '';
+    if (imageCache[imagePath]) return imageCache[imagePath];
+    // Lancer le chargement sans bloquer le rendu
+    window.api.products.getImageBase64(imagePath).then((r: any) => {
+      if (r && r.success && r.dataUrl) {
+        setImageCache(prev => ({ ...prev, [imagePath]: r.dataUrl }));
       }
-    });
-  }, [products]);
+    }).catch(() => {});
+    return '';
+  };
 
   const filteredProducts = categoryFilter
     ? products.filter(p => p.category_id === categoryFilter)
@@ -187,7 +188,8 @@ export const ProductsPage: React.FC = () => {
               {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                 const p = filteredProducts[virtualRow.index];
                 const stock = p.current_stock ?? 0;
-                const imgSrc = p.image_path ? (imageCache[p.image_path] || '') : '';
+                // Lazy-load : seule l'image du produit visible est demandée.
+                const imgSrc = getProductImage(p.image_path);
                 return (
                   <div key={virtualRow.index}
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)`, display: 'flex', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', alignItems: 'center', boxSizing: 'border-box' }}>

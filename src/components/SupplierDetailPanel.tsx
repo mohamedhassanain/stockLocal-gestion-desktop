@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { toast } from '../stores/useToastStore';
 import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -28,10 +29,11 @@ export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayme
     try {
       const [history, purchaseList] = await Promise.all([
         window.api.suppliers.getHistory(supplier.id),
-        window.api.purchases.getAll(),
+        // SQL ciblé par fournisseur — jamais tout le catalogue de commandes chargé.
+        window.api.purchases.getBySupplier(supplier.id),
       ]);
       setSupplierHistory(history);
-      setPurchases(purchaseList.filter((p: any) => p.supplier_id === supplier.id));
+      setPurchases(purchaseList);
     } catch {
       // silently fail
     }
@@ -100,7 +102,7 @@ export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayme
       </div>
 
       {/* ── Export Button ── */}
-      <button onClick={() => window.api.suppliers.exportStatement(supplier.id).then((r: { success: boolean; error?: string }) => { if (!r.success) alert(r.error); })} style={{ width: '100%', padding: '12px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+      <button onClick={() => window.api.suppliers.exportStatement(supplier.id).then((r: { success: boolean; error?: string }) => { if (!r.success) toast.error(r.error || 'Erreur lors de l\'export.'); })} style={{ width: '100%', padding: '12px', background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
         📄 Exporter Relevé PDF
       </button>
 
