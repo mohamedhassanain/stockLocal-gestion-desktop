@@ -125,6 +125,10 @@ function migrateColumns(): void {
 }
 
 function migrateAuditLogs(): void {
+  // §11 : ajouter old_value / new_value pour tracer avant/après
+  addColumnIfMissing('audit_logs', 'old_value', 'TEXT');
+  addColumnIfMissing('audit_logs', 'new_value', 'TEXT');
+
   // Migration : retirer la dépendance FK vers users dans audit_logs
   // On recrée la table si elle a encore une FK vers users
   try {
@@ -138,14 +142,18 @@ function migrateAuditLogs(): void {
           entity_type TEXT NOT NULL,
           entity_id TEXT NOT NULL,
           details TEXT,
+          old_value TEXT,
+          new_value TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-        INSERT INTO audit_logs_new (id, action, entity_type, entity_id, details, created_at)
-          SELECT id, action, entity_type, entity_id, details, created_at FROM audit_logs;
+        INSERT INTO audit_logs_new (id, action, entity_type, entity_id, details, old_value, new_value, created_at)
+          SELECT id, action, entity_type, entity_id, details, old_value, new_value, created_at FROM audit_logs;
         DROP TABLE audit_logs;
         ALTER TABLE audit_logs_new RENAME TO audit_logs;
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_date ON audit_logs (created_at);
       `);
-      console.log('[DB] audit_logs migré sans FK users.');
+      console.log('[DB] audit_logs migré sans FK users et avec old/new values.');
     }
   } catch (e) {
     console.warn('[DB] Migration audit_logs ignorée (normal si nouvelle DB):', e);

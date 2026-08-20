@@ -105,6 +105,54 @@ export const StockLedgerService = {
     return Number(row?.total ?? 0);
   },
 
+  /**
+   * Coût moyen pondéré (CMUP) d'un produit (§16).
+   *
+   * CMUP = Σ(quantité_entrée × prix_unitaire_entrée) / Σ(quantité_entrée)
+   * Seules les entrées valorisantes sont comptées : PURCHASE_IN, RETURN_IN,
+   * OPENING_BALANCE, ADJUSTMENT_IN, TRANSFER_IN. Les sorties (SALE_OUT, etc.)
+   * ne modifient pas le coût moyen : la marge historique reste stable.
+   */
+  getAverageCost(productId: string): number {
+    const row = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END), 0) AS total_value,
+        COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END), 0) AS total_qty
+      FROM stock_movements
+      WHERE product_id = ?
+    `).get(productId) as { total_value: number; total_qty: number } | undefined;
+
+    const value = Number(row?.total_value ?? 0);
+    const qty = Number(row?.total_qty ?? 0);
+    if (qty <= 0) {
+      const fallback = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(productId) as { purchase_price: number } | undefined;
+      return Number(fallback?.purchase_price ?? 0);
+    }
+    return value / qty;
+  },
+
+  /**
+   * Valorisation du stock au CMUP : Σ(stock physique × coût moyen),
+   * sur les produits actifs uniquement.
+   */
+  getStockValue(): number {
+    const rows = db.prepare(`
+      SELECT p.id,
+        COALESCE(SUM(CASE WHEN sm.type = 'IN' THEN sm.quantity ELSE -sm.quantity END), 0) AS stock
+      FROM products p
+      LEFT JOIN stock_movements sm ON sm.product_id = p.id
+      WHERE p.status = 'ACTIVE'
+      GROUP BY p.id
+      HAVING stock > 0
+    `).all() as Array<{ id: string; stock: number }>;
+
+    let total = 0;
+    for (const row of rows) {
+      total += Number(row.stock) * this.getAverageCost(row.id);
+    }
+    return total;
+  },
+
   /** Historique des mouvements d'un produit. */
   getHistory(productId: string, limit = 200, offset = 0): StockMovementRow[] {
     return db.prepare(`

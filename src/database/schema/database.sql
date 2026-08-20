@@ -174,13 +174,16 @@ CREATE TABLE IF NOT EXISTS payments (
     FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
 );
 
--- Audit trail (sans user_id)
+-- Audit trail (sans user_id, single-user actuel)
+-- §11 : old_value / new_value JSON pour tracer les modifications avant/après
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     details TEXT,
+    old_value TEXT,
+    new_value TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

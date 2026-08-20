@@ -27,6 +27,19 @@ import { PurchaseOrderRepository } from '../src/repositories/PurchaseOrderReposi
 import { InventorySessionRepository } from '../src/repositories/InventorySessionRepository';
 import { ExportService } from '../src/services/ExportService';
 import { GlobalSettingsService } from '../src/services/GlobalSettingsService';
+import {
+  safeParse,
+  ProductCreateSchema,
+  ProductUpdateSchema,
+  ClientCreateSchema,
+  ClientUpdateSchema,
+  SupplierCreateSchema,
+  SupplierUpdateSchema,
+  SaleSchema,
+  PaymentSchema,
+  StockEntrySchema,
+  StockExitSchema,
+} from '../src/validation/schemas';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -184,18 +197,29 @@ app.whenReady().then(() => {
 
   ipcMain.handle('products:create', async (_, productData: any) => {
     try {
-      const product = ProductService.createProduct(productData);
+      const data = safeParse(ProductCreateSchema, productData, 'Création produit');
+      const product = ProductService.createProduct(data);
       AuditService.log('PRODUCT_CREATE', 'product', product.id, `Création produit ${product.reference}`);
       return { success: true, data: product };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
   ipcMain.handle('products:update', async (_, { id, data }: { id: string; data: any }) => {
     try {
+      const oldProduct = ProductRepository.findById(id);
       const product = ProductService.updateProduct(id, data);
-      AuditService.log('PRODUCT_UPDATE', 'product', id, `Modification produit ${product.reference}`);
+      AuditService.log(
+        'PRODUCT_UPDATE',
+        'product',
+        id,
+        `Modification produit ${product.reference}`,
+        oldProduct
+          ? { purchase_price: oldProduct.purchase_price, selling_price: oldProduct.selling_price, wholesale_price: oldProduct.wholesale_price }
+          : undefined,
+        { purchase_price: product.purchase_price, selling_price: product.selling_price, wholesale_price: product.wholesale_price }
+      );
       return { success: true, data: product };
     } catch (error: any) {
       return { success: false, error: error.message };
@@ -560,21 +584,23 @@ app.whenReady().then(() => {
 
   ipcMain.handle('stock:addEntry', async (_, data: any) => {
     try {
-      const mvt = StockService.addStockEntry(data);
-      AuditService.log('STOCK_IN', 'stock', data.product_id, `Entrée de ${data.quantity}`);
+      const safe = safeParse(StockEntrySchema, data, 'Entrée de stock');
+      const mvt = StockService.addStockEntry(safe);
+      AuditService.log('STOCK_IN', 'stock', safe.product_id, `Entrée de ${safe.quantity}`);
       return { success: true, data: mvt };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
   ipcMain.handle('stock:addExit', async (_, data: any) => {
     try {
-      const mvt = StockService.addStockExit(data);
-      AuditService.log('STOCK_OUT', 'stock', data.product_id, `Sortie de ${data.quantity} (${data.notes ?? 'vente/casse'})`);
+      const safe = safeParse(StockExitSchema, data, 'Sortie de stock');
+      const mvt = StockService.addStockExit({ ...safe, exitType: safe.exitType });
+      AuditService.log('STOCK_OUT', 'stock', safe.product_id, `Sortie de ${safe.quantity} (${safe.exitType})`);
       return { success: true, data: mvt };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
