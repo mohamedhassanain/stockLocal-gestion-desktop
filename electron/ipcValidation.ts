@@ -110,6 +110,61 @@ export function requireArray(value: unknown, fieldName: string): unknown[] {
   return value;
 }
 
+// ─── Hiérarchie d'erreurs centralisée (§33) ─────────────────────────────────
+// Chaque couche (IPC → service → repository) peut lever une erreur typée.
+// toHumanError() transforme TOUJOURS ces erreurs en messages français clairs.
+
+export class AppError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'AppError';
+    this.code = code;
+  }
+}
+
+export class DatabaseError extends AppError {
+  constructor(message: string, cause?: unknown) {
+    super('DATABASE_ERROR', `${message}${cause && cause !== message ? ` (cause: ${String((cause as any)?.message ?? cause)})` : ''}`);
+    this.name = 'DatabaseError';
+  }
+}
+
+export class ValidationError extends AppError {
+  constructor(message: string) {
+    super('VALIDATION_ERROR', message);
+    this.name = 'ValidationError';
+  }
+}
+
+export class BusinessError extends AppError {
+  constructor(message: string) {
+    super('BUSINESS_ERROR', message);
+    this.name = 'BusinessError';
+  }
+}
+
+export class PermissionError extends AppError {
+  constructor(message = 'Action non autorisée.') {
+    super('PERMISSION_DENIED', message);
+    this.name = 'PermissionError';
+  }
+}
+
+export class FileSystemError extends AppError {
+  constructor(message: string) {
+    super('FILESYSTEM_ERROR', message);
+    this.name = 'FileSystemError';
+  }
+}
+
+export class BackupError extends AppError {
+  constructor(message: string) {
+    super('BACKUP_ERROR', message);
+    this.name = 'BackupError';
+  }
+}
+
 // ─── Sanitization ─────────────────────────────────────────────────────────────
 
 export function sanitizeString(value: string): string {
