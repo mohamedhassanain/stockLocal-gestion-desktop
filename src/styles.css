@@ -251,3 +251,13 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
 }
 .page-header h1 { font-size: 22px; }
 .page-body { padding: 24px 28px; overflow-y: auto; flex: 1; }
+
+/* ─── Dialogues / overlays (ConfirmDialog §30) ───────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

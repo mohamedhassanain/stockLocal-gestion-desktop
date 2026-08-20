@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { ProductForm } from '../components/products/ProductForm';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Product } from '../repositories/ProductRepository';
 
@@ -13,6 +14,13 @@ export const ProductsPage: React.FC = () => {
   const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct, deleteProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: React.ReactNode;
+    danger?: boolean;
+    confirmLabel: string;
+    action: () => void;
+  } | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -68,23 +76,57 @@ export const ProductsPage: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleArchive = async (product: Product) => {
-    if (!confirm(`Archiver le produit "${product.designation}" ? Il sera masqué des recherches de vente.`)) return;
-    try { await archiveProduct(product.id); } catch (e: any) { alert(e.message); }
+  const handleArchive = (product: Product) => {
+    setPendingConfirm({
+      title: 'Archiver ce produit ?',
+      message: (
+        <>
+          Le produit <strong>{product.designation}</strong> ({product.reference}) sera masqué des recherches de vente.
+          <br />Vous pourrez le réactiver à tout moment.
+        </>
+      ),
+      confirmLabel: 'Archiver',
+      action: async () => {
+        try { await archiveProduct(product.id); } catch (e: any) { alert(e.message); }
+      },
+    });
   };
 
   const handleActivate = async (product: Product) => {
     try { await activateProduct(product.id); } catch (e: any) { alert(e.message); }
   };
 
-  const handleDisable = async (product: Product) => {
-    if (!confirm(`Désactiver le produit "${product.designation}" ? Il restera visible mais retiré de la vente.`)) return;
-    try { await disableProduct(product.id); } catch (e: any) { alert(e.message); }
+  const handleDisable = (product: Product) => {
+    setPendingConfirm({
+      title: 'Désactiver ce produit ?',
+      message: (
+        <>
+          Le produit <strong>{product.designation}</strong> ({product.reference}) restera visible mais sera retiré de la vente.
+        </>
+      ),
+      confirmLabel: 'Désactiver',
+      action: async () => {
+        try { await disableProduct(product.id); } catch (e: any) { alert(e.message); }
+      },
+    });
   };
 
-  const handleDelete = async (product: Product) => {
-    if (!confirm(`⚠️ SUPPRESSION DÉFINITIVE\n\nSupprimer le produit "${product.designation}" (${product.reference}) ?\n\nCette action est IRRÉVERSIBLE.`)) return;
-    try { await deleteProduct(product.id); } catch (e: any) { alert(e.message); }
+  const handleDelete = (product: Product) => {
+    setPendingConfirm({
+      title: 'Suppression définitive',
+      message: (
+        <>
+          Supprimer <strong>{product.designation}</strong> ({product.reference}) ?
+          <br /><span style={{ color: 'var(--danger)', fontWeight: 700 }}>Cette action est irréversible.</span>
+          <br />Sera bloquée si le produit possède un historique de stock.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer définitivement',
+      action: async () => {
+        try { await deleteProduct(product.id); } catch (e: any) { alert(e.message); }
+      },
+    });
   };
 
   const handlePrintLabels = async () => {
@@ -191,6 +233,21 @@ export const ProductsPage: React.FC = () => {
 
       {isFormOpen && (
         <ProductForm onClose={() => { setIsFormOpen(false); setEditingProduct(null); }} editingProduct={editingProduct ?? undefined} />
+      )}
+
+      {pendingConfirm && (
+        <ConfirmDialog
+          open
+          title={pendingConfirm.title}
+          message={pendingConfirm.message}
+          danger={pendingConfirm.danger}
+          confirmLabel={pendingConfirm.confirmLabel}
+          onConfirm={() => {
+            pendingConfirm.action();
+            setPendingConfirm(null);
+          }}
+          onCancel={() => setPendingConfirm(null)}
+        />
       )}
     </div>
   );

@@ -621,19 +621,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle('clients:create', async (_, data: any) => {
     try {
-      const client = ClientService.createClient(data);
+      const safe = safeParse(ClientCreateSchema, data, 'Création client');
+      const client = ClientService.createClient(safe);
       AuditService.log('CLIENT_CREATE', 'client', client.id, `Client ${client.name}`);
       return { success: true, data: client };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
   ipcMain.handle('clients:update', async (_, { id, data }: { id: string; data: any }) => {
     try {
-      return { success: true, data: ClientService.updateClient(id, data) };
+      const safe = safeParse(ClientUpdateSchema, data, 'Modification client');
+      return { success: true, data: ClientService.updateClient(id, safe) };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
@@ -700,19 +702,21 @@ app.whenReady().then(() => {
 
   ipcMain.handle('suppliers:create', async (_, data: any) => {
     try {
-      const supplier = SupplierService.createSupplier(data);
+      const safe = safeParse(SupplierCreateSchema, data, 'Création fournisseur');
+      const supplier = SupplierService.createSupplier(safe);
       AuditService.log('SUPPLIER_CREATE', 'supplier', supplier.id, `Fournisseur ${supplier.name}`);
       return { success: true, data: supplier };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
   ipcMain.handle('suppliers:update', async (_, { id, data }: any) => {
     try {
-      return { success: true, data: SupplierService.updateSupplier(id, data) };
+      const safe = safeParse(SupplierUpdateSchema, data, 'Modification fournisseur');
+      return { success: true, data: SupplierService.updateSupplier(id, safe) };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
@@ -780,11 +784,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('documents:addPayment', async (_, data: any) => {
     try {
-      DocumentService.addPayment(data);
-      AuditService.log('DOCUMENT_PAYMENT', 'document', data.document_id, `Paiement ${data.amount} MAD`);
+      const safe = safeParse(PaymentSchema, data, 'Paiement document');
+      DocumentService.addPayment(safe);
+      AuditService.log('DOCUMENT_PAYMENT', 'document', safe.document_id, `Paiement ${safe.amount} MAD`);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: toHumanError(error) };
     }
   });
 
