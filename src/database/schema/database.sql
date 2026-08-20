@@ -251,6 +251,30 @@ CREATE INDEX IF NOT EXISTS idx_volume_discounts_qty ON volume_discounts (min_qty
 -- NOUVELLES TABLES (Phase 1+ : unités, historique prix, achats, inventaire)
 -- ══════════════════════════════════════════════════════════════════════════════
 
+-- Multi-dépôts (§19) : préparation sans casser le fonctionnement actuel.
+CREATE TABLE IF NOT EXISTS warehouses (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    address TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Lots / expiration (§20) : numéro de lot, date de péremption.
+CREATE TABLE IF NOT EXISTS product_batches (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    lot_number TEXT NOT NULL,
+    quantity REAL NOT NULL DEFAULT 0,
+    expiry_date DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_product_batches_product ON product_batches (product_id);
+CREATE INDEX IF NOT EXISTS idx_product_batches_expiry ON product_batches (expiry_date);
+
 -- Conversions d'unités (CARTON = 24 PIÈCES, etc.)
 CREATE TABLE IF NOT EXISTS unit_conversions (
     id TEXT PRIMARY KEY,
@@ -294,9 +318,9 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     id TEXT PRIMARY KEY,
     purchase_order_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
-    quantity INTEGER NOT NULL,
+    quantity REAL NOT NULL,
     unit_price REAL NOT NULL,
-    received_qty INTEGER NOT NULL DEFAULT 0,
+    received_qty REAL NOT NULL DEFAULT 0,
     total REAL NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id) ON DELETE CASCADE,
@@ -320,9 +344,9 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
-    expected_qty INTEGER NOT NULL DEFAULT 0,
-    counted_qty INTEGER,
-    difference INTEGER,
+    expected_qty REAL NOT NULL DEFAULT 0,
+    counted_qty REAL,
+    difference REAL,
     status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, COUNTED, ADJUSTED
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES inventory_sessions (id) ON DELETE CASCADE,
