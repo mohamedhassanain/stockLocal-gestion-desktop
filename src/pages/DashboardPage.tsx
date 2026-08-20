@@ -5,28 +5,28 @@ import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue,
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 const KpiCard: React.FC<{
   icon: string; label: string; value: string; sub?: string;
-  soft: string;
-}> = ({ icon, label, value, sub, soft }) => (
+  soft: string; tone?: 'default' | 'danger' | 'warning' | 'success';
+}> = ({ icon, label, value, sub, soft, tone = 'default' }) => (
   <div
     style={{
       background: 'var(--surface)',
       border: '1px solid var(--border)',
       borderRadius: 'var(--radius-lg)',
-      padding: '18px 20px',
+      padding: '16px 18px',
       boxShadow: 'var(--shadow-sm)',
-      flex: '1 1 200px',
-      minWidth: '190px',
+      flex: '1 1 190px',
+      minWidth: '180px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '10px',
+      gap: '8px',
     }}
   >
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
       <span
         style={{
-          fontSize: '20px',
-          width: '38px',
-          height: '38px',
+          fontSize: '18px',
+          width: '36px',
+          height: '36px',
           borderRadius: '10px',
           background: soft,
           display: 'flex',
@@ -37,20 +37,22 @@ const KpiCard: React.FC<{
       >
         {icon}
       </span>
-      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+      <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </span>
     </div>
-    <div style={{ fontSize: '22px', fontWeight: '800', color: 'var(--text)', lineHeight: 1.1 }}>{value}</div>
+    <div className="money" style={{ fontSize: '20px', fontWeight: '800', color: tone === 'danger' ? 'var(--danger)' : tone === 'warning' ? 'var(--warning)' : tone === 'success' ? 'var(--success)' : 'var(--text)', lineHeight: 1.15 }}>
+      {value}
+    </div>
     {sub && <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{sub}</div>}
   </div>
 );
 
-// ─── Section avec titre ───────────────────────────────────────────────────────
+// ─── Section générique ───────────────────────────────────────────────────────
 const Section: React.FC<{ title: string; icon: string; children: React.ReactNode; right?: React.ReactNode }> = ({ title, icon, children, right }) => (
-  <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', padding: '20px' }}>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-      <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)', fontSize: '15px', fontWeight: '700' }}>
+  <div className="card" style={{ padding: '18px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+      <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '700' }}>
         <span>{icon}</span>{title}
       </h3>
       {right}
@@ -60,7 +62,7 @@ const Section: React.FC<{ title: string; icon: string; children: React.ReactNode
 );
 
 const EmptyState: React.FC<{ icon: string; text: string; good?: boolean }> = ({ icon, text, good }) => (
-  <div style={{ padding: '20px', textAlign: 'center', color: good ? 'var(--success)' : 'var(--muted)', fontWeight: '600', fontSize: '13px' }}>
+  <div style={{ padding: '16px', textAlign: 'center', color: good ? 'var(--success)' : 'var(--muted)', fontWeight: '600', fontSize: '13px' }}>
     {good ? '✅' : icon} {text}
   </div>
 );
@@ -188,26 +190,26 @@ export const DashboardPage: React.FC = () => {
 
         {/* KPI Cards */}
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <KpiCard icon="💰" label="CA Aujourd'hui" value={`${stats?.revenue_today.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_today ?? 0} facture(s)`} soft="#eff6ff" />
-          <KpiCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} soft="#f0fdf4" />
-          <KpiCard icon="💹" label="Marge (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} soft="#fffbeb" />
-          <KpiCard icon="📦" label="Valeur du stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} soft="#f5f3ff" />
-          <KpiCard icon="⚠️" label="Impayés" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" soft="#fef2f2" />
+          <KpiCard icon="💰" label="CA Aujourd'hui" value={`${stats?.revenue_today.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_today ?? 0} facture(s)`} soft="var(--primary-soft)" />
+          <KpiCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} soft="var(--success-soft)" />
+          <KpiCard icon="💹" label="Marge (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} soft="var(--accent-soft)" />
+          <KpiCard icon="📦" label="Valeur du stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} soft="var(--info-soft)" />
+          <KpiCard icon="⚠️" label="Impayés" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" soft="var(--danger-soft)" tone="danger" />
         </div>
 
         {/* Résumé des alertes */}
         {alertSummary && (
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             {[
-              { label: 'Stock bas', count: alertSummary.low_stock_count, icon: '📦', color: '#d97706', bg: '#fffbeb' },
-              { label: 'Impayés', count: alertSummary.unpaid_count, icon: '💰', color: '#dc2626', bg: '#fef2f2' },
-              { label: 'En retard', count: alertSummary.overdue_count, icon: '⏰', color: '#b91c1c', bg: '#fee2e2' },
-              { label: 'Échéance J-7', count: alertSummary.expiring_soon_count, icon: '📅', color: '#ea580c', bg: '#fff7ed' },
+              { label: 'Stock bas', count: alertSummary.low_stock_count, icon: '📦', color: 'var(--warning)', bg: 'var(--warning-soft)' },
+              { label: 'Impayés', count: alertSummary.unpaid_count, icon: '💰', color: 'var(--danger)', bg: 'var(--danger-soft)' },
+              { label: 'En retard', count: alertSummary.overdue_count, icon: '⏰', color: 'var(--danger)', bg: 'var(--danger-soft)' },
+              { label: 'Échéance J-7', count: alertSummary.expiring_soon_count, icon: '📅', color: 'var(--warning)', bg: 'var(--warning-soft)' },
             ].map(a => (
               <div key={a.label} style={{ flex: '1 1 180px', display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 16px', background: a.bg, borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
                 <span style={{ fontSize: '22px' }}>{a.icon}</span>
                 <div>
-                  <div style={{ fontSize: '20px', fontWeight: '800', color: a.color, lineHeight: 1.1 }}>{a.count}</div>
+                  <div className="money" style={{ fontSize: '20px', fontWeight: '800', color: a.color, lineHeight: 1.1 }}>{a.count}</div>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>{a.label}</div>
                 </div>
               </div>
@@ -218,7 +220,7 @@ export const DashboardPage: React.FC = () => {
         {/* Évolution du CA */}
         {monthlyRevenue.length > 0 && (
           <Section title="Évolution du chiffre d'affaires (6 mois)" icon="📈">
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '170px', padding: '0 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', height: '160px', padding: '0 8px' }}>
               {(() => {
                 const maxRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
                 return monthlyRevenue.map((m) => {
@@ -226,9 +228,9 @@ export const DashboardPage: React.FC = () => {
                   const monthLabel = m.month.slice(5);
                   return (
                     <div key={m.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text)' }}>{m.revenue.toFixed(0)}</div>
-                      <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, #2563eb, #60a5fa)', borderRadius: '6px 6px 0 0', minHeight: '4px' }} />
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>{monthLabel}</div>
+                      <div className="money" style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text)' }}>{m.revenue.toFixed(0)}</div>
+                      <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, var(--primary), var(--sidebar-active))', borderRadius: '6px 6px 0 0', minHeight: '4px' }} />
+                      <div className="money" style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '600' }}>{monthLabel}</div>
                     </div>
                   );
                 });
@@ -248,14 +250,14 @@ export const DashboardPage: React.FC = () => {
               ? <EmptyState icon="🏆" text="Aucune vente ce mois-ci." />
               : topProducts.map((p, i) => (
                 <div key={p.product_id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <span style={{ width: '24px', height: '24px', background: ['#d97706', '#64748b', '#b45309', '#6b7280', '#94a3b8'][i], color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>{i + 1}</span>
+                  <span style={{ width: '24px', height: '24px', background: 'var(--primary)', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>{i + 1}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
                     <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{p.reference}</div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontWeight: '700', color: 'var(--text)', fontSize: '13px' }}>{p.total_qty} u.</div>
-                    <div style={{ fontSize: '12px', color: 'var(--success)' }}>{p.total_revenue.toFixed(2)} MAD</div>
+                    <div className="qty" style={{ fontWeight: '700', color: 'var(--text)', fontSize: '13px' }}>{p.total_qty} u.</div>
+                    <div className="money" style={{ fontSize: '12px', color: 'var(--success)' }}>{p.total_revenue.toFixed(2)} MAD</div>
                   </div>
                 </div>
               ))}
@@ -266,12 +268,12 @@ export const DashboardPage: React.FC = () => {
               ? <EmptyState icon="🤝" text="Aucun client ce mois-ci." />
               : topClients.map((c, i) => (
                 <div key={c.customer_id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 0', borderBottom: i < topClients.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <span style={{ width: '24px', height: '24px', background: ['#2563eb', '#8b5cf6', '#16a34a', '#64748b', '#94a3b8'][i], color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>{i + 1}</span>
+                  <span style={{ width: '24px', height: '24px', background: 'var(--accent)', color: '#fff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', flexShrink: 0 }}>{i + 1}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text)' }}>{c.name}</div>
                     <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{c.invoice_count} facture(s)</div>
                   </div>
-                  <div style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '13px' }}>{c.total_revenue.toFixed(2)} MAD</div>
+                  <div className="money" style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '13px' }}>{c.total_revenue.toFixed(2)} MAD</div>
                 </div>
               ))}
           </Section>
@@ -333,7 +335,7 @@ export const DashboardPage: React.FC = () => {
                       <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{due.customer_name} · {due.due_date?.split('T')[0]}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: '700', color: 'var(--danger)', fontSize: '13px' }}>{due.remaining.toFixed(2)} MAD</div>
+                      <div className="money" style={{ fontWeight: '700', color: 'var(--danger)', fontSize: '13px' }}>{due.remaining.toFixed(2)} MAD</div>
                       <span className={overdue ? 'badge badge-danger' : urgent ? 'badge badge-warning' : 'badge badge-muted'}>
                         {overdue ? `En retard (${Math.abs(due.days_left)}j)` : `J-${due.days_left}`}
                       </span>

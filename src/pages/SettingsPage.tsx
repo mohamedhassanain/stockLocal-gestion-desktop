@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
-type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts';
+type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
 
 interface Category {
   id: string;
@@ -403,6 +403,36 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // ─── Mises à jour & Support (§2.3 / §2.5) ──────────────────────────────────
+  const [updateResult, setUpdateResult] = useState<string | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdates(true);
+    setUpdateResult(null);
+    try {
+      const result = await window.api.updates.checkForUpdates();
+      setUpdateResult(result.success ? result.message : `❌ ${result.message}`);
+    } catch (e: any) {
+      setUpdateResult(`❌ ${e.message}`);
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
+
+  const handleExportErrorLog = async () => {
+    try {
+      const result = await window.api.logs.exportErrorLog();
+      if (result.success) {
+        notify(`📄 Journal exporté : ${result.filePath}`);
+      } else {
+        notify(`❌ ${result.error}`);
+      }
+    } catch (e: any) {
+      notify(`❌ ${e.message}`);
+    }
+  };
+
   // ─── Tabs ───────────────────────────────────────────────────────────────────
   const tabs: Array<{ id: Tab; label: string; icon: string }> = [
     { id: 'company', label: 'Entreprise', icon: '🏢' },
@@ -413,6 +443,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'data', label: 'Données', icon: '💾' },
     { id: 'backups', label: 'Sauvegardes', icon: '🔐' },
     { id: 'audit', label: 'Journal d\'audit', icon: '📜' },
+    { id: 'updates', label: 'Mises à jour', icon: '🔄' },
   ];
 
   return (
@@ -867,6 +898,40 @@ export const SettingsPage: React.FC = () => {
                 </tbody>
               </table>
             )}
+          </div>
+        )}
+
+        {/* ─── Mises à jour & Support (§2.3 / §2.5) ─────────────────────────── */}
+        {tab === 'updates' && (
+          <div style={{ maxWidth: '820px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ background: 'white', borderRadius: '14px', padding: '28px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+              <SectionTitle icon="🔄" title="Mises à jour de l'application" />
+              <p style={{ marginTop: 0, color: '#6b7280', fontSize: '13px', marginBottom: '20px' }}>
+                StockLocal vérifie automatiquement les mises à jour au démarrage (en arrière-plan, sans interruption).
+                Vous pouvez aussi vérifier manuellement à tout moment.
+              </p>
+              <button onClick={handleCheckForUpdates} disabled={isCheckingUpdates}
+                style={{ padding: '12px 24px', background: isCheckingUpdates ? '#9ca3af' : '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isCheckingUpdates ? 'not-allowed' : 'pointer' }}>
+                {isCheckingUpdates ? '⏳ Vérification...' : '🔄 Vérifier les mises à jour'}
+              </button>
+              {updateResult && (
+                <div style={{ marginTop: '12px', padding: '12px', borderRadius: '8px', background: updateResult.startsWith('❌') ? '#fef2f2' : '#f0fdf4', color: updateResult.startsWith('❌') ? '#991b1b' : '#166534', fontSize: '14px', fontWeight: '600' }}>
+                  {updateResult}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: 'white', borderRadius: '14px', padding: '28px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+              <SectionTitle icon="🛟" title="Support & diagnostic" />
+              <p style={{ marginTop: 0, color: '#6b7280', fontSize: '13px', marginBottom: '20px' }}>
+                En cas de problème, exportez le journal d'erreurs local et envoyez-le à votre support (WhatsApp / email).
+                L'application ne transmet rien automatiquement : tout reste sur votre machine.
+              </p>
+              <button onClick={handleExportErrorLog}
+                style={{ padding: '12px 24px', background: '#0e7667', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                📄 Exporter le journal d'erreurs
+              </button>
+            </div>
           </div>
         )}
       </div>

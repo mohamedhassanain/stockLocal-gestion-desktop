@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { requireId, validateFilePath, hasPathTraversal, toHumanError } from './ipcValidation';
+import { requireId, validateFilePath, validatePathWithinDataDir, hasPathTraversal, toHumanError } from './ipcValidation';
+import { ErrorLogService } from '../src/services/ErrorLogService';
+import { initAutoUpdater, checkForUpdatesManually, installUpdate } from './autoUpdater';
 import { ProductService } from '../src/services/ProductService';
 import { StockService } from '../src/services/StockService';
 import { StockMovementRepository } from '../src/repositories/StockMovementRepository';
@@ -161,8 +163,9 @@ app.whenReady().then(() => {
 
   ipcMain.handle('storage:openFolder', async (_, folderPath: string) => {
     try {
-      validateFilePath(folderPath, 'chemin dossier');
-      await shell.openPath(folderPath);
+      // Sécurité (§33) : n'ouvrir que des dossiers situés dans le dossier de données.
+      const safePath = validatePathWithinDataDir(folderPath, DataStorageService.getConfig().dataPath, 'chemin dossier');
+      await shell.openPath(safePath);
       return { success: true };
     } catch (error: any) {
       return { success: false, error: toHumanError(error) };
@@ -459,7 +462,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('products:importCsv', async (_, filePath: string) => {
     try {
-      if (hasPathTraversal(filePath)) throw new Error('Chemin de fichier non autorisé.');
+      // Sécurité (§33) : le fichier provient d'une boîte de dialogue native
+      // (choix utilisateur explicite), on valide donc la structure du chemin
+      // (traversal + caractères dangereux) sans confiner au dataDir, afin de
+      // permettre l'import depuis le Bureau/Téléchargements/clé USB.
+      validateFilePath(filePath, 'chemin CSV');
       const result = ImportService.importProductsFromCsv(filePath);
       AuditService.log('PRODUCT_IMPORT', 'product', 'bulk', `Import CSV : ${result.imported} produits, ${result.errors} erreurs`);
       return { success: true, ...result };
@@ -494,8 +501,11 @@ app.whenReady().then(() => {
     try {
       const fs = require('fs');
       if (!imagePath || !fs.existsSync(imagePath)) return { success: false };
-      const buffer = fs.readFileSync(imagePath);
-      const ext = require('path').extname(imagePath).toLowerCase();
+      // Sécurité (§33) : confiner la lecture au dossier de données (attachments).
+      // Un chemin arbitraire fourni par le renderer est rejeté hors du dataDir.
+      const safePath = validatePathWithinDataDir(imagePath, DataStorageService.getConfig().dataPath, 'chemin image');
+      const buffer = fs.readFileSync(safePath);
+      const ext = require('path').extname(safePath).toLowerCase();
       const mimeMap: Record<string, string> = {
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
         '.png': 'image/png', '.gif': 'image/gif',
@@ -575,8 +585,11 @@ app.whenReady().then(() => {
     return StockMovementRepository.getHistoryWithUser(productId);
   });
 
-  ipcMain.handle('stock:getAllHistory', async (_, limit?: number) => {
-    return StockMovementRepository.getAllHistory(limit ?? 200, 0);
+  // §2.6 : pagination SQL native (LIMIT/OFFSET) — jamais tout l'historique en mémoire.
+  ipcMain.handle('stock:getAllHistory', async (_, params?: { limit?: number; offset?: number }) => {
+    const limit = Math.min(Math.max(Number(params?.limit ?? 200) || 200, 1), 1000);
+    const offset = Math.max(Number(params?.offset ?? 0) || 0, 0);
+    return StockMovementRepository.getAllHistory(limit, offset);
   });
 
   ipcMain.handle('stock:getLevel', async (_, productId: string) => {
@@ -1129,6 +1142,8 @@ app.whenReady().then(() => {
   // ─── Import Preview ────────────────────────────────────────────────────────
   ipcMain.handle('products:previewImportCsv', async (_, filePath: string) => {
     try {
+      // Sécurité (§33) : validation structurelle du chemin (même logique que importCsv).
+      validateFilePath(filePath, 'chemin CSV');
       const result = ImportService.previewProductsFromCsv(filePath);
       return { success: true, data: result };
     } catch (error: any) {
@@ -1204,7 +1219,42 @@ app.whenReady().then(() => {
     return MigrationService.migrateFromOldDatabase(sourcePath);
   });
 
+  // ─── Journal d'erreurs local (§2.5) ───────────────────────────────────────
+  // Export pour support : copie le errors.log (rotation comprise) vers le
+  // dossier exports/ et l'ouvre pour que l'utilisateur puisse l'envoyer.
+  ipcMain.handle('logs:exportErrorLog', async () => {
+    try {
+      const logPath = ErrorLogService.getLogFilePath();
+      if (!logPath) {
+        return { success: false, error: 'Aucune erreur journalisée pour le moment.' };
+      }
+      const exportsDir = DataStorageService.getExportsPath();
+      const nodeFs = require('fs');
+      const nodePath = require('path');
+      if (!nodeFs.existsSync(exportsDir)) nodeFs.mkdirSync(exportsDir, { recursive: true });
+      const destName = `journal-erreurs-${new Date().toISOString().split('T')[0]}.log`;
+      const destPath = nodePath.join(exportsDir, destName);
+      nodeFs.copyFileSync(logPath, destPath);
+      await shell.openPath(destPath);
+      return { success: true, filePath: destPath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  // ─── Mises à jour (§2.3) ───────────────────────────────────────────────────
+  ipcMain.handle('app:checkForUpdates', async () => {
+    return checkForUpdatesManually();
+  });
+
+  ipcMain.handle('app:installUpdate', async () => {
+    installUpdate();
+    return { success: true };
+  });
+
   // ─── Démarrage ────────────────────────────────────────────────────────────
+  ErrorLogService.installGlobalHandlers();
+  initAutoUpdater();
   try {
     DemoDataService.seedIfEmpty();
   } catch (error) {

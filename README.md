@@ -200,6 +200,51 @@ La CSP de production est injectée dans `dist/index.html` au moment du build.
 
 ---
 
+## Mises à jour automatiques (infrastructure à configurer)
+
+La **mécanique** d'auto-update est en place (`electron-updater`) :
+
+- Vérification automatique **silencieuse** au démarrage (10 s après lancement,
+  aucune interruption).
+- Si une mise à jour est disponible : téléchargement en arrière-plan,
+  **notification discrète** (toast) et installation à la fermeture.
+- Bouton **« Vérifier les mises à jour »** dans `Paramètres → Mises à jour`
+  (vérification manuelle).
+- Provider de publication : `generic` → `https://mises-a-jour.stocklocal.ma/win`
+  (configurable dans `package.json` → `build.publish`).
+
+### Ce que vous devez faire (une seule fois)
+
+1. **Héberger les fichiers de release** sur un serveur HTTPS statique (ou un
+   bucket S3, ou GitHub Releases via provider `github`). Pour le provider
+   `generic`, déposez simplement les fichiers générés dans `release/` :
+   - l'installeur `StockLocal-<version>-setup.exe`
+   - `latest.yml` (meta généré automatiquement par electron-builder)
+2. **Bump de version** : chaque nouvelle release doit avoir un `version` plus
+   élevé dans `package.json` AVANT `npm run build`.
+3. Vérifier le canal : `autoUpdater.checkForUpdates()` ne propose que les
+   versions strictement supérieures à la version installée.
+
+### Code signing Windows (SmartScreen) — important
+
+Sans signature, Windows affiche **« Windows a protégé votre ordinateur »** lors
+de l'installation (SmartScreen / Mark-of-the-Web), ce qui fait fuir une grande
+partie des utilisateurs non techniques.
+
+La structure est prête dans `electron-builder` : les variables d'environnement
+standard `CSC_LINK` (chemin ou URL du certificat `.pfx`) et `CSC_KEY_PASSWORD`
+(mot de passe) sont automatiquement détectées au build. Aucune config
+supplémentaire n'est nécessaire — il suffit de les fournir lors du build :
+
+```bash
+CSC_LINK=/chemin/vers/certificat.pfx CSC_KEY_PASSWORD=**** npm run build
+```
+
+À prévoir : un certificat de signature de code (par ex. un certificat OV/EV
+auprès d'un émetteur reconnu, valable pour Windows).
+
+---
+
 ## Sauvegarde & restauration
 
 - **Backup manuel** : bouton « Sauvegarder » (dashboard) ou IPC `backup:now`

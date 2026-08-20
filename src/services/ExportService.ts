@@ -13,7 +13,13 @@ import { DashboardRepository } from '../repositories/DashboardRepository';
  */
 
 function csvEscape(val: unknown): string {
-  const s = String(val ?? '');
+  let s = String(val ?? '');
+  // Anti-injection de formule CSV (§1.4) : une valeur (nom client, fournisseur,
+  // produit…) commençant par =, +, - ou @ est préfixée d'une apostrophe pour
+  // empêcher Excel/LibreOffice de l'interpréter comme une formule.
+  if (/^[=+\-@]/.test(s)) {
+    s = `'${s}`;
+  }
   if (s.includes(';') || s.includes('"') || s.includes('\n')) {
     return `"${s.replace(/"/g, '""')}"`;
   }

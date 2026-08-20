@@ -484,10 +484,14 @@ const DocumentDetailPanel: React.FC<{
 
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
-export const InvoicePage: React.FC = () => {
+export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialType }) => {
   const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, selectDocument, createDocument, addPayment, convertBL } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
+
+  useEffect(() => {
+    if (initialType) setActiveType(initialType);
+  }, []);
 
   useEffect(() => { loadDocuments(); }, []);
 

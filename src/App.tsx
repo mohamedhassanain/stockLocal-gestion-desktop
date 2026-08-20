@@ -10,11 +10,14 @@ import { SettingsPage } from './pages/SettingsPage';
 import { POSPage } from './pages/POSPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { InventoryPage } from './pages/InventoryPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { StockAlertsPage } from './pages/StockAlertsPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
 import { Toaster } from './components/ui/Toaster';
+import { toast } from './stores/useToastStore';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'settings' | 'pos' | 'purchases' | 'inventory';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts';
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
   F1: 'dashboard',
@@ -67,6 +70,21 @@ export const App: React.FC = () => {
     checkAppReady();
   }, [checkAppReady]);
 
+  // Notification discrète de mise à jour (§2.3) — non intrusive, via toast.
+  useEffect(() => {
+    if (appState !== 'ready') return;
+    const offAvailable = window.api?.updates?.onUpdateAvailable?.((info: { version: string }) => {
+      toast.info(`Une mise à jour est disponible (v${info.version}). Elle sera installée à la fermeture.`);
+    });
+    const offDownloaded = window.api?.updates?.onUpdateDownloaded?.((info: { version: string }) => {
+      toast.success(`Mise à jour v${info.version} prête. Elle sera installée à la fermeture.`);
+    });
+    return () => {
+      offAvailable?.();
+      offDownloaded?.();
+    };
+  }, [appState]);
+
   useEffect(() => {
     if (appState !== 'ready') return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -76,8 +94,24 @@ export const App: React.FC = () => {
         setCurrentPage(page);
       }
     };
+    // Navigation programmatique (boutons internes des pages).
+    const VALID_PAGES = new Set<Page>([
+      'dashboard', 'products', 'stock', 'clients', 'suppliers', 'invoices',
+      'devis', 'delivery-notes', 'credit-notes', 'settings', 'pos',
+      'purchases', 'inventory', 'reports', 'stock-alerts',
+    ]);
+    const handleNavigate = (e: Event) => {
+      const target = (e as CustomEvent).detail as Page;
+      if (target && VALID_PAGES.has(target)) {
+        setCurrentPage(target);
+      }
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('navigate', handleNavigate);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('navigate', handleNavigate);
+    };
   }, [appState]);
 
   const handleOnboardingComplete = useCallback(() => {
@@ -132,11 +166,16 @@ export const App: React.FC = () => {
       {currentPage === 'stock' && <StockPage />}
       {currentPage === 'clients' && <ClientsPage />}
       {currentPage === 'suppliers' && <SuppliersPage />}
-      {currentPage === 'invoices' && <InvoicePage />}
+      {currentPage === 'invoices' && <InvoicePage initialType="INVOICE" />}
+      {currentPage === 'devis' && <InvoicePage initialType="QUOTE" />}
+      {currentPage === 'delivery-notes' && <InvoicePage initialType="DELIVERY_NOTE" />}
+      {currentPage === 'credit-notes' && <InvoicePage initialType="CREDIT_NOTE" />}
       {currentPage === 'settings' && <SettingsPage />}
       {currentPage === 'pos' && <POSPage />}
       {currentPage === 'purchases' && <PurchasesPage />}
       {currentPage === 'inventory' && <InventoryPage />}
+      {currentPage === 'reports' && <ReportsPage />}
+      {currentPage === 'stock-alerts' && <StockAlertsPage />}
       <Toaster />
     </div>
   );

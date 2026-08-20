@@ -54,6 +54,18 @@ export function optionalString(value: unknown, fieldName: string): string | null
 
 const DANGEROUS_PATH_CHARS = /[<>"|?*\x00-\x1f]/;
 
+/**
+ * Protection PRÉCOCE contre les séquences de traversal (`..`, `~`).
+ *
+ * ATTENTION : cette fonction n'est PAS la barrière de sécurité principale.
+ * Elle ne bloque ni les chemins absolus (C:\Windows\System32\..., /etc/...)
+ * ni les chemins relatifs hors du dossier de données.
+ *
+ * La protection RÉELLE est `validatePathWithinDataDir` : tout chemin fourni
+ * par le renderer doit être confiné au dossier de données avant tout accès
+ * au système de fichiers. `hasPathTraversal` sert uniquement de filet
+ * complémentaire précoce (rejet rapide avant les vérifications lourdes).
+ */
 export function hasPathTraversal(filePath: string): boolean {
   return filePath.includes('..') || filePath.includes('~');
 }
@@ -73,11 +85,29 @@ export function validateFilePath(filePath: string, fieldName: string): string {
   }
 }
 
+/**
+ * Confine un chemin fourni par le renderer au dossier de données autorisé.
+ *
+ * VÉRITABLE barrière anti-lecture/écriture arbitraire : rejette tout chemin
+ * absolu ou relatif qui sort du dossier de données (ex. C:\Windows\System32,
+ * /etc/passwd). Sur Windows, la comparaison est insensible à la casse et
+ * normalise les séparateurs (garde-fous contre les variantes du chemin).
+ */
 export function validatePathWithinDataDir(filePath: string, dataDir: string, fieldName: string): string {
   const resolved = validateFilePath(filePath, fieldName);
   const resolvedDataDir = path.resolve(dataDir);
-  if (!resolved.startsWith(resolvedDataDir + path.sep) && resolved !== resolvedDataDir) {
-    throw new Error(`Accès refusé : "${fieldName}" est en dehors du dossier de données autorisé.`);
+  // Détection Windows par format de chemin (lettre de lecteur / UNC),
+  // sans dépendre de process.platform (utilitaire autonome et testable).
+  const isWindowsLike = /^[a-zA-Z]:[\\/]/.test(resolvedDataDir) || resolvedDataDir.startsWith('\\\\');
+
+  const normalizedFile = isWindowsLike ? resolved.replace(/\//g, '\\').toLowerCase() : resolved;
+  const normalizedDataDir = isWindowsLike ? resolvedDataDir.replace(/\//g, '\\').toLowerCase() : resolvedDataDir;
+
+  const inside = normalizedFile.startsWith(normalizedDataDir + path.sep) || normalizedFile === normalizedDataDir;
+  if (!inside) {
+    throw new Error(
+      `Accès refusé : "${fieldName}" est en dehors du dossier de données autorisé.`
+    );
   }
   return resolved;
 }
@@ -185,6 +215,8 @@ const HUMAN_ERROR_MAP: Record<string, string> = {
   'CHECK constraint failed': 'La valeur saisie ne respecte pas les règles de validation.',
   'database disk image is malformed': 'La base de données est corrompue. Essayez de restaurer une sauvegarde.',
   'attempt to write a readonly database': 'La base de données est en lecture seule. Vérifiez les permissions.',
+  'SQLITE_BUSY': 'La base de données est momentanément occupée (souvent un dossier synchronisé, ex. OneDrive/Dropbox). Réessayez dans quelques secondes.',
+  'SQLITE_LOCKED': 'La base de données est verrouillée par une autre opération. Réessayez dans quelques secondes.',
   'no such table': 'Erreur interne : une table est manquante dans la base de données.',
   'no such column': 'Erreur interne : une colonne est manquante dans la base de données.',
   ' SQLITE_CONSTRAINT': 'Une contrainte de la base de données a été violée.',
@@ -196,17 +228,17 @@ const HUMAN_ERROR_MAP: Record<string, string> = {
 export function toHumanError(error: unknown): string {
   if (!error) return 'Une erreur inconnue est survenue.';
   const msg = String((error as any)?.message ?? error);
-  
+
   for (const [pattern, human] of Object.entries(HUMAN_ERROR_MAP)) {
     if (msg.includes(pattern)) return human;
   }
-  
+
   // If it's already a French error from our services, return as-is
   if (msg.includes('invalide') || msg.includes('introuvable') || msg.includes('impossible') ||
       msg.includes('manquant') || msg.includes('obligatoire') || msg.includes('supérieur')) {
     return msg;
   }
-  
+
   // Generic fallback
   return `Erreur : ${msg.substring(0, 200)}`;
 }

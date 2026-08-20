@@ -46,7 +46,9 @@ export const api = {
   // ─── Stock ─────────────────────────────────────────────────────────────────
   stock: {
     getHistory: (productId: string) => ipcRenderer.invoke('stock:getHistory', productId),
-    getAllHistory: (limit?: number) => ipcRenderer.invoke('stock:getAllHistory', limit),
+    // §2.6 : accepte { limit?, offset? } ou un simple nombre (rétro-compat).
+    getAllHistory: (params?: number | { limit?: number; offset?: number }) =>
+      ipcRenderer.invoke('stock:getAllHistory', typeof params === 'number' ? { limit: params } : params),
     getLevel: (productId: string) => ipcRenderer.invoke('stock:getLevel', productId),
     addEntry: (data: any) => ipcRenderer.invoke('stock:addEntry', data),
     addExit: (data: any) => ipcRenderer.invoke('stock:addExit', data),
@@ -213,6 +215,27 @@ export const api = {
     scanOldDatabases: () => ipcRenderer.invoke('migration:scanOldDatabases'),
     autoMigrate: () => ipcRenderer.invoke('migration:autoMigrate'),
     migrateFrom: (sourcePath: string) => ipcRenderer.invoke('migration:migrateFrom', sourcePath),
+  },
+
+  // ─── Mises à jour (§2.3) ─────────────────────────────────────────────────
+  updates: {
+    checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+    onUpdateAvailable: (callback: (info: { version: string }) => void) => {
+      const listener = (_e: unknown, info: { version: string }) => callback(info);
+      ipcRenderer.on('update:available', listener);
+      return () => ipcRenderer.removeListener('update:available', listener);
+    },
+    onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+      const listener = (_e: unknown, info: { version: string }) => callback(info);
+      ipcRenderer.on('update:downloaded', listener);
+      return () => ipcRenderer.removeListener('update:downloaded', listener);
+    },
+  },
+
+  // ─── Journal d'erreurs (§2.5) ───────────────────────────────────────────
+  logs: {
+    exportErrorLog: () => ipcRenderer.invoke('logs:exportErrorLog'),
   },
 };
 

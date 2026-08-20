@@ -77,12 +77,47 @@ export const db = new Database(dbPath, {
   verbose: process.env.NODE_ENV !== 'production' ? console.log : undefined,
 });
 
-// Pragmas SQLite pour la performance et l'intégrité
+// ═══════════════════════════════════════════════════════════════════════════
+// DÉCISION CHIFFREMENT DE LA BASE (§1.5) — documentée, volontairement NON
+// appliquée pour préserver la stabilité du build à grande échelle.
+//
+// OPTION ÉVALUÉE : SQLCipher via `better-sqlite3-multiple-ciphers` (fork du
+// binding natif). RAISON DU REFUS :
+//   1. Le projet repose sur `better-sqlite3` compilé par `postinstall`
+//      (`electron-builder install-app-deps`) pour l'ABI Electron 31. Passer au
+//      fork remplace le module natif par un autre binding dont les prebuilds
+//      ne couvrent pas l'ABI d'Electron → recompilation locale exigée (chaîne
+//      d'outils VS Build Tools absente de la plupart des machines non-dev).
+//   2. Le chiffrement implique une clé : stockée localement, elle protège la
+//      base contre l'ouverture "curieuse" (DB Browser), pas contre un acteur
+//      ayant accès au dossier de données (clé + base sur la même machine).
+//      L'effort de migration (toutes les bases existantes, restore, tests
+//      sous ELECTRON_RUN_AS_NODE) est dépensé pour un gain de sécurité faible
+//      dans le modèle mono-utilisateur 100 % local assumé par le produit.
+//   3. Chaque correctif de sécurité/ABI du fork devient une dépendance
+//      supplémentaire de l'éditeur, au prix d'un risque de build cassé sur
+//      les milliers d'installations distribuées.
+//
+// ALTERNATIVE RETENUE (limites) : les données restent non chiffrées au repos,
+// comme pour tout logiciel desktop mono-utilisateur (QuickBooks Desktop, Sage
+// 50, Ciel...). La protection repose sur : dossier de données utilisateur
+// (hors Program Files, permissions OS), sandbox du renderer, confinement des
+// chemins IPC, et backups locaux. Cela reste un choix produit assumé ; si
+// l'activation de SQLCipher devient nécessaire, la migration est décrite dans
+// le README (section Sécurité) et les backups héritent automatiquement du
+// chiffrement car ce sont des copies VACUUM INTO de la base (cf. §1.6).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Pragmas SQLite pour la performance, l'intégrité et la robustesse
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('temp_store = MEMORY');
 db.pragma('cache_size = -64000');
 db.pragma('foreign_keys = ON');
+// §2.1 : en cas de lock bref (dossier synchronisé OneDrive/Dropbox, antivirus…),
+// better-sqlite3 attend jusqu'à 5 s au lieu d'échouer immédiatement. Les
+// erreurs SQLITE_BUSY résiduelles sont traduites par toHumanError côté IPC.
+db.pragma('busy_timeout = 5000');
 
 function resolveSchemaPath(): string | null {
   const candidates = [
@@ -459,17 +494,68 @@ function migrateQuantitiesReal(): void {
   }
 }
 
+/**
+ * §2.2 : copie de sécurité automatique AVANT toute migration modifiant la
+ * structure des tables. Ce backup est horodaté dans backups/ et conservé en
+ * plus des sauvegardes régulières (rétention : les 5 plus récents).
+ * Si une migration échoue ensuite, le chemin du backup de secours est inclus
+ * dans le message d'erreur affiché à l'utilisateur.
+ *
+ * Pour une base fraîche (aucune donnée), aucun backup n'est nécessaire.
+ */
+function createPreMigrationBackup(): string | null {
+  try {
+    if (!fs.existsSync(dbPath) || fs.statSync(dbPath).size === 0) return null;
+
+    const backupsDir = DataStorageService.getBackupsPath();
+    if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
+
+    // Checkpoint WAL pour que la copie du fichier principal soit cohérente.
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch { /* WAL absent (base neuve) ou verrou passé — la copie reste exploitable */ }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(backupsDir, `pre-migration-${timestamp}.db`);
+    fs.copyFileSync(dbPath, backupPath);
+    console.log(`[DB] Backup de sécurité avant migration : ${backupPath}`);
+
+    // Rétention : ne garder que les 5 backups pre-migration les plus récents.
+    const preMigration = fs.readdirSync(backupsDir)
+      .filter(f => f.startsWith('pre-migration-') && f.endsWith('.db'))
+      .sort()
+      .reverse();
+    for (const old of preMigration.slice(5)) {
+      try { fs.unlinkSync(path.join(backupsDir, old)); } catch { /* ignore */ }
+    }
+
+    return backupPath;
+  } catch (e) {
+    console.warn('[DB] Backup pré-migration ignoré (non bloquant) :', e);
+    return null;
+  }
+}
+
 function initDb(): void {
-  applySchema();
-  migrateColumns();
-  migrateAuditLogs();
-  migrateStockMovements();
-  migrateClientCredits();
-  migrateSupplierCredits();
-  migrateAddProductFields();
-  migrateStockMovementV2();
-  migrateDocumentsV2();
-  migrateQuantitiesReal();
+  const safetyBackup = createPreMigrationBackup();
+  try {
+    applySchema();
+    migrateColumns();
+    migrateAuditLogs();
+    migrateStockMovements();
+    migrateClientCredits();
+    migrateSupplierCredits();
+    migrateAddProductFields();
+    migrateStockMovementV2();
+    migrateDocumentsV2();
+    migrateQuantitiesReal();
+  } catch (e: any) {
+    const detail = safetyBackup
+      ? `Erreur lors de la migration de la base de données. Une copie de sécurité a été créée ici : ${safetyBackup}. Vous pouvez joindre ce fichier au support pour diagnostiquer le problème.`
+      : `Erreur lors de la migration de la base de données : ${e?.message ?? e}`;
+    console.error(`[DB] ${detail}`);
+    throw new Error(detail);
+  }
 }
 
 initDb();
