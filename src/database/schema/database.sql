@@ -70,6 +70,45 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
 );
 
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Solde de stock précalculé par produit (§14).
+--
+-- Évite de rescanner tout l'historique de stock_movements à chaque lecture :
+--   - quantity        → stock physique actuel (= SUM(sign × qty))
+--   - total_in_qty    → cumul des quantités ENTRÉE (base du CMUP)
+--   - total_in_value  → cumul des valeurs ENTRÉE (base du CMUP)
+--   - average_cost    → coût moyen pondéré = total_in_value / total_in_qty
+--                        (logique comptable CMUP conservée à l'identique)
+--
+-- Cette table est maintenue TRANSACTIONNELLEMENT par StockLedgerService :
+-- chaque mouvement met à jour le solde dans la même transaction SQLite.
+-- UNIQUE(product_id) est garanti par PRIMARY KEY.
+-- Un backfill idempotent (recalcul depuis stock_movements) est fait au démarrage.
+CREATE TABLE IF NOT EXISTS inventory_balances (
+    product_id TEXT PRIMARY KEY,
+    quantity REAL NOT NULL DEFAULT 0,
+    total_in_qty REAL NOT NULL DEFAULT 0,
+    total_in_value REAL NOT NULL DEFAULT 0,
+    average_cost REAL NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Séquences de numérotation des documents (§20).
+--
+-- Remplace le fragile `COUNT(*) + 1` : la génération est transactionnelle et
+-- atomique (INSERT ... ON CONFLICT DO UPDATE) — aucun chevauchement après
+-- rollback, suppression ou import. Format des numéros CONSERVÉ :
+--   prefixe type (FAC/BL/DEV/AV/PA) - année - numéro à 5 chiffres.
+CREATE TABLE IF NOT EXISTS document_sequences (
+    type TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    last_number INTEGER NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (type, year)
+);
+
 CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

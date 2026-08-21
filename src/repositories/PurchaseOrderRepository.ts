@@ -1,6 +1,7 @@
 import { db, runInTransaction } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { StockLedgerService } from '../services/StockLedgerService';
+import { nextSequence } from '../services/DocumentSequenceService';
 
 export interface PurchaseOrder {
   id: string;
@@ -95,18 +96,18 @@ const stmtUpdateStatus = db.prepare(`
 
 const stmtDeleteOrder = db.prepare('DELETE FROM purchase_orders WHERE id = ?');
 
-const stmtGetNextNumber = db.prepare(`
-  SELECT COUNT(*) as cnt FROM purchase_orders WHERE strftime('%Y', date) = ?
-`);
-
 // ─── Repository ──────────────────────────────────────────────────────────────
 
 export const PurchaseOrderRepository = {
+  /**
+   * §20 — numérotation transactionnelle (table document_sequences).
+   * Format conservé : PA-AAAA-#####. Aucun chevauchement après rollback
+   * ou suppression (l'ancien COUNT(*) + 1 est abandonné).
+   */
   generateNumber(): string {
-    const year = new Date().getFullYear().toString();
-    const result = stmtGetNextNumber.get(year) as { cnt: number };
-    const seq = String(result.cnt + 1).padStart(5, '0');
-    return `PA-${year}-${seq}`;
+    const year = new Date().getFullYear();
+    const seq = nextSequence('PURCHASE_ORDER', year);
+    return `PA-${year}-${String(seq).padStart(5, '0')}`;
   },
 
   getAll(): PurchaseOrder[] {

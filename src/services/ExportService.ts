@@ -73,10 +73,9 @@ export const ExportService = {
     let offset = 0;
     while (true) {
       const rows = db.prepare(`
-        SELECT p.*,
-          COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
-                    FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
+        SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
         FROM products p
+        LEFT JOIN inventory_balances ib ON ib.product_id = p.id
         ORDER BY p.reference ASC
         LIMIT ? OFFSET ?
       `).all(BATCH, offset) as Array<Record<string, unknown>>;

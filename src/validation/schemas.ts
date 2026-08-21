@@ -63,9 +63,11 @@ export const SaleItemSchema = z.object({
   discount: z.number().min(0).max(100, 'La remise doit être entre 0 et 100%.').optional().default(0),
 });
 
+// entity_id peut être vide : les ventes comptoir (POS) n'ont pas de client.
+// La validation client est laissée au service (DocumentService l'autorise).
 export const SaleSchema = z.object({
   type: z.enum(['QUOTE', 'DELIVERY_NOTE', 'INVOICE']),
-  entity_id: z.string().min(1).max(64),
+  entity_id: z.string().max(64),
   date: z.string().min(1),
   due_date: z.string().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
@@ -117,6 +119,94 @@ export const PurchaseSchema = z.object({
   expected_date: z.string().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
   items: z.array(PurchaseOrderItemSchema).min(1, 'La commande doit contenir au moins une ligne.'),
+});
+
+export const PurchaseReceiveSchema = z.object({
+  id: z.string().min(1).max(64),
+  receivedItems: z.array(z.object({
+    item_id: z.string().min(1).max(64),
+    received_qty: z.number().min(0, 'La quantité reçue ne peut pas être négative.'),
+  })).max(1000).optional(),
+});
+
+// ─── Avoir / Retour ──────────────────────────────────────────────────────────
+
+export const CreditNoteCreateSchema = z.object({
+  invoiceId: z.string().min(1).max(64),
+  returnItems: z.array(z.object({
+    product_id: z.string().min(1).max(64),
+    quantity: z.number().positive('La quantité retournée doit être supérieure à 0.'),
+  })).max(500).optional(),
+  reason: z.string().max(500).optional(),
+});
+
+// ─── Crédits clients / fournisseurs (نسيئة) ──────────────────────────────────
+
+export const ClientDebtSchema = z.object({
+  customerId: z.string().min(1).max(64),
+  amount: z.number().positive('Le montant doit être supérieur à 0.'),
+  description: z.string().max(500).optional().nullable(),
+});
+
+export const SupplierDebtSchema = z.object({
+  supplierId: z.string().min(1).max(64),
+  amount: z.number().positive('Le montant doit être supérieur à 0.'),
+  description: z.string().max(500).optional().nullable(),
+});
+
+// ─── Catalogue (catégories, remises, conversions) ────────────────────────────
+
+export const CategorySchema = z.object({
+  name: z.string().min(1, 'Le nom de la catégorie est obligatoire.').max(100),
+  description: z.string().max(500).optional().nullable(),
+});
+
+export const SubcategorySchema = z.object({
+  name: z.string().min(1, 'Le nom de la sous-catégorie est obligatoire.').max(100),
+  description: z.string().max(500).optional().nullable(),
+});
+
+export const VolumeDiscountSchema = z.object({
+  name: z.string().min(1, 'Le nom de la règle est obligatoire.').max(100),
+  min_qty: z.number().min(0),
+  max_qty: z.number().min(0).optional().nullable(),
+  discount_pct: z.number().min(0).max(100, 'La remise doit être entre 0 et 100%.'),
+});
+
+export const UnitConversionSchema = z.object({
+  from_unit: z.string().min(1, "L'unité source est obligatoire.").max(20),
+  to_unit: z.string().min(1, "L'unité cible est obligatoire.").max(20),
+  factor: z.number().positive('Le facteur doit être supérieur à 0.'),
+  product_id: z.string().max(64).optional().nullable(),
+});
+
+// ─── Paramètres ──────────────────────────────────────────────────────────────
+
+export const CompanySettingsSchema = z.object({
+  name: z.string().max(200).optional(),
+  tagline: z.string().max(200).optional(),
+  ice: z.string().max(30).optional(),
+  rc: z.string().max(30).optional(),
+  if_: z.string().max(30).optional(),
+  patente: z.string().max(30).optional(),
+  address: z.string().max(500).optional(),
+  phone: z.string().max(30).optional(),
+  email: z.string().max(200).optional(),
+  logo_path: z.string().max(500).optional(),
+});
+
+export const GlobalSettingsSchema = z.object({
+  low_stock_threshold_multiplier: z.number().min(0).optional(),
+  critical_stock_threshold: z.number().min(0).optional(),
+  show_low_stock_alerts: z.boolean().optional(),
+  show_overdue_alerts: z.boolean().optional(),
+  default_vat_rate: z.number().min(0).max(100).optional(),
+  pos_auto_focus_barcode: z.boolean().optional(),
+  auto_backup_enabled: z.boolean().optional(),
+  auto_backup_frequency: z.enum(['on_close', 'daily', 'weekly']).optional(),
+  max_backups: z.number().int().min(1).max(50).optional(),
+  inactive_product_days: z.number().min(0).optional(),
+  show_inactive_product_alerts: z.boolean().optional(),
 });
 
 // ─── IDs ─────────────────────────────────────────────────────────────────────

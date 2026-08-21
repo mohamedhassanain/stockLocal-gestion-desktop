@@ -54,6 +54,65 @@ export function optionalString(value: unknown, fieldName: string): string | null
 
 const DANGEROUS_PATH_CHARS = /[<>"|?*\x00-\x1f]/;
 
+/** Limites de taille de fichiers lus via IPC (Phase 2 — anti DoS mémoire). */
+export const FILE_LIMITS = {
+  /** Images produits / logo : 5 Mo max (base64 via IPC). */
+  IMAGE_MAX_BYTES: 5 * 1024 * 1024,
+  /** CSV import : 50 Mo max (lecture mémoire bornée). */
+  CSV_MAX_BYTES: 50 * 1024 * 1024,
+} as const;
+
+/** Vérifie la taille d'un fichier avant une lecture complète en mémoire. */
+export function assertFileSizeWithin(filePath: string, maxBytes: number, fieldName: string): void {
+  validateFileExists(filePath, fieldName);
+  try {
+    const stats = fs.statSync(filePath);
+    if (stats.size > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      throw new Error(
+        `Fichier trop volumineux : "${fieldName}" dépasse la limite de ${mb} Mo autorisés.`
+      );
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('trop volumineux')) throw e;
+    throw new Error(`Impossible de lire les informations du fichier : "${fieldName}".`);
+  }
+}
+
+/**
+ * Confine un chemin fourni par le renderer à un sous-dossier du dossier de
+ * données. C'est la barrière pour `backup:now`, `backup:delete`, `backup:restore`,
+ * `backup:validate` : le renderer ne peut jamais cibler un fichier arbitraire
+ * du filesystem (ex. suppression de C:\Windows\... via backup:delete).
+ *
+ * @returns chemin absolu résolu, dans <dataDir>/<subDir>/
+ */
+export function validatePathWithinSubDir(filePath: string, dataDir: string, subDir: string, fieldName: string): string {
+  const allowedDir = path.resolve(dataDir, subDir);
+  const resolved = validatePathWithinDataDir(filePath, allowedDir, fieldName);
+  return resolved;
+}
+
+// ─── CSV Escaping (§1.4) ─────────────────────────────────────────────────────
+
+/**
+ * Échappe une valeur pour un fichier CSV :
+ *  - anti-injection de formule : les cellules commençant par `=`, `+`, `-` ou `@`
+ *    sont préfixées d'une apostrophe pour empêcher Excel/LibreOffice de les
+ *    interpréter comme des formules (CVE classique).
+ *  - citation des cellules contenant séparateur, guillemets ou retour ligne.
+ */
+export function csvEscape(val: unknown): string {
+  let s = String(val ?? '');
+  if (s.startsWith('=') || s.startsWith('+') || s.startsWith('-') || s.startsWith('@')) {
+    s = `'${s}`;
+  }
+  if (s.includes(';') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
 /**
  * Protection PRÉCOCE contre les séquences de traversal (`..`, `~`).
  *

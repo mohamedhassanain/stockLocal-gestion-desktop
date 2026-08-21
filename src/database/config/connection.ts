@@ -357,6 +357,23 @@ function migrateDocumentsV2(): void {
   }
 }
 
+function migrateInventoryBalances(): void {
+  addColumnIfMissing('inventory_balances', 'average_cost', 'REAL NOT NULL DEFAULT 0');
+
+  try {
+    db.exec(`
+      UPDATE inventory_balances
+      SET average_cost = CASE
+        WHEN total_in_qty > 0 THEN total_in_value / total_in_qty
+        ELSE 0
+      END
+      WHERE average_cost IS NULL OR average_cost = 0
+    `);
+  } catch (e) {
+    console.warn('[DB] Migration inventory_balances.average_cost ignorée:', e);
+  }
+}
+
 function migrateQuantitiesReal(): void {
   // Les colonnes de quantité passent en REAL pour supporter les quantités décimales (0.5, 1.25, ...)
   // SQLite permet le déclenchement sur ALTER TYPE ? Non : ALTER COLUMN n'existe pas.
@@ -536,6 +553,58 @@ function createPreMigrationBackup(): string | null {
   }
 }
 
+/**
+ * §20 — Sème les séquences de numérotation depuis les documents existants.
+ *
+ * Indispensable pour la compatibilité : une ancienne base contient déjà des
+ * numéros (FAC-2026-00005…). Sans ce backfill, la prochaine facture repartirait
+ * de 00001 et entrerait en collision avec l'existant. On initialise chaque
+ * séquence (type, année) à la valeur maximale déjà utilisée (idempotent).
+ */
+function migrateDocumentSequences(): void {
+  try {
+    const docs = db.prepare(`
+      SELECT type, strftime('%Y', date) AS year, document_number
+      FROM documents
+    `).all() as Array<{ type: string; year: string; document_number: string }>;
+
+    const orders = db.prepare(`
+      SELECT strftime('%Y', date) AS year, order_number
+      FROM purchase_orders
+    `).all() as Array<{ year: string; order_number: string }>;
+
+    type SeqSource = { type: string; year: string; number: string };
+    const sources: SeqSource[] = [
+      ...docs.map(d => ({ type: d.type, year: d.year, number: d.document_number })),
+      ...orders.map(o => ({ type: 'PURCHASE_ORDER', year: o.year, number: o.order_number })),
+    ];
+
+    if (sources.length === 0) return;
+
+    const stmt = db.prepare(`
+      INSERT INTO document_sequences (type, year, last_number)
+      VALUES (?, ?, ?)
+      ON CONFLICT(type, year) DO UPDATE SET
+        last_number = MAX(last_number, excluded.last_number)
+    `);
+
+    db.transaction(() => {
+      for (const src of sources) {
+        const match = /-(\d+)$/.exec(src.number);
+        if (!match) continue;
+        const seq = parseInt(match[1], 10);
+        const year = parseInt(src.year, 10);
+        if (Number.isFinite(seq) && Number.isFinite(year)) {
+          stmt.run(src.type, year, seq);
+        }
+      }
+    })();
+    console.log('[DB] Séquences de numérotation initialisées depuis les documents existants.');
+  } catch (e) {
+    console.warn('[DB] Migration document_sequences ignorée:', e);
+  }
+}
+
 function initDb(): void {
   const safetyBackup = createPreMigrationBackup();
   try {
@@ -548,7 +617,9 @@ function initDb(): void {
     migrateAddProductFields();
     migrateStockMovementV2();
     migrateDocumentsV2();
+    migrateInventoryBalances();
     migrateQuantitiesReal();
+    migrateDocumentSequences();
   } catch (e: any) {
     const detail = safetyBackup
       ? `Erreur lors de la migration de la base de données. Une copie de sécurité a été créée ici : ${safetyBackup}. Vous pouvez joindre ce fichier au support pour diagnostiquer le problème.`
@@ -559,6 +630,24 @@ function initDb(): void {
 }
 
 initDb();
+
+// §14 — Reconstruire les balances de stock depuis l'historique (backfill).
+//
+// Import dynamique différé : évite la dépendance circulaire
+// connection ↔ StockLedgerService (ce service importe `db` d'ici).
+// L'import se résout après l'évaluation du graphe de modules, donc toujours
+// APRÈS le schéma et les migrations — exactement ce qu'on veut.
+// Idempotent : DELETE + re-INSERT agrégé depuis stock_movements.
+void import('../../services/StockLedgerService').then(({ StockLedgerService }) => {
+  try {
+    StockLedgerService.rebuildBalances();
+    console.log('[DB] Balances de stock recalculées.');
+  } catch (e) {
+    // Non bloquant : les écritures futures maintiennent les balances à jour,
+    // et un rebuild est relancable manuellement via StockLedgerService.
+    console.warn('[DB] Recalcul des balances échoué (non bloquant) :', e);
+  }
+});
 
 export function runInTransaction<T>(fn: () => T): T {
   const transaction = db.transaction(fn);

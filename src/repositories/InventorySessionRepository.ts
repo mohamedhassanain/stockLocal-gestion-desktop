@@ -68,9 +68,10 @@ const stmtUpdateItemStatus = db.prepare(`
 
 const stmtDeleteSession = db.prepare('DELETE FROM inventory_sessions WHERE id = ?');
 
+// §14 : stock attendu lu sur la balance précalculée (1 requête par produit
+// lors de la création de session, sans rescan de tout l'historique).
 const stmtGetStockLevel = db.prepare(`
-  SELECT COALESCE(SUM(CASE WHEN type IN ('IN','INVENTORY') THEN quantity ELSE -quantity END), 0) AS total
-  FROM stock_movements WHERE product_id = ?
+  SELECT COALESCE(quantity, 0) AS total FROM inventory_balances WHERE product_id = ?
 `);
 
 const stmtGetActiveProducts = db.prepare(`

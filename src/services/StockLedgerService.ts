@@ -23,6 +23,17 @@ import { randomUUID } from 'crypto';
  *   DAMAGE_OUT    → casse
  *   LOSS_OUT      → perte
  *   OPENING_BALANCE → stock initial
+ *
+ * §14 — Balances précalculées.
+ * La table `inventory_balances` (1 ligne par produit) est maintenue DANS LA
+ * MÊME TRANSACTION que le mouvement : il est impossible d'avoir un mouvement
+ * sans solde mis à jour (ou l'inverse). Les lectures courantes (niveau de
+ * stock, coût moyen, valeur du stock) ne resscannent plus tout l'historique :
+ *   - getStockLevel()   → inventory_balances.quantity
+ *   - getAverageCost()  → inventory_balances.total_in_value / total_in_qty
+ *   - getStockValue()   → 1 seule requête agrégée sur inventory_balances
+ * Le CMUP conserve EXACTEMENT la logique comptable antérieure : seules les
+ * entrées (IN) valorisent (total_in_qty / total_in_value).
  * ───────────────────────────────────────────────────────────────────────────────
  */
 
@@ -91,18 +102,28 @@ const stmtInsert = db.prepare(`
     (@id, @product_id, @type, @movement_type, @quantity, @unit_price, @date, @reference_doc, @document_id, @supplier_id, @notes)
 `);
 
-const stmtGetStock = db.prepare(`
-  SELECT COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END), 0) AS total
-  FROM stock_movements WHERE product_id = ?
+// §14 : solde précalculé (upsert atomique dans la même transaction)
+const stmtUpsertBalance = db.prepare(`
+  INSERT INTO inventory_balances (product_id, quantity, total_in_qty, total_in_value, updated_at)
+  VALUES (@product_id, @quantity, @total_in_qty, @total_in_value, CURRENT_TIMESTAMP)
+  ON CONFLICT(product_id) DO UPDATE SET
+    quantity = excluded.quantity,
+    total_in_qty = excluded.total_in_qty,
+    total_in_value = excluded.total_in_value,
+    updated_at = CURRENT_TIMESTAMP
 `);
 
-const stmtGetProduct = db.prepare('SELECT reference, designation FROM products WHERE id = ?');
+const stmtGetBalance = db.prepare(`
+  SELECT quantity, total_in_qty, total_in_value, average_cost FROM inventory_balances WHERE product_id = ?
+`);
+
+const stmtGetProduct = db.prepare('SELECT reference, designation, purchase_price FROM products WHERE id = ?');
 
 export const StockLedgerService = {
-  /** Niveau de stock actuel d'un produit. */
+  /** Niveau de stock actuel d'un produit (lu sur la balance précalculée). */
   getStockLevel(productId: string): number {
-    const row = stmtGetStock.get(productId) as { total: number } | undefined;
-    return Number(row?.total ?? 0);
+    const row = stmtGetBalance.get(productId) as { quantity: number } | undefined;
+    return Number(row?.quantity ?? 0);
   },
 
   /**
@@ -112,45 +133,38 @@ export const StockLedgerService = {
    * Seules les entrées valorisantes sont comptées : PURCHASE_IN, RETURN_IN,
    * OPENING_BALANCE, ADJUSTMENT_IN, TRANSFER_IN. Les sorties (SALE_OUT, etc.)
    * ne modifient pas le coût moyen : la marge historique reste stable.
+   *
+   * La logique comptable est strictement identique à l'ancienne implémentation
+   * (somme pondérée des entrées), mais lue sur la balance au lieu de rescanner
+   * tout l'historique. Fallback sur purchase_price si aucun stock entré.
    */
   getAverageCost(productId: string): number {
-    const row = db.prepare(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END), 0) AS total_value,
-        COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END), 0) AS total_qty
-      FROM stock_movements
-      WHERE product_id = ?
-    `).get(productId) as { total_value: number; total_qty: number } | undefined;
-
-    const value = Number(row?.total_value ?? 0);
-    const qty = Number(row?.total_qty ?? 0);
-    if (qty <= 0) {
-      const fallback = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(productId) as { purchase_price: number } | undefined;
-      return Number(fallback?.purchase_price ?? 0);
+    const row = stmtGetBalance.get(productId) as { total_in_qty: number; total_in_value: number } | undefined;
+    const value = Number(row?.total_in_value ?? 0);
+    const qty = Number(row?.total_in_qty ?? 0);
+    if (qty > 0) {
+      return value / qty;
     }
-    return value / qty;
+    const fallback = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(productId) as { purchase_price: number } | undefined;
+    return Number(fallback?.purchase_price ?? 0);
   },
 
   /**
    * Valorisation du stock au CMUP : Σ(stock physique × coût moyen),
    * sur les produits actifs uniquement.
+   *
+   * §16 — UNE SEULE requête agrégée avec LEFT JOIN sur les balances :
+   * anciennement N+1 (une requête par produit), désormais 1 requête SQL
+   * (i.e. O(produits) même avec 1M+ de mouvements).
    */
   getStockValue(): number {
-    const rows = db.prepare(`
-      SELECT p.id,
-        COALESCE(SUM(CASE WHEN sm.type = 'IN' THEN sm.quantity ELSE -sm.quantity END), 0) AS stock
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(ib.quantity * ib.average_cost), 0) AS total
       FROM products p
-      LEFT JOIN stock_movements sm ON sm.product_id = p.id
-      WHERE p.status = 'ACTIVE'
-      GROUP BY p.id
-      HAVING stock > 0
-    `).all() as Array<{ id: string; stock: number }>;
-
-    let total = 0;
-    for (const row of rows) {
-      total += Number(row.stock) * this.getAverageCost(row.id);
-    }
-    return total;
+      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      WHERE p.status = 'ACTIVE' AND ib.quantity > 0
+    `).get() as { total: number };
+    return Number(row.total ?? 0);
   },
 
   /** Historique des mouvements d'un produit. */
@@ -181,7 +195,7 @@ export const StockLedgerService = {
    *  - quantité > 0 (sinon erreur)
    *  - produit existant (sinon erreur)
    *  - pour une sortie : stock suffisant (sinon erreur)
-   *  - atomique : inséré dans une transaction SQLite
+   *  - atomique : mouvement + solde précalculé insérés dans la même transaction
    */
   recordMovement(input: MovementInput): StockMovementRow {
     const quantity = Number(input.quantity);
@@ -195,12 +209,12 @@ export const StockLedgerService = {
     }
 
     return runInTransaction(() => {
-      const product = stmtGetProduct.get(input.product_id) as { reference: string; designation: string } | undefined;
+      const product = stmtGetProduct.get(input.product_id) as { reference: string; designation: string; purchase_price: number } | undefined;
       if (!product) {
         throw new Error('Produit introuvable : impossible de créer un mouvement de stock.');
       }
 
-      // Vérification du stock pour les sorties
+      // Vérification du stock pour les sorties (lue sur la balance courante)
       if (direction === 'OUT') {
         const current = this.getStockLevel(input.product_id);
         if (current < quantity) {
@@ -239,8 +253,63 @@ export const StockLedgerService = {
         notes: movement.notes ?? null,
       });
 
+      // §14 : mettre à jour le solde précalculé DANS la même transaction.
+      const balance = stmtGetBalance.get(input.product_id) as
+        { quantity: number; total_in_qty: number; total_in_value: number } | undefined;
+
+      const currentQty = Number(balance?.quantity ?? 0);
+      const currentInQty = Number(balance?.total_in_qty ?? 0);
+      const currentInValue = Number(balance?.total_in_value ?? 0);
+
+      const newQty = direction === 'IN' ? currentQty + quantity : currentQty - quantity;
+      const newInQty = direction === 'IN' ? currentInQty + quantity : currentInQty;
+      const newInValue = direction === 'IN' ? currentInValue + quantity * movement.unit_price : currentInValue;
+
+      stmtUpsertBalance.run({
+        product_id: input.product_id,
+        quantity: newQty,
+        total_in_qty: newInQty,
+        total_in_value: newInValue,
+      });
+
       return movement;
     });
+  },
+
+  /**
+   * Reconstruit entièrement la table `inventory_balances` depuis l'historique
+   * de `stock_movements` (backfill idempotent, exécuté au démarrage).
+   *
+   * Compatible avec les anciennes bases : les mouvements existants sont
+   * rejoués en une seule requête agrégée (pas ligne par ligne), et les
+   * anciens mouvements `INVENTORY` (type historique) sont traités comme des
+   * ajustements (leur signe est porté par `type` IN/OUT après migration).
+   *
+   * La logique CMUP est identique à celle de l'ancien getAverageCost :
+   *   average_cost = SUM(type='IN' → quantity × unit_price) / SUM(type='IN' → quantity)
+   * Cette requête ne tourne qu'AU DÉMARRAGE (ou après restauration), jamais
+   * sur le chemin de lecture chaud.
+   */
+  rebuildBalances(): void {
+    db.transaction(() => {
+      db.exec('DELETE FROM inventory_balances;');
+      db.exec(`
+        INSERT INTO inventory_balances (product_id, quantity, total_in_qty, total_in_value, updated_at)
+        SELECT
+          product_id,
+          SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS quantity,
+          SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) AS total_in_qty,
+          SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END) AS total_in_value,
+          CURRENT_TIMESTAMP
+        FROM stock_movements
+        GROUP BY product_id
+      `);
+      db.exec(`
+        UPDATE inventory_balances
+        SET average_cost = CASE WHEN total_in_qty > 0 THEN total_in_value / total_in_qty ELSE 0 END
+        WHERE total_in_qty > 0
+      `);
+    })();
   },
 
   /**

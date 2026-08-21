@@ -27,32 +27,32 @@ export type ProductInput = Omit<Product, 'id' | 'current_stock' | 'created_at' |
 export type ProductWithId = ProductInput & { id: string };
 
 export class ProductRepository {
-  // Déclaration des requêtes préparées pour garantir une exécution < 100ms
+  // Déclaration des requêtes préparées pour garantir une exécution < 100ms.
+  // §14 : le stock courant est lu sur la balance précalculée (inventory_balances)
+  // via LEFT JOIN — plus aucune agrégation corrélée par ligne sur tout l'historique.
   private static stmts = {
     findById: db.prepare(`
-      SELECT p.*,
-        COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
-                  FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
-      FROM products p WHERE p.id = ?
+      SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
+      FROM products p
+      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      WHERE p.id = ?
     `),
     findByBarcode: db.prepare(`
-      SELECT p.*,
-        COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
-                  FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
-      FROM products p WHERE p.barcode = ?
+      SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
+      FROM products p
+      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      WHERE p.barcode = ?
     `),
     findByReference: db.prepare(`
-      SELECT p.*,
-        COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
-                  FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
+      SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
+      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
       WHERE p.reference = ? COLLATE NOCASE
     `),
     search: db.prepare(`
-      SELECT p.*,
-        COALESCE((SELECT SUM(CASE WHEN sm.type IN ('IN','INVENTORY') THEN sm.quantity ELSE -sm.quantity END)
-                  FROM stock_movements sm WHERE sm.product_id = p.id), 0) AS current_stock
+      SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
+      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
       WHERE p.designation LIKE @query OR p.reference LIKE @query OR p.barcode LIKE @query
       ORDER BY p.designation ASC
       LIMIT @limit OFFSET @offset

@@ -16,7 +16,10 @@ export interface Subcategory {
 }
 
 const stmtAll = db.prepare('SELECT * FROM categories ORDER BY name ASC');
-const stmtSubs = db.prepare('SELECT * FROM subcategories WHERE category_id = ? ORDER BY name ASC');
+
+// §16 : toutes les sous-catégories chargées en UNE requête puis groupées en
+// mémoire — suppression du N+1 (1 requête par catégorie).
+const stmtAllSubs = db.prepare('SELECT * FROM subcategories ORDER BY name ASC');
 const stmtInsert = db.prepare('INSERT INTO categories (id, name, description) VALUES (?, ?, ?)');
 const stmtUpdate = db.prepare('UPDATE categories SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
 const stmtDelete = db.prepare('DELETE FROM categories WHERE id = ?');
@@ -27,8 +30,15 @@ const stmtDeleteSub = db.prepare('DELETE FROM subcategories WHERE id = ?');
 export const CategoryRepository = {
   getAll(): Category[] {
     const categories = stmtAll.all() as Category[];
+    const allSubs = stmtAllSubs.all() as Subcategory[];
+    const subsByCategory = new Map<string, Subcategory[]>();
+    for (const sub of allSubs) {
+      const list = subsByCategory.get(sub.category_id);
+      if (list) list.push(sub);
+      else subsByCategory.set(sub.category_id, [sub]);
+    }
     for (const cat of categories) {
-      cat.subcategories = stmtSubs.all(cat.id) as Subcategory[];
+      cat.subcategories = subsByCategory.get(cat.id) ?? [];
     }
     return categories;
   },

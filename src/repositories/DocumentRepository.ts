@@ -1,6 +1,7 @@
 import { db, runInTransaction } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { StockLedgerService } from '../services/StockLedgerService';
+import { nextSequence } from '../services/DocumentSequenceService';
 
 export type DocumentType = 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE';
 export type DocumentStatus = 'DRAFT' | 'PAID' | 'UNPAID' | 'PARTIAL' | 'CANCELLED';
@@ -129,10 +130,6 @@ const stmtInsertPayment = db.prepare<[string, string, number, string, string, st
   VALUES (?, ?, ?, ?, ?, ?)
 `);
 
-const stmtGetNextNumber = db.prepare<[string, string]>(`
-  SELECT COUNT(*) as cnt FROM documents WHERE type = ? AND strftime('%Y', date) = ?
-`);
-
 const stmtGetProductVat = db.prepare('SELECT vat_rate FROM products WHERE id = ?');
 
 const stmtGetReturnedQty = db.prepare(`
@@ -182,17 +179,21 @@ function computeLineTotals(item: ItemInput, vatRate: number): { lineExclTax: num
 // ─── Repository ───────────────────────────────────────────────────────────────
 
 export const DocumentRepository = {
+  /**
+   * §20 — numérotation transactionnelle (table document_sequences).
+   * Format conservé : PREFIXE-AAAA-#####. Aucun chevauchement après rollback,
+   * suppression ou import (l'ancien COUNT(*) + 1 est abandonné).
+   */
   generateNumber(type: DocumentType): string {
-    const year = new Date().getFullYear().toString();
+    const year = new Date().getFullYear();
     const prefixes: Record<DocumentType, string> = {
       QUOTE: 'DEV',
       DELIVERY_NOTE: 'BL',
       INVOICE: 'FAC',
       CREDIT_NOTE: 'AV'
     };
-    const result = stmtGetNextNumber.get(type, year) as { cnt: number };
-    const seq = String(result.cnt + 1).padStart(5, '0');
-    return `${prefixes[type]}-${year}-${seq}`;
+    const seq = nextSequence(type, year);
+    return `${prefixes[type]}-${year}-${String(seq).padStart(5, '0')}`;
   },
 
   getAll(type: DocumentType, limit = 100, offset = 0): Document[] {

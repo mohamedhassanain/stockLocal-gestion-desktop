@@ -81,11 +81,16 @@ const stmtMargin = db.prepare<[]>(`
     AND strftime('%Y-%m', d.date) = strftime('%Y-%m', 'now')
 `);
 
+// §14/§16 : valeur du stock au CMUP (inventory_balances.average_cost), alignée
+// sur StockLedgerService.getStockValue(). Une seule requête agrégée.
+// Le CMUP est cohérent avec la logique comptable du projet (moyenne pondérée
+// des entrées) — le KPI "Valeur du stock" du dashboard renvoie désormais la
+// même valeur que le service de valorisation.
 const stmtStockValue = db.prepare<[]>(`
-  SELECT COALESCE(SUM(
-    (SELECT COALESCE(SUM(CASE WHEN sm.type='IN' THEN sm.quantity ELSE -sm.quantity END), 0) FROM stock_movements sm WHERE sm.product_id = p.id) * p.purchase_price
-  ), 0) AS total_stock_value
-  FROM products p WHERE p.status = 'ACTIVE'
+  SELECT COALESCE(SUM(ib.quantity * ib.average_cost), 0) AS total_stock_value
+  FROM inventory_balances ib
+  LEFT JOIN products p ON p.id = ib.product_id
+  WHERE p.status = 'ACTIVE' AND ib.quantity > 0
 `);
 
 const stmtUnpaid = db.prepare<[]>(`
@@ -133,12 +138,10 @@ const stmtTopClients = db.prepare<[]>(`
 
 const stmtLowStock = db.prepare<[]>(`
   SELECT p.id, p.reference, p.designation, p.min_stock,
-    COALESCE(SUM(CASE WHEN sm.type='IN' THEN sm.quantity ELSE -sm.quantity END), 0) AS current_stock
+    COALESCE(ib.quantity, 0) AS current_stock
   FROM products p
-  LEFT JOIN stock_movements sm ON sm.product_id = p.id
-  WHERE p.status = 'ACTIVE'
-  GROUP BY p.id
-  HAVING current_stock <= p.min_stock
+  LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+  WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
   ORDER BY current_stock ASC
   LIMIT 20
 `);
@@ -219,10 +222,8 @@ export const DashboardRepository = {
     const lowStock = db.prepare(`
       SELECT COUNT(*) AS cnt FROM (
         SELECT p.id FROM products p
-        LEFT JOIN stock_movements sm ON sm.product_id = p.id
-        WHERE p.status = 'ACTIVE'
-        GROUP BY p.id
-        HAVING COALESCE(SUM(CASE WHEN sm.type='IN' THEN sm.quantity ELSE -sm.quantity END), 0) <= p.min_stock
+        LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+        WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
       )
     `).get() as { cnt: number };
 

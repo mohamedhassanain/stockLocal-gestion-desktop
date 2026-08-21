@@ -1,5 +1,6 @@
 import { db, runInTransaction } from '../database/config/connection';
 import { CategoryRepository } from '../repositories/CategoryRepository';
+import { StockLedgerService } from './StockLedgerService';
 import { randomUUID } from 'crypto';
 
 /**
@@ -116,6 +117,15 @@ export class DemoDataService {
       `);
       for (const [k, v] of settings) upsertSetting.run(k, v);
     });
+
+    // §14 : les mouvements de démo sont insérés en SQL direct (contournement
+    // volontaire du StockLedgerService pour la concision) → on reconstruit les
+    // balances une fois le seed terminé, sans toucher à la logique métier.
+    try {
+      StockLedgerService.rebuildBalances();
+    } catch (e) {
+      console.warn('[Seed] Recalcul des balances échoué (non bloquant) :', e);
+    }
 
     return { seeded: true, message: 'Jeu de données de démonstration créé (6 produits, 3 clients, 3 fournisseurs, 3 paliers de remise).' };
   }
