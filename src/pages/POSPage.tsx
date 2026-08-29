@@ -260,7 +260,7 @@ export const POSPage: React.FC = () => {
                 <div className="pos-cart-header">
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Produit</div>
                   <div style={{ textAlign: 'center' }}>Qté</div>
-                  <div style={{ textAlign: 'right' }}>Prix</div>
+                  <div style={{ textAlign: 'center' }}>Prix</div>
                   <div style={{ textAlign: 'center' }}>Remise %</div>
                   <div style={{ textAlign: 'right' }}>Total</div>
                   <div></div>
@@ -292,7 +292,7 @@ export const POSPage: React.FC = () => {
                           step={0.01}
                           value={item.unit_price}
                           onChange={e => updateCartPrice(item.product_id, Number(e.target.value))}
-                          className="input input-sm money text-right"
+                          className="input input-sm money text-center"
                         />
                       </div>
                       <div style={{ width: 60 }}>
