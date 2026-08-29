@@ -525,7 +525,7 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
    autres tableaux de l'app. */
 .pdg-grid {
   display: grid;
-  grid-template-columns: 6% 10% 22% 8% 8% 10% 10% 10% 16%;
+  grid-template-columns: 6% 10% 22% 7% 7% 10% 10% 10% 18%;
   width: 100%;
   align-items: center;
 }
@@ -557,6 +557,41 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   text-overflow: ellipsis;
 }
 .pdg-row:hover { background: var(--surface-2); }
+
+/* Cellule Actions : padding latéral réduit pour accueillir édition + toggle
+   + archiver + supprimer sans que le dernier bouton soit tronqué. */
+.pdg-row .pdg-actions { padding: 10px 10px; }
+
+/* Toggle activation/désactivation produit (switch) */
+.switch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.switch .switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
+}
+.switch.on { background: var(--success); border-color: var(--success); }
+.switch.on .switch-knob { transform: translateX(20px); border-color: var(--success); }
+.switch:not(.on):hover { border-color: var(--muted); }
 
 /* ─── États vides / chargement / erreur (§3.4) ───────────────────────────── */
 .state-box {
