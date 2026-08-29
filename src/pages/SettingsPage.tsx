@@ -51,7 +51,7 @@ interface GlobalSettings {
   show_overdue_alerts: boolean;
   default_vat_rate: number;
   auto_backup_enabled: boolean;
-  auto_backup_frequency: 'on_close' | 'daily' | 'weekly';
+  auto_backup_frequency: 'on_close' | 'daily' | 'weekly' | 'monthly';
   max_backups: number;
   inactive_product_days: number;
   show_inactive_product_alerts: boolean;
@@ -915,10 +915,11 @@ export const SettingsPage: React.FC = () => {
                 </label>
                 {globalSettings.auto_backup_enabled && (
                   <div className="form-row">
-                    <Select label="Fréquence" value={globalSettings.auto_backup_frequency} onChange={e => setGlobalSettings({ ...globalSettings, auto_backup_frequency: e.target.value as 'on_close' | 'daily' | 'weekly' })}>
+                    <Select label="Fréquence" value={globalSettings.auto_backup_frequency} onChange={e => setGlobalSettings({ ...globalSettings, auto_backup_frequency: e.target.value as 'on_close' | 'daily' | 'weekly' | 'monthly' })}>
                       <option value="on_close">À chaque fermeture</option>
                       <option value="daily">Chaque jour</option>
                       <option value="weekly">Chaque semaine</option>
+                      <option value="monthly">Chaque mois</option>
                     </Select>
                     <Input label="Nombre max de sauvegardes" type="number" min="1" max="50" value={globalSettings.max_backups} onChange={e => setGlobalSettings({ ...globalSettings, max_backups: Number(e.target.value) })} />
                   </div>

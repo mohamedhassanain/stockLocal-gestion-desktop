@@ -17,6 +17,7 @@ import { ImportService } from '../../src/services/ImportService';
 import { ExportService } from '../../src/services/ExportService';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
+import { BackupService } from '../../src/services/BackupService';
 import { DataStorageService } from '../../src/services/DataStorageService';
 import {
   safeParse,
@@ -415,6 +416,9 @@ export function registerReferenceDataHandlers(): void {
     return humanError(() => {
       const safe = safeParse(GlobalSettingsSchema, settings, 'Paramètres globaux');
       const saved = GlobalSettingsService.save(safe);
+      // Re-planifie la sauvegarde automatique selon les nouveaux réglages
+      // (l'utilisateur vient peut-être d'activer/désactiver l'option).
+      BackupService.scheduleAutoBackup();
       return { success: true, data: saved };
     });
   });

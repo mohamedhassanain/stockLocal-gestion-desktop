@@ -11,6 +11,7 @@ import { ErrorLogService } from '../src/services/ErrorLogService';
 import { DemoDataService } from '../src/services/DemoDataService';
 import { AuditService } from '../src/services/AuditService';
 import { BackupService } from '../src/services/BackupService';
+import { GlobalSettingsService } from '../src/services/GlobalSettingsService';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,6 +22,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST;
 
 let win: BrowserWindow | null = null;
+let isBackingUpOnClose = false;
 
 /** CSP alignée sur vite.config.ts (build prod) — images produits en data:, styles inline React. */
 const PRODUCTION_CSP = [
@@ -100,6 +102,24 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
     win = null;
+  }
+});
+
+// Sauvegarde automatique « À chaque fermeture » : uniquement si l'utilisateur
+// a activé la sauvegarde automatique ET choisi la fréquence "on_close".
+app.on('before-quit', (event) => {
+  if (isBackingUpOnClose) return;
+  try {
+    const settings = GlobalSettingsService.getAll();
+    if (settings.auto_backup_enabled && settings.auto_backup_frequency === 'on_close') {
+      event.preventDefault();
+      isBackingUpOnClose = true;
+      BackupService.backup().finally(() => {
+        app.quit();
+      });
+    }
+  } catch (e) {
+    console.error('[Backup] Erreur sauvegarde à la fermeture:', e);
   }
 });
 

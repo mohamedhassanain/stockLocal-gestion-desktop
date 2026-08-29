@@ -204,7 +204,7 @@ export const GlobalSettingsSchema = z.object({
   default_vat_rate: z.number().min(0).max(100).optional(),
   pos_auto_focus_barcode: z.boolean().optional(),
   auto_backup_enabled: z.boolean().optional(),
-  auto_backup_frequency: z.enum(['on_close', 'daily', 'weekly']).optional(),
+  auto_backup_frequency: z.enum(['on_close', 'daily', 'weekly', 'monthly']).optional(),
   max_backups: z.number().int().min(1).max(50).optional(),
   inactive_product_days: z.number().min(0).optional(),
   show_inactive_product_alerts: z.boolean().optional(),

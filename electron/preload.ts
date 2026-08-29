@@ -172,7 +172,7 @@ export interface GlobalSettingsInput {
   default_vat_rate?: number;
   pos_auto_focus_barcode?: boolean;
   auto_backup_enabled?: boolean;
-  auto_backup_frequency?: 'on_close' | 'daily' | 'weekly';
+  auto_backup_frequency?: 'on_close' | 'daily' | 'weekly' | 'monthly';
   max_backups?: number;
   inactive_product_days?: number;
   show_inactive_product_alerts?: boolean;

@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { DataStorageService } from './DataStorageService';
+import { GlobalSettingsService } from './GlobalSettingsService';
+
+let autoBackupTimer: NodeJS.Timeout | null = null;
 
 export interface BackupInfo {
   name: string;
@@ -208,25 +211,46 @@ export const BackupService = {
    * Planifie une sauvegarde automatique quotidienne.
    */
   scheduleAutoBackup(): void {
-    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    // Annule toute planification précédente (re-planification après réglages)
+    if (autoBackupTimer) {
+      clearInterval(autoBackupTimer);
+      autoBackupTimer = null;
+    }
 
-    // Première sauvegarde après 1 minute
-    setTimeout(async () => {
-      try {
-        await this.backup();
-      } catch (e) {
-        console.error('[Backup] Erreur sauvegarde auto:', e);
-      }
-      // Ensuite toutes les 24h
-      setInterval(async () => {
+    const settings = GlobalSettingsService.getAll();
+
+    // Si la sauvegarde automatique est désactivée : AUCUNE planification
+    // (les sauvegardes ne doivent JAMAIS se créer sans l'accord de l'utilisateur).
+    if (!settings.auto_backup_enabled) {
+      console.log('[Backup] Sauvegarde automatique désactivée — aucune planification.');
+      return;
+    }
+
+    const DAY = 24 * 60 * 60 * 1000;
+    const intervals: Record<string, number> = {
+      daily: DAY,
+      weekly: 7 * DAY,
+      monthly: 30 * DAY,
+    };
+
+    const interval = intervals[settings.auto_backup_frequency];
+
+    if (interval) {
+      // Fréquence périodique (jour / semaine / mois) — pas de backup immédiat.
+      autoBackupTimer = setInterval(async () => {
         try {
+          // On revérifie à chaque tick : si l'utilisateur a désactivé l'option, on saute.
+          const current = GlobalSettingsService.getAll();
+          if (!current.auto_backup_enabled) return;
           await this.backup();
         } catch (e) {
           console.error('[Backup] Erreur sauvegarde auto:', e);
         }
-      }, TWENTY_FOUR_HOURS);
-    }, 60 * 1000);
-
-    console.log('[Backup] Sauvegarde automatique planifiée (toutes les 24h).');
+      }, interval);
+      console.log(`[Backup] Sauvegarde automatique planifiée (${settings.auto_backup_frequency}).`);
+    } else {
+      // 'on_close' : la sauvegarde est déclenchée à la fermeture de l'app (main.ts).
+      console.log('[Backup] Sauvegarde automatique à la fermeture activée.');
+    }
   }
 };

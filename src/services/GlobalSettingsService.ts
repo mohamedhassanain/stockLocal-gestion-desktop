@@ -9,7 +9,7 @@ export interface GlobalSettings {
   pos_auto_focus_barcode: boolean;
   // §11 Backup settings
   auto_backup_enabled: boolean;
-  auto_backup_frequency: 'on_close' | 'daily' | 'weekly';
+  auto_backup_frequency: 'on_close' | 'daily' | 'weekly' | 'monthly';
   max_backups: number;
   // §26 Inactivity alert
   inactive_product_days: number;
@@ -51,7 +51,7 @@ export const GlobalSettingsService = {
       default_vat_rate: parseFloat(map['default_vat_rate'] ?? String(DEFAULTS.default_vat_rate)),
       pos_auto_focus_barcode: (map['pos_auto_focus_barcode'] ?? 'true') === 'true',
       auto_backup_enabled: (map['auto_backup_enabled'] ?? 'true') === 'true',
-      auto_backup_frequency: (map['auto_backup_frequency'] ?? DEFAULTS.auto_backup_frequency) as 'on_close' | 'daily' | 'weekly',
+      auto_backup_frequency: (map['auto_backup_frequency'] ?? DEFAULTS.auto_backup_frequency) as 'on_close' | 'daily' | 'weekly' | 'monthly',
       max_backups: parseInt(map['max_backups'] ?? String(DEFAULTS.max_backups), 10),
       inactive_product_days: parseInt(map['inactive_product_days'] ?? String(DEFAULTS.inactive_product_days), 10),
       show_inactive_product_alerts: (map['show_inactive_product_alerts'] ?? 'true') === 'true',
