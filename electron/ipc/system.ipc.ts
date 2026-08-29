@@ -83,6 +83,69 @@ export function registerSystemHandlers(context: IpcContext): void {
   // ─── Database Integrity ────────────────────────────────────────────────────
   ipcMain.handle('db:integrityCheck', async () => checkIntegrity());
 
+  // ─── Réinitialisation complète (Zone de danger) ───────────────────────────
+  // Supprime toutes les données métier + toutes les sauvegardes, documents,
+  // exports et images. Conserve les paramètres (entreprise, unités, alertes).
+  ipcMain.handle('data:wipeAll', async () => {
+    return run(async () => {
+      const { db } = await import('../../src/database/config/connection');
+
+      // Tables de données métier (ordre enfants → parents).
+      const tables = [
+        'inventory_item_versions',
+        'inventory_versions',
+        'inventory_items',
+        'inventory_sessions',
+        'purchase_order_items',
+        'purchase_orders',
+        'price_history',
+        'unit_conversions',
+        'product_batches',
+        'credit_note_refs',
+        'document_items',
+        'payments',
+        'documents',
+        'client_credits',
+        'supplier_credits',
+        'stock_movements',
+        'inventory_balances',
+        'volume_discounts',
+        'subcategories',
+        'categories',
+        'products',
+        'customers',
+        'suppliers',
+      ];
+
+      db.pragma('foreign_keys = OFF');
+      const wipe = db.transaction(() => {
+        for (const t of tables) {
+          try { db.prepare(`DELETE FROM ${t}`).run(); } catch { /* table absente */ }
+        }
+        try { db.prepare('DELETE FROM document_sequences').run(); } catch { /* ignore */ }
+        try { db.prepare('DELETE FROM audit_logs').run(); } catch { /* ignore */ }
+      });
+      wipe();
+      db.pragma('foreign_keys = ON');
+
+      // Supprimer et recréer les dossiers de données (backups, documents, exports, images)
+      const dirs = [
+        DataStorageService.getBackupsPath(),
+        DataStorageService.getDocumentsPath(),
+        DataStorageService.getExportsPath(),
+        DataStorageService.getAttachmentsPath(),
+      ];
+      for (const dir of dirs) {
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      AuditService.log('DATA_WIPE', 'system', 'all', 'Toutes les données ont été supprimées (y compris les sauvegardes).');
+
+      return { success: true };
+    });
+  });
+
   // ─── Sélection de fichiers (dialogue natif) ────────────────────────────────
   ipcMain.handle('products:pickCsv', async () => {
     const result = await dialog.showOpenDialog({

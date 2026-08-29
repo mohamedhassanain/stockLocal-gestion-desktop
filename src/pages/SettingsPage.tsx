@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Button, Card, Input, Select, PageHeader, DeleteButton } from '../components/ui';
+import { Button, Card, Input, Select, PageHeader, DeleteButton, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
 type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
@@ -77,6 +77,9 @@ export const SettingsPage: React.FC = () => {
 
   const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '', show_logo_on_documents: true });
   const [logoPreview, setLogoPreview] = useState('');
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wipeConfirmText, setWipeConfirmText] = useState('');
+  const [wipeLoading, setWipeLoading] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCat, setNewCat] = useState('');
   const [newSubs, setNewSubs] = useState<Record<string, string>>({});
@@ -302,6 +305,27 @@ export const SettingsPage: React.FC = () => {
       notify('✅ Base de données intacte');
     } else {
       notify(`⚠️ ${result.message}`);
+    }
+  };
+
+  // Zone de danger : supprime toutes les données + les sauvegardes
+  const handleWipeAll = async () => {
+    if (wipeConfirmText.trim().toUpperCase() !== 'SUPPRIMER') return;
+    setWipeLoading(true);
+    try {
+      const result = await window.api.data.wipeAll();
+      if (result.success) {
+        notify('🗑️ Toutes les données ont été supprimées (y compris les sauvegardes).');
+        setWipeOpen(false);
+        setWipeConfirmText('');
+        loadAll();
+      } else {
+        notify(`❌ ${result.error}`);
+      }
+    } catch (e: any) {
+      notify(`❌ ${e.message}`);
+    } finally {
+      setWipeLoading(false);
     }
   };
 
@@ -867,6 +891,16 @@ export const SettingsPage: React.FC = () => {
                 </div>
               )}
             </Card>
+
+            <Card padding style={{ border: '2px solid var(--danger)' }}>
+              <SectionTitle icon="⚠️" title="Zone de danger" />
+              <p className="text-sm text-danger" style={{ marginTop: 0, marginBottom: 12 }}>
+                Cette action supprime <strong>toutes</strong> vos données : produits, clients, fournisseurs,
+                documents, mouvements de stock, inventaires, <strong>et toutes les sauvegardes</strong>.
+                Elle est <strong>irréversible</strong>.
+              </p>
+              <Button variant="danger" onClick={() => setWipeOpen(true)}>🗑️ Tout supprimer</Button>
+            </Card>
           </div>
         )}
 
@@ -990,6 +1024,30 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      <Modal open={wipeOpen} onClose={() => setWipeOpen(false)} width={520}>
+        <ModalHeader icon="⚠️" title="Tout supprimer" subtitle="Suppression définitive de toutes les données" />
+        <ModalBody>
+          <div className="surface-danger" style={{ padding: 12, marginBottom: 12 }}>
+            ⚠️ Cette action supprime <strong>toutes</strong> vos données (produits, clients, fournisseurs,
+            documents, stock, inventaires) et <strong>toutes les sauvegardes</strong>. Elle est <strong>irréversible</strong>.
+          </div>
+          <p className="text-sm text-secondary" style={{ marginBottom: 8 }}>
+            Pour confirmer, tapez <strong>SUPPRIMER</strong> ci-dessous :
+          </p>
+          <Input value={wipeConfirmText} onChange={e => setWipeConfirmText(e.target.value)} placeholder="SUPPRIMER" />
+        </ModalBody>
+        <ModalFooter between>
+          <Button variant="secondary" onClick={() => setWipeOpen(false)}>Annuler</Button>
+          <Button
+            variant="danger"
+            disabled={wipeConfirmText.trim().toUpperCase() !== 'SUPPRIMER' || wipeLoading}
+            onClick={handleWipeAll}
+          >
+            {wipeLoading ? '⏳ Suppression...' : '🗑️ Tout supprimer'}
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {pendingConfirm && (
         <ConfirmDialog

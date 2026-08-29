@@ -212,6 +212,11 @@ export const api = {
     integrityCheck: () => ipcRenderer.invoke('db:integrityCheck'),
   },
 
+  // ─── Données / Réinitialisation ────────────────────────────────────────────
+  data: {
+    wipeAll: () => ipcRenderer.invoke('data:wipeAll'),
+  },
+
   // ─── Produits ──────────────────────────────────────────────────────────────
   products: {
     search: (query: string) => ipcRenderer.invoke('products:search', query),
