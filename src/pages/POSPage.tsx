@@ -304,7 +304,7 @@ export const POSPage: React.FC = () => {
                 <span style={{ margin: '0 var(--space-3)', color: 'var(--border-strong)' }}>|</span>
                 {cart.reduce((s, c) => s + c.quantity, 0)} unité(s)
               </div>
-              <div className="flex items-center gap-5">
+              <div className="flex items-center" style={{ gap: 'var(--space-5)' }}>
                 <div className="text-right">
                   <div className="text-xs text-muted">TOTAL</div>
                   <div className="pos-total-amount money">{subtotal.toFixed(2)} <span style={{ fontSize: 18 }}>MAD</span></div>
