@@ -517,21 +517,46 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
 }
 .table tbody tr.sel-row:hover { background: #d9ece7; }
 
-/* ─── Tableaux virtualisés (lignes positionnées en absolu, hauteur fixe) ──
-   Chaque <tr> a une hauteur imposée (estimateSize) et est en `position: absolute`.
-   On force chaque cellule à rester sur une ligne et à être tronquée avec "…"
-   au lieu de passer à la ligne / dépasser la hauteur fixe et chevaucher la
-   ligne ou colonne voisine. Classe dédiée : ne touche pas aux autres tableaux. */
-.table-virtual tbody td,
-.table-virtual thead th {
+/* ─── Liste produits en CSS Grid (virtualisée, lignes en absolu + hauteur fixe) ──
+   L'en-tête et les lignes partagent le même grid-template-columns → alignement
+   garanti. Chaque cellule tronque son texte (nowrap + ellipsis) et le <tr>
+   clippe (overflow: hidden) : plus aucun débordement ni chevauchement,
+   quelle que soit la longueur du texte. Classe dédiée : n'affecte pas les
+   autres tableaux de l'app. */
+.pdg-grid {
+  display: grid;
+  grid-template-columns: 6% 10% 22% 8% 8% 10% 10% 10% 16%;
+  width: 100%;
+  align-items: center;
+}
+.pdg-header {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.pdg-header > div {
+  padding: 10px 14px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.table-virtual tbody tr {
+.pdg-row {
+  font-size: var(--font-size-md);
+  color: var(--text);
   overflow: hidden;
 }
-.table-virtual tbody td .badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdg-row > div {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pdg-row:hover { background: var(--surface-2); }
 
 /* ─── États vides / chargement / erreur (§3.4) ───────────────────────────── */
 .state-box {

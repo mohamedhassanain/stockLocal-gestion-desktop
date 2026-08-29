@@ -13,25 +13,10 @@ interface CategoryOption {
   name: string;
 }
 
-const TABLE_COLS = (
-  <colgroup>
-    <col style={{ width: '6%' }} />
-    <col style={{ width: '10%' }} />
-    <col style={{ width: '22%' }} />
-    <col style={{ width: '8%' }} />
-    <col style={{ width: '8%' }} />
-    <col style={{ width: '10%' }} />
-    <col style={{ width: '10%' }} />
-    <col style={{ width: '10%' }} />
-    <col style={{ width: '16%' }} />
-  </colgroup>
-);
-
-// Largeurs de colonnes pour les lignes virtualisées : comme chaque <tr> est
-// `display: table` (mini-table autonome), le <colgroup> du tableau parent ne
-// s'applique pas. On force donc une largeur explicite sur chaque <td> pour
-// éviter le chevauchement des colonnes (image / texte) et la perte de contenu.
-const CELL_WIDTHS = ['6%', '10%', '22%', '8%', '8%', '10%', '10%', '10%', '16%'];
+// Layout de la liste produits en CSS Grid (§3.4) : les mêmes colonnes
+// grid-template-columns, partagées par l'en-tête et les lignes virtualisées,
+// garantissent l'alignement et le tronquage (nowrap + ellipsis) sans les
+// aléas de `<table>` + `<tbody style="display:block">` (largeur effondrée).
 
 export const ProductsPage: React.FC = () => {
   const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct, deleteProduct } = useProductStore();
@@ -212,22 +197,19 @@ export const ProductsPage: React.FC = () => {
                 <div className="state-text">Aucun produit trouvé</div>
               </div>
             ) : (
-              <table className="table table-virtual" style={{ tableLayout: 'fixed' }}>
-                {TABLE_COLS}
-                <thead>
-                  <tr>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Image</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Réf</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Désignation</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Unité</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Stock</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Prix Vente</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Marge</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Statut</th>
-                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative', display: 'block' }}>
+              <div style={{ position: 'relative' }}>
+                <div className="pdg-grid pdg-header" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                  <div>Image</div>
+                  <div>Réf</div>
+                  <div>Désignation</div>
+                  <div>Unité</div>
+                  <div>Stock</div>
+                  <div>Prix Vente</div>
+                  <div>Marge</div>
+                  <div>Statut</div>
+                  <div>Actions</div>
+                </div>
+                <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
                   {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                     const p = filteredProducts[virtualRow.index];
                     const stock = p.current_stock ?? 0;
@@ -236,41 +218,33 @@ export const ProductsPage: React.FC = () => {
                     // Lazy-load : seule l'image du produit visible est demandée.
                     const imgSrc = getProductImage(p.image_path);
                     return (
-                      <tr
+                      <div
                         key={virtualRow.index}
+                        className="pdg-grid pdg-row"
                         style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: `${virtualRow.size}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
-                          display: 'table',
-                          tableLayout: 'fixed',
-                          overflow: 'hidden',
+                          position: 'absolute', top: 0, left: 0, width: '100%',
+                          height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)`,
                           cursor: 'pointer',
                         }}
                       >
-                        <td style={{ width: CELL_WIDTHS[0] }}>
+                        <div>
                           {imgSrc
                             ? <img src={imgSrc} alt="" style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', objectFit: 'cover', border: '1px solid var(--border)' }} />
                             : <div className="surface-muted text-muted" style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, padding: 0 }}>📦</div>
                           }
-                        </td>
-                        <td className="font-semibold" style={{ width: CELL_WIDTHS[1] }}>{p.reference}</td>
-                        <td style={{ width: CELL_WIDTHS[2] }}>{p.designation}</td>
-                        <td className="text-sm text-secondary" style={{ width: CELL_WIDTHS[3] }}>{p.unit || 'PIÈCE'}</td>
-                        <td className={`font-semibold ${stockLevelClass(stock, p.min_stock)}`} style={{ width: CELL_WIDTHS[4] }}>
+                        </div>
+                        <div className="font-semibold">{p.reference}</div>
+                        <div>{p.designation}</div>
+                        <div className="text-sm text-secondary">{p.unit || 'PIÈCE'}</div>
+                        <div className={`font-semibold ${stockLevelClass(stock, p.min_stock)}`}>
                           {stock} {p.min_stock > 0 && stock <= p.min_stock && '⚠️'}
-                        </td>
-                        <td className="money font-semibold" style={{ width: CELL_WIDTHS[5] }}>{p.selling_price.toFixed(2)} MAD</td>
-                        <td className={`money text-sm font-semibold ${margin >= 0 ? 'text-success' : 'text-danger'}`} style={{ width: CELL_WIDTHS[6] }}>
+                        </div>
+                        <div className="money font-semibold">{p.selling_price.toFixed(2)} MAD</div>
+                        <div className={`money text-sm font-semibold ${margin >= 0 ? 'text-success' : 'text-danger'}`}>
                           {margin.toFixed(2)} MAD
-                        </td>
-                        <td style={{ width: CELL_WIDTHS[7] }}>
-                          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-                        </td>
-                        <td style={{ width: CELL_WIDTHS[8] }}>
+                        </div>
+                        <div><Badge variant={statusBadge.variant}>{statusBadge.label}</Badge></div>
+                        <div>
                           <div className="flex gap-2">
                             <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>
                             {p.status === 'ACTIVE' ? (
@@ -283,12 +257,12 @@ export const ProductsPage: React.FC = () => {
                             )}
                             <Button variant="danger" size="sm" onClick={() => handleDelete(p)} title="Supprimer">🗑️</Button>
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </div>
             )}
           </div>
         </Card>
