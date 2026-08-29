@@ -245,16 +245,20 @@ export const ProductsPage: React.FC = () => {
                           {margin.toFixed(2)} MAD
                         </div>
                         <div><Badge variant={statusBadge.variant}>{statusBadge.label}</Badge></div>
-                        <div>
-                          <div className="flex gap-2">
+                        <div className="pdg-actions">
+                          <div className="flex gap-2 items-center">
                             <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>
-                            {p.status === 'ACTIVE' ? (
-                              <>
-                                <Button variant="secondary" size="sm" onClick={() => handleDisable(p)} title="Désactiver">⛔</Button>
-                                <Button variant="secondary" size="sm" onClick={() => handleArchive(p)} title="Archiver">🗄️</Button>
-                              </>
-                            ) : (
-                              <Button variant="success" size="sm" onClick={() => handleActivate(p)} title="Réactiver">✅</Button>
+                            <button
+                              className={`switch ${p.status === 'ACTIVE' ? 'on' : ''}`}
+                              onClick={() => p.status === 'ACTIVE' ? handleDisable(p) : handleActivate(p)}
+                              title={p.status === 'ACTIVE' ? 'Désactiver' : 'Activer'}
+                              aria-pressed={p.status === 'ACTIVE'}
+                              aria-label={p.status === 'ACTIVE' ? 'Désactiver le produit' : 'Activer le produit'}
+                            >
+                              <span className="switch-knob" />
+                            </button>
+                            {p.status !== 'ARCHIVED' && (
+                              <Button variant="secondary" size="sm" onClick={() => handleArchive(p)} title="Archiver">🗄️</Button>
                             )}
                             <Button variant="danger" size="sm" onClick={() => handleDelete(p)} title="Supprimer">🗑️</Button>
                           </div>
