@@ -379,6 +379,17 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   font-size: var(--font-size-sm);
 }
 .pos-main { background: var(--bg); display: flex; overflow: hidden; }
+/* Colonne gauche du POS : la classe utilitaire `.flex-col` n'est pas définie
+   dans le design system, donc sans cette règle la colonne restait en
+   `flex-direction: row` (champ scan à gauche, panier à droite). On force ici
+   un empilement vertical et on laisse le contenu rétrécir (min-width:0). */
+.pos-column {
+  display: flex;
+  flex-direction: column;
+  flex: 2 1 0%;
+  overflow: hidden;
+  min-width: 0;
+}
 .pos-cart-item {
   display: flex;
   align-items: center;

@@ -221,7 +221,7 @@ export const POSPage: React.FC = () => {
       />
 
       <div className="flex flex-1 pos-main" style={{ overflow: 'hidden' }}>
-        <div className="flex flex-1 flex-col" style={{ flex: 2, overflow: 'hidden' }}>
+        <div className="pos-column">
           <div style={{ padding: 'var(--space-4) var(--space-5)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
             <div className="flex gap-3">
               <input
@@ -247,7 +247,7 @@ export const POSPage: React.FC = () => {
                 <div className="state-text">Scannez un produit ou recherchez-le ci-contre</div>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex gap-2" style={{ flexDirection: 'column' }}>
                 {cart.map(item => (
                   <div key={item.product_id} className="pos-cart-item">
                     <div className="flex-1 item-info">
