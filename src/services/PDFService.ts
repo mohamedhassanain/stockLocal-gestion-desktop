@@ -390,14 +390,11 @@ export const PDFService = {
     page.drawText(nameText, { x: (width - nameW) / 2, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 26; // espace entre le nom d'entreprise et le titre
 
-    const titleText = `Rapport de ventes — ${labelMonth}`;
-    const titleW = boldFont.widthOfTextAtSize(titleText, 14);
-    page.drawText(titleText, { x: (width - titleW) / 2, y, size: 14, font: boldFont });
+    // Titre et date alignés à gauche (début de page)
+    page.drawText(`Rapport de ventes — ${labelMonth}`, { x: 50, y, size: 14, font: boldFont });
     y -= 14;
 
-    const dateText = `Généré le ${new Date().toLocaleDateString('fr-MA')}`;
-    const dateW = font.widthOfTextAtSize(dateText, 9);
-    page.drawText(dateText, { x: (width - dateW) / 2, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+    page.drawText(`Généré le ${new Date().toLocaleDateString('fr-MA')}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 30;
 
     const drawKpi = (label: string, value: string) => {
