@@ -517,6 +517,22 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
 }
 .table tbody tr.sel-row:hover { background: #d9ece7; }
 
+/* ─── Tableaux virtualisés (lignes positionnées en absolu, hauteur fixe) ──
+   Chaque <tr> a une hauteur imposée (estimateSize) et est en `position: absolute`.
+   On force chaque cellule à rester sur une ligne et à être tronquée avec "…"
+   au lieu de passer à la ligne / dépasser la hauteur fixe et chevaucher la
+   ligne ou colonne voisine. Classe dédiée : ne touche pas aux autres tableaux. */
+.table-virtual tbody td,
+.table-virtual thead th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table-virtual tbody tr {
+  overflow: hidden;
+}
+.table-virtual tbody td .badge { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ─── États vides / chargement / erreur (§3.4) ───────────────────────────── */
 .state-box {
   display: flex;

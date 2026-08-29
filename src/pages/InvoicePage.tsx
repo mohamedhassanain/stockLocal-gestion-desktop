@@ -611,13 +611,13 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
               <div key={doc.id} onClick={() => selectDocument(doc)}
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)`, padding: '14px 20px', boxSizing: 'border-box', cursor: 'pointer', borderBottom: '1px solid var(--border)', background: isSelected ? 'var(--info-soft)' : 'transparent', borderLeft: isSelected ? `4px solid ${TYPE_LABELS[activeType].color}` : '4px solid transparent', transition: 'all 0.15s' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)' }}>{doc.document_number}</span>
+                  <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '1 1 auto', minWidth: 0 }}>{doc.document_number}</span>
                   <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
                 </div>
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>{doc.customer_name}</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.customer_name}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                  <span style={{ fontSize: '13px', color: 'var(--muted)' }}>{doc.date?.split('T')[0]}</span>
-                  <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)' }}>{doc.total_incl_tax?.toFixed(2)} MAD</span>
+                  <span style={{ fontSize: '13px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{doc.date?.split('T')[0]}</span>
+                  <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.total_incl_tax?.toFixed(2)} MAD</span>
                 </div>
               </div>
             );

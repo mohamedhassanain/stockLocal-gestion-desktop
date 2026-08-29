@@ -212,7 +212,7 @@ export const ProductsPage: React.FC = () => {
                 <div className="state-text">Aucun produit trouvé</div>
               </div>
             ) : (
-              <table className="table" style={{ tableLayout: 'fixed' }}>
+              <table className="table table-virtual" style={{ tableLayout: 'fixed' }}>
                 {TABLE_COLS}
                 <thead>
                   <tr>
@@ -247,6 +247,7 @@ export const ProductsPage: React.FC = () => {
                           transform: `translateY(${virtualRow.start}px)`,
                           display: 'table',
                           tableLayout: 'fixed',
+                          overflow: 'hidden',
                           cursor: 'pointer',
                         }}
                       >
