@@ -371,21 +371,25 @@ export const PDFService = {
     const labelMonth = month ?? new Date().toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
     let y = height - 50;
 
-    // ── Logo à GAUCHE, nom de l'entreprise CENTRÉ sur la page ──
+    // ── Bloc (logo à GAUCHE du nom) CENTRÉ sur la page ──
+    const nameText = settings.name || 'StockLocal';
+    const nameW = boldFont.widthOfTextAtSize(nameText, 20);
+    const logoW = 72, logoH = 36, gap = 24;
+    let logoImage: any = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
         const ext = path.extname(settings.logo_path).toLowerCase();
-        const logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
-        const logoW = 72, logoH = 36;
-        page.drawImage(logoImage, { x: 50, y: y - logoH, width: logoW, height: logoH });
+        logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
       } catch {
-        // Logo illisible : on ignore silencieusement
+        logoImage = null;
       }
     }
-    const nameText = settings.name || 'StockLocal';
-    const nameW = boldFont.widthOfTextAtSize(nameText, 20);
-    page.drawText(nameText, { x: (width - nameW) / 2, y: y - 14, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    const startX = (width - (logoImage ? logoW + gap : 0) - nameW) / 2;
+    if (logoImage) {
+      page.drawImage(logoImage, { x: startX, y: y - logoH, width: logoW, height: logoH });
+    }
+    page.drawText(nameText, { x: startX + (logoImage ? logoW + gap : 0), y: y - 14, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 62; // saute quelques lignes avant le titre
 
     // Titre et date alignés à gauche (début de page)
