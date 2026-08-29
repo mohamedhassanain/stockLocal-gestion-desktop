@@ -175,6 +175,7 @@ export interface GlobalSettingsInput {
   max_backups?: number;
   inactive_product_days?: number;
   show_inactive_product_alerts?: boolean;
+  product_units?: string[];
 }
 
 // ── Rapport CSV ──

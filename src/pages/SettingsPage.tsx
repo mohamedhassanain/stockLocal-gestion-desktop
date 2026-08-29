@@ -55,6 +55,7 @@ interface GlobalSettings {
   max_backups: number;
   inactive_product_days: number;
   show_inactive_product_alerts: boolean;
+  product_units: string[];
 }
 
 const SectionTitle: React.FC<{ icon: string; title: string }> = ({ icon, title }) => (
@@ -101,7 +102,9 @@ export const SettingsPage: React.FC = () => {
     max_backups: 10,
     inactive_product_days: 30,
     show_inactive_product_alerts: true,
+    product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
   });
+  const [newUnit, setNewUnit] = useState('');
   const [productsList, setProductsList] = useState<Array<{ id: string; designation: string }>>([]);
 
   const notify = (text: string) => { setMessage(text); setTimeout(() => setMessage(null), 3500); };
@@ -450,10 +453,36 @@ export const SettingsPage: React.FC = () => {
   const saveGlobalSettings = async () => {
     const result = await window.api.globalSettings.save(globalSettings);
     if (result.success) {
-      notify('✅ Paramètres d\'alertes enregistrés');
+      notify('✅ Paramètres enregistrés');
     } else {
       notify(`❌ ${result.error}`);
     }
+  };
+
+  const persistUnits = async (units: string[]) => {
+    setGlobalSettings(prev => ({ ...prev, product_units: units }));
+    try {
+      await window.api.globalSettings.save({ product_units: units });
+    } catch (e: any) {
+      notify(`❌ ${e.message}`);
+    }
+  };
+
+  const addUnit = async () => {
+    const unit = newUnit.trim().toUpperCase();
+    if (!unit) return;
+    if (globalSettings.product_units.includes(unit)) {
+      notify('⚠️ Cette unité existe déjà');
+      return;
+    }
+    await persistUnits([...globalSettings.product_units, unit]);
+    setNewUnit('');
+    notify('✅ Unité ajoutée');
+  };
+
+  const removeUnit = async (unit: string) => {
+    await persistUnits(globalSettings.product_units.filter(u => u !== unit));
+    notify(`🗑️ Unité « ${unit} » supprimée`);
   };
 
   const [updateResult, setUpdateResult] = useState<string | null>(null);
@@ -645,6 +674,27 @@ export const SettingsPage: React.FC = () => {
 
         {tab === 'units' && (
           <Card padding style={{ maxWidth: 920 }}>
+            <SectionTitle icon="📏" title="Unités de mesure" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Définissez vos unités de mesure (ex : L, KG, T, PIÈCE). Elles seront proposées dans le formulaire produit.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <Input placeholder="Nouvelle unité (ex : L, KG, T)" value={newUnit} onChange={e => setNewUnit(e.target.value)} className="flex-1" inputSize="sm" />
+              <Button onClick={addUnit}>+ Ajouter</Button>
+            </div>
+            {globalSettings.product_units.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>Aucune unité définie.</div>
+            ) : (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {globalSettings.product_units.map(unit => (
+                  <span key={unit} className="badge badge-primary">
+                    {unit}
+                    <DeleteButton size="xs" onClick={() => removeUnit(unit)} title={`Supprimer ${unit}`} />
+                  </span>
+                ))}
+              </div>
+            )}
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
             <SectionTitle icon="📏" title="Conversions d'unités" />
             <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
               Définissez les facteurs de conversion entre unités. Ex : 1 carton = 12 pièces (factor = 12).

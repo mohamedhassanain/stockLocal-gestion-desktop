@@ -14,6 +14,8 @@ export interface GlobalSettings {
   // §26 Inactivity alert
   inactive_product_days: number;
   show_inactive_product_alerts: boolean;
+  // Unités de mesure définies par l'utilisateur (liste réutilisable produits)
+  product_units: string[];
 }
 
 const DEFAULTS: GlobalSettings = {
@@ -28,6 +30,7 @@ const DEFAULTS: GlobalSettings = {
   max_backups: 10,
   inactive_product_days: 30,
   show_inactive_product_alerts: true,
+  product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
 };
 
 const stmtGetAll = db.prepare('SELECT key, value FROM global_settings');
@@ -52,6 +55,16 @@ export const GlobalSettingsService = {
       max_backups: parseInt(map['max_backups'] ?? String(DEFAULTS.max_backups), 10),
       inactive_product_days: parseInt(map['inactive_product_days'] ?? String(DEFAULTS.inactive_product_days), 10),
       show_inactive_product_alerts: (map['show_inactive_product_alerts'] ?? 'true') === 'true',
+      product_units: (() => {
+        const raw = map['product_units'];
+        if (!raw) return DEFAULTS.product_units;
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) && parsed.length > 0 ? parsed.map(String) : DEFAULTS.product_units;
+        } catch {
+          return DEFAULTS.product_units;
+        }
+      })(),
     };
   },
 

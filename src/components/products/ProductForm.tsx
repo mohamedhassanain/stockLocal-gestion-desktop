@@ -5,7 +5,7 @@ import { toast } from '../../stores/useToastStore';
 import { Button, Input, Select, Textarea, Modal, ModalHeader, ModalBody, ModalFooter } from '../ui';
 import type { Product } from '../../repositories/ProductRepository';
 
-const UNITS = ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'];
+const FALLBACK_UNITS = ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'];
 
 const productSchema = z.object({
   reference: z.string().min(1, 'La référence est requise'),
@@ -40,6 +40,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
   const updateProductWithStock = useProductStore(state => state.updateProductWithStock);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<Category[]>([]);
+  const [units, setUnits] = useState<string[]>(FALLBACK_UNITS);
   const [imagePreview, setImagePreview] = useState<string>('');
   const [currentStock, setCurrentStock] = useState<number | null>(null);
   const [newStock, setNewStock] = useState<number>(0);
@@ -61,6 +62,10 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
 
   useEffect(() => {
     window.api.categories.getAll().then(setCategories).catch(() => {});
+    // Unités de mesure configurables (Paramètres > Unités)
+    window.api.globalSettings.get().then((gs: any) => {
+      if (gs?.product_units?.length) setUnits(gs.product_units);
+    }).catch(() => {});
     if (editingProduct) {
       window.api.stock.getLevel(editingProduct.id).then((level: number) => {
         setCurrentStock(level);
@@ -194,7 +199,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
                 onChange={handleChange}
                 error={errors.unit}
               >
-                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                {!units.includes(formData.unit) && <option value={formData.unit}>{formData.unit}</option>}
+                {units.map(u => <option key={u} value={u}>{u}</option>)}
               </Select>
             </div>
           </div>
