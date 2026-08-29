@@ -364,31 +364,30 @@ export const PDFService = {
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage();
-    const { width, height } = page.getSize();
+    const { height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const labelMonth = month ?? new Date().toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
     let y = height - 50;
 
-    // ── Logo + nom d'entreprise centrés (si activé) ──
+    // ── Logo à GAUCHE + nom de l'entreprise à sa droite (côte à côte) ──
+    let headerX = 50;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
         const ext = path.extname(settings.logo_path).toLowerCase();
         const logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
         const logoW = 72, logoH = 36;
-        const logoX = (width - logoW) / 2;
-        page.drawImage(logoImage, { x: logoX, y: y - logoH, width: logoW, height: logoH });
-        y -= logoH + 32; // espace net entre le logo et le nom d'entreprise
+        page.drawImage(logoImage, { x: 50, y: y - logoH, width: logoW, height: logoH });
+        headerX = 50 + logoW + 24; // logo à gauche, nom décalé à droite avec espace
       } catch {
         // Logo illisible : on ignore silencieusement
       }
     }
     const nameText = settings.name || 'StockLocal';
-    const nameW = boldFont.widthOfTextAtSize(nameText, 20);
-    page.drawText(nameText, { x: (width - nameW) / 2, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-    y -= 26; // espace entre le nom d'entreprise et le titre
+    page.drawText(nameText, { x: headerX, y: y - 14, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 62; // saute quelques lignes avant le titre
 
     // Titre et date alignés à gauche (début de page)
     page.drawText(`Rapport de ventes — ${labelMonth}`, { x: 50, y, size: 14, font: boldFont });
