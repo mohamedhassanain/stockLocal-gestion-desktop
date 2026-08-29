@@ -5,9 +5,7 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ─── Palette (§3.1) ────────────────────────────────────────────────────
-     Inspirée du secteur bancaire/comptable local : vert profond (confiance,
-     monnaie), neutres légèrement chauds, accents dorés/ambre discrets. */
+  /* ─── Palette (§3.1) ──────────────────────────────────────────────────── */
   --bg: #f4f6f3;
   --surface: #ffffff;
   --surface-2: #f6f8f5;
@@ -48,7 +46,6 @@
 
   /* ─── Typographie (§3.1) ──────────────────────────────────────────────── */
   --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  /* Police tabulaire pour montants/quantités : lecture rapide des tableaux. */
   --font-mono: "JetBrains Mono", "Cascadia Code", "Consolas", "SF Mono", monospace;
   --font-size-xs: 11px;
   --font-size-sm: 13px;
@@ -170,6 +167,38 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   font-size: 18px;
 }
 .btn-block { width: 100%; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BOUTONS ICÔNES DISCRETS (suppression / actions)  — §3.9
+   Contrairement à .btn-danger (gros bloc rouge plein), ces boutons sont
+   épurés : icône seule (SVG, currentColor) sur fond transparent, avec un
+   fond rouge clair + bordure au survol. Utilisés pour les actions
+   destructives (supprimer catégorie / sous-catégorie, etc.)
+   ══════════════════════════════════════════════════════════════════════════ */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.05s;
+}
+.icon-btn:hover { background: var(--surface-2); border-color: var(--muted); }
+.icon-btn:active { transform: translateY(0.5px); }
+
+/* Variante destructive : discret, puis rouge clair au survol */
+.icon-btn-danger { color: var(--danger); border-color: transparent; background: transparent; }
+.icon-btn-danger:hover { background: var(--danger-soft); border-color: var(--danger); color: var(--danger-text); }
+
+/* Très petit (sous-catégories, lignes denses) */
+.icon-btn-xs { width: 22px; height: 22px; border-radius: var(--radius-sm); }
 
 /* ─── Champs de formulaire ───────────────────────────────────────────────── */
 .input, .select, .textarea {
