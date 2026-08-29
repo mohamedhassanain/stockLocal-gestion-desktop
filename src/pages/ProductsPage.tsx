@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { ProductForm } from '../components/products/ProductForm';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Button, Badge, Card, Input, Select, PageHeader } from '../components/ui';
+import { Button, Badge, Card, Input, Select, PageHeader, DeleteButton } from '../components/ui';
 import { PRODUCT_STATUS_BADGE, stockLevelClass } from '../components/ui/statusMaps';
 import { toast } from '../stores/useToastStore';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -263,7 +263,7 @@ export const ProductsPage: React.FC = () => {
                             {p.status !== 'ARCHIVED' && (
                               <Button variant="secondary" size="sm" onClick={() => handleArchive(p)} title="Archiver">🗄️</Button>
                             )}
-                            <Button variant="danger" size="sm" onClick={() => handleDelete(p)} title="Supprimer">🗑️</Button>
+                            <DeleteButton onClick={() => handleDelete(p)} title="Supprimer" />
                           </div>
                         </div>
                       </div>

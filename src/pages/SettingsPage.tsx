@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
-import { Button, Card, Input, Select, PageHeader } from '../components/ui';
+import { Button, Card, Input, Select, PageHeader, DeleteButton } from '../components/ui';
 
 // ─── Onglets ────────────────────────────────────────────────────────────────
 type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
@@ -61,17 +61,6 @@ const SectionTitle: React.FC<{ icon: string; title: string }> = ({ icon, title }
   <h2 className="section-title" style={{ margin: '0 0 16px', fontSize: 'var(--font-size-lg)' }}>
     <span>{icon}</span>{title}
   </h2>
-);
-
-// Icône de suppression (poubelle) — SVG en currentColor → suit la couleur
-// du bouton (rouge, hover rouge clair). Plus propre qu'un emoji.
-const TrashIcon: React.FC<{ size?: number }> = ({ size = 15 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <polyline points="3 6 5 6 21 6" />
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    <path d="M10 11v6M14 11v6" />
-    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-  </svg>
 );
 
 export const SettingsPage: React.FC = () => {
@@ -588,17 +577,13 @@ export const SettingsPage: React.FC = () => {
                 <div key={cat.id} className="card card-body-compact mb-2">
                   <div className="flex items-center gap-2">
                     <strong className="flex-1">{cat.name}</strong>
-                    <button className="icon-btn icon-btn-danger" onClick={() => deleteCategory(cat.id)} title="Supprimer la catégorie" aria-label={`Supprimer la catégorie ${cat.name}`}>
-                      <TrashIcon />
-                    </button>
+                    <DeleteButton onClick={() => deleteCategory(cat.id)} title="Supprimer la catégorie" />
                   </div>
                   <div style={{ marginTop: 10, paddingLeft: 14, borderLeft: '2px solid var(--border)' }}>
                     {(cat.subcategories ?? []).map(sub => (
                       <div key={sub.id} className="text-sm text-secondary" style={{ padding: '3px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>• {sub.name}</span>
-                        <button className="icon-btn icon-btn-danger icon-btn-xs" onClick={() => deleteSubcategory(sub.id, sub.name)} title="Supprimer" aria-label={`Supprimer la sous-catégorie ${sub.name}`}>
-                          <TrashIcon size={13} />
-                        </button>
+                        <DeleteButton onClick={() => deleteSubcategory(sub.id, sub.name)} title="Supprimer" size="xs" />
                       </div>
                     ))}
                     <div className="flex gap-2 mt-2">
@@ -648,7 +633,7 @@ export const SettingsPage: React.FC = () => {
                       <td>{d.max_qty ?? '∞'}</td>
                       <td className="text-success font-semibold">{d.discount_pct}%</td>
                       <td>
-                        <Button variant="danger" size="sm" onClick={() => deleteDiscount(d.id)}>🗑️</Button>
+                        <DeleteButton onClick={() => deleteDiscount(d.id)} />
                       </td>
                     </tr>
                   ))}
@@ -708,7 +693,7 @@ export const SettingsPage: React.FC = () => {
                       <td>
                         <div className="flex gap-2">
                           <Button variant="secondary" size="sm" onClick={() => editConversion(c)}>✏️</Button>
-                          <Button variant="danger" size="sm" onClick={() => deleteConversion(c.id)}>🗑️</Button>
+                          <DeleteButton onClick={() => deleteConversion(c.id)} />
                         </div>
                       </td>
                     </tr>
@@ -844,7 +829,7 @@ export const SettingsPage: React.FC = () => {
                       <div className="text-sm text-secondary">{b.sizeKB} KB</div>
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => handleRestoreBackup(b.path, b.name)}>Restaurer</Button>
-                        <Button variant="danger" size="sm" onClick={() => handleDeleteBackup(b.path)}>🗑️</Button>
+                        <DeleteButton onClick={() => handleDeleteBackup(b.path)} />
                       </div>
                     </div>
                   ))}
