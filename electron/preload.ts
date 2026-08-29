@@ -383,6 +383,7 @@ export const api = {
     getAll: () => ipcRenderer.invoke('inventory:getAll'),
     getById: (id: string) => ipcRenderer.invoke('inventory:getById', id),
     create: (data: { name: string; notes?: string }) => ipcRenderer.invoke('inventory:create', data),
+    update: (id: string, data: { name?: string; notes?: string; status?: 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION' }) => ipcRenderer.invoke('inventory:update', { id, ...data }),
     startCounting: (id: string) => ipcRenderer.invoke('inventory:startCounting', id),
     countItem: (itemId: string, countedQty: number) => ipcRenderer.invoke('inventory:countItem', { itemId, countedQty }),
     calculateGaps: (id: string) => ipcRenderer.invoke('inventory:calculateGaps', id),

@@ -49,6 +49,7 @@ interface InventoryState {
   loadSessions: () => Promise<void>;
   loadSessionById: (id: string) => Promise<void>;
   createSession: (name: string, notes?: string) => Promise<InventorySession>;
+  updateSession: (id: string, data: { name: string; notes?: string; status?: InventorySessionStatus }) => Promise<void>;
   startCounting: (id: string) => Promise<void>;
   countItem: (itemId: string, countedQty: number) => Promise<void>;
   calculateGaps: (id: string) => Promise<void>;
@@ -148,10 +149,29 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     }
   },
 
+  updateSession: async (id: string, data: { name: string; notes?: string; status?: InventorySessionStatus }) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.inventory.update(id, data);
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Modification impossible.');
+      }
+      await get().loadSessionById(id);
+      await get().loadSessions();
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
   deleteSession: async (id: string) => {
     set({ isLoading: true, error: null });
     try {
-      await window.api.inventory.delete(id);
+      const result = await window.api.inventory.delete(id);
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Suppression impossible.');
+      }
       set((state) => ({
         sessions: state.sessions.filter((s) => s.id !== id),
         selectedSession: state.selectedSession?.id === id ? null : state.selectedSession,

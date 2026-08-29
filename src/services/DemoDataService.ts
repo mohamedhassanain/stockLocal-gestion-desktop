@@ -47,6 +47,11 @@ export class DemoDataService {
         `).run({
           ...product,
           id,
+          // better-sqlite3 exige `null` (et non `undefined`) pour les paramètres
+          // nommés optionnels — sinon "Missing named parameter". CHIPS-150G n'a
+          // pas de sous-catégorie.
+          category_id: product.category_id ?? null,
+          subcategory_id: product.subcategory_id ?? null,
           description: `Produit de démonstration ${p.designation}`,
         });
         db.prepare(`

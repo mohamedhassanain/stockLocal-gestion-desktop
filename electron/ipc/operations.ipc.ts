@@ -115,6 +115,24 @@ export function registerOperationsHandlers(): void {
     });
   });
 
+  ipcMain.handle('inventory:update', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { id?: unknown; name?: unknown; notes?: unknown; status?: unknown };
+      const safeId = requireId(p.id, 'id session');
+      const name = typeof p.name === 'string' ? p.name.trim().slice(0, 200) : '';
+      if (!name) throw new Error('Le nom de la session est obligatoire.');
+      const notes = typeof p.notes === 'string' ? p.notes.trim().slice(0, 1000) : null;
+      // Statut optionnel, restreint à la whitelist du workflow.
+      const validStatuses = ['DRAFT', 'COMPTAGE', 'CALCUL', 'VALIDATION'];
+      const status = typeof p.status === 'string' && validStatuses.includes(p.status)
+        ? (p.status as 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION')
+        : undefined;
+      const session = InventorySessionRepository.update(safeId, { name, notes, status });
+      AuditService.log('INVENTORY_UPDATE', 'inventory', session.id, `Session modifiée "${session.name}"${status ? ` (statut: ${status})` : ''}`);
+      return { success: true, data: session };
+    });
+  });
+
   ipcMain.handle('inventory:startCounting', async (_, id: unknown) => {
     return run(() => {
       const session = InventorySessionRepository.startCounting(requireId(id, 'id session'));

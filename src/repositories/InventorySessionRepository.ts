@@ -73,6 +73,12 @@ const stmtUpdateStatus = db.prepare(`
   UPDATE inventory_sessions SET status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 `);
 
+const stmtUpdateSession = db.prepare(`
+  UPDATE inventory_sessions
+  SET name = ?, notes = ?, status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
+  WHERE id = ?
+`);
+
 const stmtUpdateCountedQty = db.prepare(`
   UPDATE inventory_items SET counted_qty = ?, difference = ? - ?, status = 'COUNTED' WHERE id = ?
 `);
@@ -238,10 +244,32 @@ export const InventorySessionRepository = {
     });
   },
 
+  /**
+   * Modifie les métadonnées d'une session (nom / notes) et/ou son statut.
+   * Autorisé à tous les statuts. Le changement de statut permet de rouvrir
+   * une session validée (retour à un état antérieur) sans toucher aux comptages.
+   * `completed_at` : null sauf si le statut demandé est VALIDATION.
+   */
+  update(id: string, data: { name: string; notes?: string | null; status?: 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION' }): InventorySession {
+    const session = stmtGetById.get(id) as InventorySession | undefined;
+    if (!session) throw new Error('Session d\'inventaire introuvable.');
+    const status = data.status ?? session.status;
+    const completedAt = status === 'VALIDATION' ? (session.completed_at ?? new Date().toISOString()) : null;
+    stmtUpdateSession.run(data.name.trim(), data.notes ?? null, status, completedAt, id);
+    return this.getById(id)!;
+  },
+
   remove(id: string): void {
     const session = stmtGetById.get(id) as InventorySession | undefined;
     if (!session) throw new Error('Session d\'inventaire introuvable.');
-    if (session.status === 'VALIDATION') throw new Error('Une session validée ne peut pas être supprimée.');
+    // Une session validée n'est supprimable QUE si elle n'a généré aucun
+    // mouvement de stock (aucun impact sur le stock). Sinon, refus métier.
+    if (session.status === 'VALIDATION') {
+      const movements = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE document_id = ?').get(id) as { cnt: number };
+      if (movements.cnt > 0) {
+        throw new Error('Impossible de supprimer : cette session validée a généré des mouvements de stock.');
+      }
+    }
     stmtDeleteSession.run(id);
   },
 

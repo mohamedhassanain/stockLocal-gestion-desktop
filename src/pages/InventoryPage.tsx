@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useInventoryStore, type InventorySession } from '../stores/useInventoryStore';
+import { useInventoryStore, type InventorySession, type InventorySessionStatus } from '../stores/useInventoryStore';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import {
   Button,
@@ -122,6 +122,7 @@ export const InventoryPage: React.FC = () => {
     loadSessions,
     loadSessionById,
     createSession,
+    updateSession,
     startCounting,
     countItem,
     calculateGaps,
@@ -136,6 +137,10 @@ export const InventoryPage: React.FC = () => {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [countInput, setCountInput] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editStatus, setEditStatus] = useState<InventorySessionStatus>('DRAFT');
 
   useEffect(() => {
     loadSessions();
@@ -152,6 +157,30 @@ export const InventoryPage: React.FC = () => {
       if (session) {
         await loadSessionById(session.id);
       }
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleEditSession = () => {
+    if (!selectedSession) return;
+    setEditName(selectedSession.name);
+    setEditNotes(selectedSession.notes ?? '');
+    setEditStatus(selectedSession.status);
+    setShowEditForm(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedSession) return;
+    const name = editName.trim();
+    if (!name) {
+      toast.error('Le nom de la session est obligatoire.');
+      return;
+    }
+    try {
+      await updateSession(selectedSession.id, { name, notes: editNotes.trim() || undefined, status: editStatus });
+      toast.success('Session modifiée.');
+      setShowEditForm(false);
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -373,12 +402,19 @@ export const InventoryPage: React.FC = () => {
             ) : (
               <>
                 <div className="mb-4">
-                  <h2 style={{ margin: '0 0 4px' }}>{selectedSession.name}</h2>
-                  {selectedSession.notes && (
-                    <p className="text-sm text-secondary" style={{ margin: '0 0 8px' }}>
-                      {selectedSession.notes}
-                    </p>
-                  )}
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 style={{ margin: '0 0 4px' }}>{selectedSession.name}</h2>
+                      {selectedSession.notes && (
+                        <p className="text-sm text-secondary" style={{ margin: '0 0 8px' }}>
+                          {selectedSession.notes}
+                        </p>
+                      )}
+                    </div>
+                    <Button variant="secondary" size="sm" onClick={handleEditSession} title="Modifier la session">
+                      ✏️ Modifier
+                    </Button>
+                  </div>
                   <div className="text-sm text-muted">
                     Créée le {new Date(selectedSession.created_at).toLocaleDateString('fr-FR', {
                       day: '2-digit',
@@ -388,6 +424,47 @@ export const InventoryPage: React.FC = () => {
                       minute: '2-digit',
                     })}
                   </div>
+
+                  {showEditForm && (
+                    <div style={{ marginTop: 16, padding: 16, backgroundColor: 'var(--surface-2, #f5f5f5)', borderRadius: 8 }}>
+                      <div className="flex flex-col gap-3">
+                        <Input
+                          placeholder="Nom de la session"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          inputSize="lg"
+                          autoFocus
+                        />
+                        <Textarea
+                          placeholder="Notes (optionnel)"
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          rows={2}
+                        />
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-muted" style={{ marginBottom: 2 }}>Statut</label>
+                          <select
+                            className="input"
+                            value={editStatus}
+                            onChange={(e) => setEditStatus(e.target.value as InventorySessionStatus)}
+                          >
+                            <option value="DRAFT">Brouillon</option>
+                            <option value="COMPTAGE">En cours</option>
+                            <option value="CALCUL">Écarts calculés</option>
+                            <option value="VALIDATION">Validé</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="success" onClick={handleSaveEdit} disabled={isLoading}>
+                            Enregistrer
+                          </Button>
+                          <Button variant="secondary" onClick={() => setShowEditForm(false)}>
+                            Annuler
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <StepIndicator currentStatus={status} />

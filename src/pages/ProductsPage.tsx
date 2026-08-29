@@ -27,6 +27,12 @@ const TABLE_COLS = (
   </colgroup>
 );
 
+// Largeurs de colonnes pour les lignes virtualisées : comme chaque <tr> est
+// `display: table` (mini-table autonome), le <colgroup> du tableau parent ne
+// s'applique pas. On force donc une largeur explicite sur chaque <td> pour
+// éviter le chevauchement des colonnes (image / texte) et la perte de contenu.
+const CELL_WIDTHS = ['6%', '10%', '22%', '8%', '8%', '10%', '10%', '10%', '16%'];
+
 export const ProductsPage: React.FC = () => {
   const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct, deleteProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -196,24 +202,7 @@ export const ProductsPage: React.FC = () => {
         </div>
 
         <Card overflow className="flex-1" style={{ display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 220px)' }}>
-          <table className="table">
-            {TABLE_COLS}
-            <thead>
-              <tr>
-                <th>Image</th>
-                <th>Réf</th>
-                <th>Désignation</th>
-                <th>Unité</th>
-                <th>Stock</th>
-                <th>Prix Vente</th>
-                <th>Marge</th>
-                <th>Statut</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-          </table>
-
-          <div ref={parentRef} style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+          <div ref={parentRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
             {isLoading ? (
               <div className="state-box">
                 <div className="state-text">Chargement ultra-rapide en cours...</div>
@@ -225,6 +214,19 @@ export const ProductsPage: React.FC = () => {
             ) : (
               <table className="table" style={{ tableLayout: 'fixed' }}>
                 {TABLE_COLS}
+                <thead>
+                  <tr>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Image</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Réf</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Désignation</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Unité</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Stock</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Prix Vente</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Marge</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Statut</th>
+                    <th style={{ position: 'sticky', top: 0, zIndex: 2 }}>Actions</th>
+                  </tr>
+                </thead>
                 <tbody style={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative', display: 'block' }}>
                   {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                     const p = filteredProducts[virtualRow.index];
@@ -248,26 +250,26 @@ export const ProductsPage: React.FC = () => {
                           cursor: 'pointer',
                         }}
                       >
-                        <td>
+                        <td style={{ width: CELL_WIDTHS[0] }}>
                           {imgSrc
                             ? <img src={imgSrc} alt="" style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', objectFit: 'cover', border: '1px solid var(--border)' }} />
                             : <div className="surface-muted text-muted" style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, padding: 0 }}>📦</div>
                           }
                         </td>
-                        <td className="font-semibold">{p.reference}</td>
-                        <td>{p.designation}</td>
-                        <td className="text-sm text-secondary">{p.unit || 'PIÈCE'}</td>
-                        <td className={`font-semibold ${stockLevelClass(stock, p.min_stock)}`}>
+                        <td className="font-semibold" style={{ width: CELL_WIDTHS[1] }}>{p.reference}</td>
+                        <td style={{ width: CELL_WIDTHS[2] }}>{p.designation}</td>
+                        <td className="text-sm text-secondary" style={{ width: CELL_WIDTHS[3] }}>{p.unit || 'PIÈCE'}</td>
+                        <td className={`font-semibold ${stockLevelClass(stock, p.min_stock)}`} style={{ width: CELL_WIDTHS[4] }}>
                           {stock} {p.min_stock > 0 && stock <= p.min_stock && '⚠️'}
                         </td>
-                        <td className="money font-semibold">{p.selling_price.toFixed(2)} MAD</td>
-                        <td className={`money text-sm font-semibold ${margin >= 0 ? 'text-success' : 'text-danger'}`}>
+                        <td className="money font-semibold" style={{ width: CELL_WIDTHS[5] }}>{p.selling_price.toFixed(2)} MAD</td>
+                        <td className={`money text-sm font-semibold ${margin >= 0 ? 'text-success' : 'text-danger'}`} style={{ width: CELL_WIDTHS[6] }}>
                           {margin.toFixed(2)} MAD
                         </td>
-                        <td>
+                        <td style={{ width: CELL_WIDTHS[7] }}>
                           <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
                         </td>
-                        <td>
+                        <td style={{ width: CELL_WIDTHS[8] }}>
                           <div className="flex gap-2">
                             <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>
                             {p.status === 'ACTIVE' ? (

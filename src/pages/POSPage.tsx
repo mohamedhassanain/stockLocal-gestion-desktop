@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
 import type { Product } from '../repositories/ProductRepository';
-import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui';
+import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader, PageHeader } from '../components/ui';
 import { stockLevelClass } from '../components/ui/statusMaps';
 
 interface CartItem {
@@ -201,23 +201,24 @@ export const POSPage: React.FC = () => {
 
   return (
     <div className="page-shell">
-      <div className="pos-header">
-        <div className="flex items-center gap-3">
-          <span className="pos-header-icon">🛒</span>
-          <h1>Point de Vente</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <select
-            className="pos-header-select"
-            value={selectedClientId}
-            onChange={e => setSelectedClientId(e.target.value)}
-          >
-            <option value="">Client comptoir</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <Button variant="danger" size="sm" onClick={clearCart}>🗑️ Vider</Button>
-        </div>
-      </div>
+      <PageHeader
+        icon="🛒"
+        title="Point de Vente"
+        actions={
+          <>
+            <select
+              className="input"
+              style={{ width: 240 }}
+              value={selectedClientId}
+              onChange={e => setSelectedClientId(e.target.value)}
+            >
+              <option value="">Client comptoir</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <Button variant="danger" size="sm" onClick={clearCart}>🗑️ Vider</Button>
+          </>
+        }
+      />
 
       <div className="flex flex-1 pos-main" style={{ overflow: 'hidden' }}>
         <div className="flex flex-1 flex-col" style={{ flex: 2, overflow: 'hidden' }}>
@@ -238,7 +239,7 @@ export const POSPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex-1" style={{ overflowY: 'auto', padding: 'var(--space-4) var(--space-5)' }}>
+          <div className="flex-1" style={{ overflowY: 'auto', overflowX: 'hidden', padding: 'var(--space-4) var(--space-5)' }}>
             {cart.length === 0 ? (
               <div className="state-box" style={{ height: '100%' }}>
                 <div className="state-icon">🛒</div>
@@ -249,7 +250,7 @@ export const POSPage: React.FC = () => {
               <div className="flex flex-col gap-2">
                 {cart.map(item => (
                   <div key={item.product_id} className="pos-cart-item">
-                    <div className="flex-1" style={{ minWidth: 0 }}>
+                    <div className="flex-1 item-info">
                       <div className="font-semibold">{item.reference}</div>
                       <div className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
                     </div>

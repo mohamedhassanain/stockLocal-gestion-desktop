@@ -378,7 +378,7 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   color: var(--text);
   font-size: var(--font-size-sm);
 }
-.pos-main { background: var(--bg); }
+.pos-main { background: var(--bg); display: flex; overflow: hidden; }
 .pos-cart-item {
   display: flex;
   align-items: center;
@@ -388,7 +388,13 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
+  min-width: 0;
 }
+/* La zone produit (désignation) rétrécit si la place manque : les colonnes
+   à droite (qté/prix/remise/total/supprimer) gardent leur taille au lieu
+   d'être coupées par le débordement. */
+.pos-cart-item .item-info { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.pos-cart-item > :not(.item-info) { flex-shrink: 0; }
 .pos-sidebar {
   width: 340px;
   background: var(--surface);
@@ -404,7 +410,14 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  width: 100%;
 }
+/* Le compteur d'articles rétrécit si besoin, le TOTAL + bouton Encaisser
+   restent à droite sans se chevaucher. */
+.pos-total-bar > :first-child { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pos-total-bar > :last-child { flex: 0 0 auto; }
 .pos-total-amount { font-size: 32px; font-weight: 800; color: var(--text); }
 
 /* ─── Utilitaires texte / alignement ─────────────────────────────────────── */
