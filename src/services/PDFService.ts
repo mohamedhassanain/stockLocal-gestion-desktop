@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
@@ -6,50 +6,48 @@ import type { Customer, ClientCredit } from '../repositories/ClientRepository';
 import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
 import type { Document } from '../repositories/DocumentRepository';
 import type { Product } from '../repositories/ProductRepository';
-import { CompanySettingsService, type CompanySettings } from './CompanySettingsService';
+import { CompanySettingsService } from './CompanySettingsService';
 import { DashboardRepository } from '../repositories/DashboardRepository';
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.substring(0, max) : text;
 }
 
-// Dessine le logo d'entreprise en haut à gauche si l'utilisateur l'a activé
-// (toggle `show_logo_on_documents`). Retourne le headerX à utiliser pour le nom
-// (50 = pas de logo, 160 = nom décalé à droite du logo).
-async function drawCompanyLogo(pdfDoc: PDFDocument, page: PDFPage, settings: CompanySettings): Promise<number> {
-  let headerX = 50;
-  if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
-    try {
-      const logoBytes = fs.readFileSync(settings.logo_path);
-      const ext = path.extname(settings.logo_path).toLowerCase();
-      const logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
-      // Logo discret (72×36) en haut à gauche ; le nom de l'entreprise est décalé à droite.
-      page.drawImage(logoImage, { x: 50, y: page.getHeight() - 66, width: 72, height: 36 });
-      headerX = 140;
-    } catch {
-      // Logo illisible : on ignore silencieusement
-    }
-  }
-  return headerX;
-}
 
 export const PDFService = {
   async generateClientStatement(client: Customer, history: ClientCredit[]): Promise<string> {
     const settings = CompanySettingsService.getAll();
     const pdfDoc = await PDFDocument.create();
     let page = pdfDoc.addPage();
-    const { height } = page.getSize();
+    const { width, height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     let y = height - 50;
 
-    const headerX = await drawCompanyLogo(pdfDoc, page, settings);
-    page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 14, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-    y -= 24;
+    // ── En-tête centré : nom agrandi (20) + logo à DROITE, bloc centré ──
+    const nameText = settings.name || 'StockLocal';
+    const nameSize = 20;
+    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
+    const logoW = 72, logoH = 36, logoGap = 14;
+    let logoImage: any = null;
+    if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
+      try {
+        const logoBytes = fs.readFileSync(settings.logo_path);
+        const ext = path.extname(settings.logo_path).toLowerCase();
+        logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
+      } catch { logoImage = null; }
+    }
+    const headerTotalW = nameW + (logoImage ? logoGap + logoW : 0);
+    const headerStartX = (width - headerTotalW) / 2;
+    page.drawText(nameText, { x: headerStartX, y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    if (logoImage) {
+      page.drawImage(logoImage, { x: headerStartX + nameW + logoGap, y: y - 12, width: logoW, height: logoH });
+    }
+    y -= 26;
 
-    page.drawText('Relevé de Compte (نسيئة)', { x: headerX, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-    y -= 40;
+    page.drawText('Relevé de Compte (نسيئة)', { x: headerStartX, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 28;
 
     page.drawText(`Client: ${client.name}`, { x: 50, y, size: 14, font: boldFont });
     y -= 20;
@@ -104,18 +102,35 @@ export const PDFService = {
     const settings = CompanySettingsService.getAll();
     const pdfDoc = await PDFDocument.create();
     let page = pdfDoc.addPage();
-    const { height } = page.getSize();
+    const { width, height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     let y = height - 50;
 
-    const headerX = await drawCompanyLogo(pdfDoc, page, settings);
-    page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 14, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-    y -= 24;
+    // ── En-tête centré : nom agrandi (20) + logo à DROITE, bloc centré ──
+    const nameText = settings.name || 'StockLocal';
+    const nameSize = 20;
+    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
+    const logoW = 72, logoH = 36, logoGap = 14;
+    let logoImage: any = null;
+    if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
+      try {
+        const logoBytes = fs.readFileSync(settings.logo_path);
+        const ext = path.extname(settings.logo_path).toLowerCase();
+        logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
+      } catch { logoImage = null; }
+    }
+    const headerTotalW = nameW + (logoImage ? logoGap + logoW : 0);
+    const headerStartX = (width - headerTotalW) / 2;
+    page.drawText(nameText, { x: headerStartX, y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    if (logoImage) {
+      page.drawImage(logoImage, { x: headerStartX + nameW + logoGap, y: y - 12, width: logoW, height: logoH });
+    }
+    y -= 26;
 
-    page.drawText('Relevé de Compte (Fournisseur)', { x: headerX, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-    y -= 40;
+    page.drawText('Relevé de Compte (Fournisseur)', { x: headerStartX, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 28;
 
     page.drawText(`Fournisseur: ${supplier.name}`, { x: 50, y, size: 14, font: boldFont });
     y -= 20;
