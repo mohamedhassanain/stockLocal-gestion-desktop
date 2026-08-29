@@ -390,8 +390,12 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   overflow: hidden;
   min-width: 0;
 }
+/* Lignes du panier + en-tête : partagent le même grid de colonnes pour que
+   les libellés (Qté / Prix / Remise % / Total) soient alignés au-dessus
+   des champs. */
 .pos-cart-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 90px 60px 110px 24px;
   align-items: center;
   gap: var(--space-3);
   padding: 14px 18px;
@@ -404,8 +408,21 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
 /* La zone produit (désignation) rétrécit si la place manque : les colonnes
    à droite (qté/prix/remise/total/supprimer) gardent leur taille au lieu
    d'être coupées par le débordement. */
-.pos-cart-item .item-info { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-.pos-cart-item > :not(.item-info) { flex-shrink: 0; }
+.pos-cart-item .item-info { min-width: 0; overflow: hidden; }
+.pos-cart-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 90px 60px 110px 24px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 18px;
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
 .pos-sidebar {
   width: 340px;
   background: var(--surface);

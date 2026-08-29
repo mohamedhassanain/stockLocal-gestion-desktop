@@ -256,53 +256,63 @@ export const POSPage: React.FC = () => {
                 <div className="state-text">Scannez un produit ou recherchez-le ci-contre</div>
               </div>
             ) : (
-              <div className="flex gap-2" style={{ flexDirection: 'column' }}>
-                {cart.map(item => (
-                  <div key={item.product_id} className="pos-cart-item">
-                    <div className="flex-1 item-info">
-                      <div className="font-semibold">{item.reference}</div>
-                      <div className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
+              <>
+                <div className="pos-cart-header">
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>Produit</div>
+                  <div style={{ textAlign: 'center' }}>Qté</div>
+                  <div style={{ textAlign: 'right' }}>Prix</div>
+                  <div style={{ textAlign: 'center' }}>Remise %</div>
+                  <div style={{ textAlign: 'right' }}>Total</div>
+                  <div></div>
+                </div>
+                <div className="flex gap-2" style={{ flexDirection: 'column' }}>
+                  {cart.map(item => (
+                    <div key={item.product_id} className="pos-cart-item">
+                      <div className="flex-1 item-info">
+                        <div className="font-semibold">{item.reference}</div>
+                        <div className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)}>−</Button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={item.current_stock}
+                          value={item.quantity}
+                          onChange={e => updateCartQuantity(item.product_id, Number(e.target.value))}
+                          className="input input-sm qty"
+                          style={{ width: 60, textAlign: 'center', fontWeight: 700 }}
+                        />
+                        <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity + 1)}>+</Button>
+                      </div>
+                      <div style={{ width: 90 }}>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={item.unit_price}
+                          onChange={e => updateCartPrice(item.product_id, Number(e.target.value))}
+                          className="input input-sm money text-right"
+                        />
+                      </div>
+                      <div style={{ width: 60 }}>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={item.discount}
+                          onChange={e => updateCartDiscount(item.product_id, Number(e.target.value))}
+                          className="input input-sm text-center"
+                        />
+                      </div>
+                      <div className="money text-right font-semibold" style={{ width: 110 }}>
+                        {(item.quantity * item.unit_price * (1 - item.discount / 100)).toFixed(2)} MAD
+                      </div>
+                      <Button variant="ghost" onClick={() => removeFromCart(item.product_id)} style={{ color: 'var(--danger)', fontSize: 20, padding: 4 }}>×</Button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)}>−</Button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={item.current_stock}
-                        value={item.quantity}
-                        onChange={e => updateCartQuantity(item.product_id, Number(e.target.value))}
-                        className="input input-sm qty"
-                        style={{ width: 60, textAlign: 'center', fontWeight: 700 }}
-                      />
-                      <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity + 1)}>+</Button>
-                    </div>
-                    <div style={{ width: 90 }}>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={item.unit_price}
-                        onChange={e => updateCartPrice(item.product_id, Number(e.target.value))}
-                        className="input input-sm money text-right"
-                      />
-                    </div>
-                    <div style={{ width: 60 }}>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={item.discount}
-                        onChange={e => updateCartDiscount(item.product_id, Number(e.target.value))}
-                        className="input input-sm text-center"
-                      />
-                    </div>
-                    <div className="money text-right font-semibold" style={{ width: 110 }}>
-                      {(item.quantity * item.unit_price * (1 - item.discount / 100)).toFixed(2)} MAD
-                    </div>
-                    <Button variant="ghost" onClick={() => removeFromCart(item.product_id)} style={{ color: 'var(--danger)', fontSize: 20, padding: 4 }}>×</Button>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
