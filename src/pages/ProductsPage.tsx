@@ -61,9 +61,12 @@ export const ProductsPage: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
-    window.api.categories.getAll().then((cats: Array<{ id: string; name: string }>) => {
-      setCategories((cats ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
-    }).catch(() => {});
+    const categoryApi = window.api?.categories;
+    if (categoryApi) {
+      categoryApi.getAll().then((cats: Array<{ id: string; name: string }>) => {
+        setCategories((cats ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })));
+      }).catch(() => {});
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F' && e.ctrlKey) {
