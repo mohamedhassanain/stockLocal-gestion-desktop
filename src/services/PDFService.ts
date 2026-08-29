@@ -364,19 +364,40 @@ export const PDFService = {
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage();
-    const { height } = page.getSize();
+    const { width, height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const labelMonth = month ?? new Date().toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
     let y = height - 50;
 
-    const headerX = await drawCompanyLogo(pdfDoc, page, settings);
-    page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-    y -= 22;
-    page.drawText(`Rapport de ventes — ${labelMonth}`, { x: headerX, y, size: 14, font: boldFont });
+    // ── Logo + nom d'entreprise centrés (si activé) ──
+    if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
+      try {
+        const logoBytes = fs.readFileSync(settings.logo_path);
+        const ext = path.extname(settings.logo_path).toLowerCase();
+        const logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
+        const logoW = 72, logoH = 36;
+        const logoX = (width - logoW) / 2;
+        page.drawImage(logoImage, { x: logoX, y: y - logoH, width: logoW, height: logoH });
+        y -= logoH + 12;
+      } catch {
+        // Logo illisible : on ignore silencieusement
+      }
+    }
+    const nameText = settings.name || 'StockLocal';
+    const nameW = boldFont.widthOfTextAtSize(nameText, 20);
+    page.drawText(nameText, { x: (width - nameW) / 2, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    y -= 26; // espace entre le nom d'entreprise et le titre
+
+    const titleText = `Rapport de ventes — ${labelMonth}`;
+    const titleW = boldFont.widthOfTextAtSize(titleText, 14);
+    page.drawText(titleText, { x: (width - titleW) / 2, y, size: 14, font: boldFont });
     y -= 14;
-    page.drawText(`Généré le ${new Date().toLocaleDateString('fr-MA')}`, { x: headerX, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+
+    const dateText = `Généré le ${new Date().toLocaleDateString('fr-MA')}`;
+    const dateW = font.widthOfTextAtSize(dateText, 9);
+    page.drawText(dateText, { x: (width - dateW) / 2, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 30;
 
     const drawKpi = (label: string, value: string) => {
