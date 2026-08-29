@@ -186,6 +186,27 @@ export const SettingsPage: React.FC = () => {
     });
   };
 
+  const doDeleteSubcategory = async (id: string) => {
+    const result = await window.api.categories.deleteSub(id);
+    if (result.success) { loadAll(); notify('🗑️ Sous-catégorie supprimée'); }
+    else notify(`❌ ${result.error}`);
+  };
+
+  const deleteSubcategory = async (id: string, name: string) => {
+    setPendingConfirm({
+      title: 'Supprimer cette sous-catégorie ?',
+      message: (
+        <>
+          La sous-catégorie <strong>{name}</strong> sera <strong>définitivement supprimée</strong>.
+          <br />Les produits liés resteront sans sous-catégorie.
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Supprimer',
+      action: () => doDeleteSubcategory(id),
+    });
+  };
+
   const addDiscount = async () => {
     if (!discountForm.name.trim()) return;
     const result = await window.api.discounts.create({
@@ -560,7 +581,10 @@ export const SettingsPage: React.FC = () => {
                   </div>
                   <div style={{ marginTop: 10, paddingLeft: 14, borderLeft: '2px solid var(--border)' }}>
                     {(cat.subcategories ?? []).map(sub => (
-                      <div key={sub.id} className="text-sm text-secondary" style={{ padding: '3px 0' }}>• {sub.name}</div>
+                      <div key={sub.id} className="text-sm text-secondary" style={{ padding: '3px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>• {sub.name}</span>
+                        <Button variant="danger" size="sm" onClick={() => deleteSubcategory(sub.id, sub.name)} style={{ padding: '2px 6px', fontSize: 12 }} title="Supprimer">🗑️</Button>
+                      </div>
                     ))}
                     <div className="flex gap-2 mt-2">
                       <Input
