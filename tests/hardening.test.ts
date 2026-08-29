@@ -28,7 +28,7 @@ function createProduct(ref: string, opts: { barcode?: string; sellingPrice?: num
 
 describe('Phase 1 — Recherche barcode côté SQLite (POS)', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('retrouve EXACTEMENT 1 produit par code-barres (pas de scan de liste)', () => {
@@ -70,7 +70,7 @@ describe('Phase 1 — Recherche barcode côté SQLite (POS)', () => {
 
 describe('Phase 2.6 — Pagination SQL de l\'historique de stock', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('getAllHistory applique LIMIT/OFFSET côté SQL (jamais tout en mémoire)', () => {
@@ -91,7 +91,7 @@ describe('Phase 2.6 — Pagination SQL de l\'historique de stock', () => {
 
 describe('Phase 4 — Exports CSV par batch (plus de plafond silencieux)', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('exportProducts inclut TOUS les produits (pas de LIMIT 100000)', () => {
@@ -135,7 +135,7 @@ describe('Phase 4 — Exports CSV par batch (plus de plafond silencieux)', () =>
 
 describe('Phase 10 — Dashboard : dettes fournisseurs (SQL agrégé)', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products; DELETE FROM supplier_credits; DELETE FROM suppliers;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products; DELETE FROM supplier_credits; DELETE FROM suppliers;');
   });
 
   it('getStats calcule le total des dettes fournisseurs via SQL agrégé', () => {

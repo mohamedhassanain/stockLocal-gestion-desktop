@@ -75,7 +75,7 @@ describe('Backup / Restore (§15)', () => {
 
     // Nettoyage pour ne pas interférer avec les autres tests
     fs.unlinkSync(markerPath);
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('crée un backup de sécurité automatique sans corrompre la base courante', async () => {
@@ -100,6 +100,6 @@ describe('Backup / Restore (§15)', () => {
     testDb.close();
     expect(row.count).toBe(1);
 
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 });

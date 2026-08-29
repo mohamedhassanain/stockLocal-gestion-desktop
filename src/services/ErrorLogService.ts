@@ -34,7 +34,7 @@ function rotateIfNeeded(logPath: string): void {
 
 export function formatError(err: unknown): string {
   if (!err) return 'Erreur inconnue';
-  const e = err as any;
+  const e = err as Error | { message?: string; stack?: string } | null;
   const stack = typeof e?.stack === 'string' ? e.stack : String(e?.message ?? err);
   return stack.substring(0, 2000);
 }

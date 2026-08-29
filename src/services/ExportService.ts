@@ -190,7 +190,7 @@ export const ExportService = {
 
   /** Export des documents (factures, avoirs, etc.) — par batch SQL. */
   exportDocuments(type?: string): string {
-    const docType = (type || 'INVOICE') as any;
+    const docType: string = type || 'INVOICE';
     const date = new Date().toISOString().split('T')[0];
     const typeLabels: Record<string, string> = { INVOICE: 'factures', DELIVERY_NOTE: 'bons_livraison', QUOTE: 'devis', CREDIT_NOTE: 'avoirs' };
     const filePath = createCsvFile(

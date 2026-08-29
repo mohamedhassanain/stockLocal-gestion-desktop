@@ -162,24 +162,30 @@ const stmtUpcomingDue = db.prepare<[number]>(`
 
 // ─── Repository ───────────────────────────────────────────────────────────────
 
+interface RevenueRow { revenue_today: number; revenue_week: number; revenue_month: number; sales_count_today: number; sales_count_month: number }
+interface MarginRow { gross_margin_month: number }
+interface StockValueRow { total_stock_value: number }
+interface UnpaidRow { unpaid_total: number }
+interface SupplierDebtRow { supplier_debt_total: number }
+
 export const DashboardRepository = {
   getStats(): DashboardStats {
-    const revenue = stmtRevenue.get() as any;
-    const margin = stmtMargin.get() as any;
-    const stockVal = stmtStockValue.get() as any;
-    const unpaid = stmtUnpaid.get() as any;
-    const supplierDebt = stmtSupplierDebt.get() as any;
+    const revenue = stmtRevenue.get() as RevenueRow | undefined;
+    const margin = stmtMargin.get() as MarginRow | undefined;
+    const stockVal = stmtStockValue.get() as StockValueRow | undefined;
+    const unpaid = stmtUnpaid.get() as UnpaidRow | undefined;
+    const supplierDebt = stmtSupplierDebt.get() as SupplierDebtRow | undefined;
 
     return {
-      revenue_today: revenue.revenue_today,
-      revenue_week: revenue.revenue_week,
-      revenue_month: revenue.revenue_month,
-      sales_count_today: revenue.sales_count_today,
-      sales_count_month: revenue.sales_count_month,
-      gross_margin_month: margin.gross_margin_month,
-      total_stock_value: stockVal.total_stock_value,
-      unpaid_total: unpaid.unpaid_total,
-      supplier_debt_total: supplierDebt.supplier_debt_total,
+      revenue_today: revenue?.revenue_today ?? 0,
+      revenue_week: revenue?.revenue_week ?? 0,
+      revenue_month: revenue?.revenue_month ?? 0,
+      sales_count_today: revenue?.sales_count_today ?? 0,
+      sales_count_month: revenue?.sales_count_month ?? 0,
+      gross_margin_month: margin?.gross_margin_month ?? 0,
+      total_stock_value: stockVal?.total_stock_value ?? 0,
+      unpaid_total: unpaid?.unpaid_total ?? 0,
+      supplier_debt_total: supplierDebt?.supplier_debt_total ?? 0,
     };
   },
 

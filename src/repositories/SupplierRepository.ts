@@ -1,5 +1,6 @@
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
+import { EntityCannotBeDeletedError } from '../domain/errors/EntityCannotBeDeletedError';
 
 export interface Supplier {
   id: string;
@@ -85,9 +86,10 @@ const stmtGetBalance = db.prepare<[string]>(`
 
 const stmtDelete = db.prepare('DELETE FROM suppliers WHERE id = ?');
 
-const stmtCountDocuments = db.prepare('SELECT COUNT(*) AS cnt FROM documents WHERE entity_id = ?');
-
 const stmtCountStock = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE supplier_id = ?');
+
+const stmtArchive = db.prepare("UPDATE suppliers SET status = 'ARCHIVED', updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+const stmtActivate = db.prepare("UPDATE suppliers SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = ?");
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 
@@ -133,15 +135,34 @@ export const SupplierRepository = {
   remove(id: string): void {
     const existing = this.getById(id);
     if (!existing) throw new Error('Fournisseur introuvable : ' + id);
-    const docs = stmtCountDocuments.get(id) as { cnt: number };
-    if (docs.cnt > 0) {
-      throw new Error('Impossible de supprimer ce fournisseur : il possede ' + docs.cnt + ' document(s).');
+
+    const refs: { name: string; count: number }[] = [];
+    const stockCount = (stmtCountStock.get(id) as { cnt: number }).cnt;
+    if (stockCount > 0) refs.push({ name: 'mouvements de stock', count: stockCount });
+
+    const poCount = (db.prepare("SELECT COUNT(*) AS cnt FROM purchase_orders WHERE supplier_id = ?").get(id) as { cnt: number }).cnt;
+    if (poCount > 0) refs.push({ name: "commandes d'achat", count: poCount });
+
+    const creditCount = (db.prepare('SELECT COUNT(*) AS cnt FROM supplier_credits WHERE supplier_id = ?').get(id) as { cnt: number }).cnt;
+    if (creditCount > 0) refs.push({ name: 'crédits/paiements', count: creditCount });
+
+    if (refs.length > 0) {
+      throw new EntityCannotBeDeletedError('fournisseur', refs);
     }
-    const stock = stmtCountStock.get(id) as { cnt: number };
-    if (stock.cnt > 0) {
-      throw new Error('Impossible de supprimer ce fournisseur : il est lie a ' + stock.cnt + ' mouvement(s) de stock.');
-    }
+
     stmtDelete.run(id);
+  },
+
+  archive(id: string): void {
+    const existing = this.getById(id);
+    if (!existing) throw new Error('Fournisseur introuvable : ' + id);
+    stmtArchive.run(id);
+  },
+
+  activate(id: string): void {
+    const existing = this.getById(id);
+    if (!existing) throw new Error('Fournisseur introuvable : ' + id);
+    stmtActivate.run(id);
   },
 
   getHistory(supplierId: string): SupplierCredit[] {

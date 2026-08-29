@@ -1,7 +1,7 @@
-// Permet d'éviter les erreurs TypeScript pour les appels IPC d'Electron
+// Les appels IPC Electron sont typés via le bridge preload.ts.
 declare global {
   interface Window {
-    api: any;
+    api: typeof import('../electron/preload').api;
   }
 }
 

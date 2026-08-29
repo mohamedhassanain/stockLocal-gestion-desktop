@@ -17,6 +17,14 @@ export const SupplierService = {
   deleteSupplier(id: string): void {
     SupplierRepository.remove(id);
   },
+
+  archiveSupplier(id: string): void {
+    SupplierRepository.archive(id);
+  },
+
+  activateSupplier(id: string): void {
+    SupplierRepository.activate(id);
+  },
   // Ajouter une dette (On doit de l'argent au fournisseur)
   addDebt(supplierId: string, amount: number, description: string): SupplierCredit {
     if (amount <= 0) throw new Error('Le montant doit être supérieur à 0.');

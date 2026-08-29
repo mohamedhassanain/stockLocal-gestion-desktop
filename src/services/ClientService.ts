@@ -20,6 +20,14 @@ export const ClientService = {
   deleteClient(id: string): void {
     ClientRepository.remove(id);
   },
+
+  archiveClient(id: string): void {
+    ClientRepository.archive(id);
+  },
+
+  activateClient(id: string): void {
+    ClientRepository.activate(id);
+  },
   /**
    * Vérifie si une nouvelle dette respecte le plafond de crédit du client (§18).
    *

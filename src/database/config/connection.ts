@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { DataStorageService } from '../../services/DataStorageService';
+import { runMigrations } from '../migrations/migrationRunner';
 
 // Initialiser le DataStorageService avant tout
 DataStorageService.init();
@@ -156,6 +157,12 @@ function migrateColumns(): void {
   addColumnIfMissing('documents', 'due_date', 'DATETIME');
   addColumnIfMissing('documents', 'notes', 'TEXT');
   addColumnIfMissing('customers', 'category', "TEXT NOT NULL DEFAULT 'DÉTAIL'");
+  // §: colonne status ajoutée pour l'archivage clients / fournisseurs.
+  // Les bases existantes créées avant l'introduction de cette colonne ne
+  // l'ont pas : sans cette migration, les requêtes d'archivage/activation
+  // (ClientRepository / SupplierRepository) échouent au chargement.
+  addColumnIfMissing('customers', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
+  addColumnIfMissing('suppliers', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
   addColumnIfMissing('products', 'unit', "TEXT NOT NULL DEFAULT 'PIÈCE'");
 }
 
@@ -609,6 +616,8 @@ function initDb(): void {
   const safetyBackup = createPreMigrationBackup();
   try {
     applySchema();
+    // Les migrations ad-hoc ci-dessous restent pour la rétro-compatibilité
+    // avec les bases existantes
     migrateColumns();
     migrateAuditLogs();
     migrateStockMovements();
@@ -620,6 +629,10 @@ function initDb(): void {
     migrateInventoryBalances();
     migrateQuantitiesReal();
     migrateDocumentSequences();
+
+    // Migrations versionnées — après toutes les migrations ad-hoc
+    // Les NOUVELLES migrations passent par `runMigrations` (table `schema_migrations`).
+    resolveMigrationsDir();
   } catch (e: any) {
     const detail = safetyBackup
       ? `Erreur lors de la migration de la base de données. Une copie de sécurité a été créée ici : ${safetyBackup}. Vous pouvez joindre ce fichier au support pour diagnostiquer le problème.`
@@ -627,6 +640,28 @@ function initDb(): void {
     console.error(`[DB] ${detail}`);
     throw new Error(detail);
   }
+}
+
+/**
+ * Résout le dossier des migrations versionnées et exécute les migrations
+ * en attente (table `schema_migrations`). Le dossier est cherché dans :
+ *   - <APP_ROOT>/src/database/migrations (dev Electron)
+ *   - <cwd>/src/database/migrations (tests / Node)
+ */
+function resolveMigrationsDir(): void {
+  const candidates = [
+    path.join(process.cwd(), 'src', 'database', 'migrations'),
+    path.join(process.cwd(), 'database', 'migrations'),
+  ];
+  if (process.env.APP_ROOT) {
+    candidates.push(path.join(process.env.APP_ROOT, 'src', 'database', 'migrations'));
+  }
+  const dir = candidates.find(p => fs.existsSync(p));
+  if (!dir) {
+    console.warn('[DB] Dossier de migrations introuvable — aucune migration versionnée appliquée.');
+    return;
+  }
+  runMigrations(db, dir);
 }
 
 initDb();

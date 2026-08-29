@@ -53,7 +53,7 @@ function isSQLiteDatabase(filePath: string): boolean {
 function validateDbIntegrity(dbPath: string): { valid: boolean; error?: string } {
   let db: Database.Database | null = null;
   try {
-    db = new Database(dbPath, { readonly: true } as any);
+    db = new Database(dbPath, { readonly: true });
     const result = db.pragma('integrity_check') as Array<{ integrity_check: string }>;
     if (result[0]?.integrity_check === 'ok') {
       return { valid: true };
@@ -189,10 +189,10 @@ export const MigrationService = {
     // If current database already has data, skip migration
     if (fs.existsSync(currentDbPath)) {
       try {
-        const db = new Database(currentDbPath, { readonly: true } as any);
-        const result = db.prepare('SELECT COUNT(*) as cnt FROM products').get() as { cnt: number };
+        const db = new Database(currentDbPath, { readonly: true });
+        const result = db.prepare('SELECT COUNT(*) as cnt FROM products').get() as { cnt: number } | undefined;
         db.close();
-        if (result.cnt > 0) {
+        if (result && result.cnt > 0) {
           return { migrated: false, message: 'La base actuelle contient déjà des données. Migration non nécessaire.' };
         }
       } catch {

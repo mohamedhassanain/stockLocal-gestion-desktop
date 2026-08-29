@@ -42,6 +42,6 @@ export class StockMovementRepository {
 
   /** GetAll movements across all products (for full history/export). */
   static getAllHistory(limit: number = 200, offset: number = 0): Array<StockMovement & { product_ref?: string; product_name?: string }> {
-    return StockLedgerService.getAllHistory(limit, offset) as any[];
+    return StockLedgerService.getAllHistory(limit, offset);
   }
 }

@@ -30,6 +30,21 @@ export interface InventoryItem {
   created_at?: string;
 }
 
+export interface InventoryVersion {
+  id: string;
+  session_id: string;
+  version_number: number;
+  created_at: string;
+  note: string | null;
+}
+
+export interface InventoryItemVersion {
+  id: string;
+  version_id: string;
+  product_id: string;
+  counted_qty: number;
+}
+
 // ─── Prepared Statements ──────────────────────────────────────────────────────
 
 const stmtGetAll = db.prepare('SELECT * FROM inventory_sessions ORDER BY created_at DESC LIMIT 100');
@@ -77,6 +92,16 @@ const stmtGetStockLevel = db.prepare(`
 const stmtGetActiveProducts = db.prepare(`
   SELECT id, reference, designation, purchase_price, unit FROM products WHERE status = 'ACTIVE' ORDER BY designation ASC
 `);
+
+// ─── Versioning Statements ───────────────────────────────────────────────────
+
+const stmtGetNextVersionNumber = db.prepare('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM inventory_versions WHERE session_id = ?');
+const stmtInsertVersion = db.prepare('INSERT INTO inventory_versions (id, session_id, version_number, note) VALUES (?, ?, ?, ?)');
+const stmtInsertItemVersion = db.prepare('INSERT INTO inventory_item_versions (id, version_id, product_id, counted_qty) VALUES (?, ?, ?, ?)');
+const stmtGetVersions = db.prepare('SELECT * FROM inventory_versions WHERE session_id = ? ORDER BY version_number DESC');
+const stmtGetVersionItems = db.prepare('SELECT * FROM inventory_item_versions WHERE version_id = ?');
+const stmtUpdateItemCounted = db.prepare("UPDATE inventory_items SET counted_qty = ?, difference = ? - expected_qty, status = 'COUNTED' WHERE session_id = ? AND product_id = ?");
+
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 
@@ -218,5 +243,90 @@ export const InventorySessionRepository = {
     if (!session) throw new Error('Session d\'inventaire introuvable.');
     if (session.status === 'VALIDATION') throw new Error('Une session validée ne peut pas être supprimée.');
     stmtDeleteSession.run(id);
+  },
+
+  // ─── Versioning ────────────────────────────────────────────────────────────
+
+  createVersion(sessionId: string, note?: string): void {
+    return runInTransaction(() => {
+      const session = stmtGetById.get(sessionId) as InventorySession | undefined;
+      if (!session) throw new Error('Session introuvable.');
+
+      const items = stmtGetItems.all(sessionId) as InventoryItem[];
+      const countedItems = items.filter(i => i.counted_qty !== null);
+      if (countedItems.length === 0) return; // Rien à versionner
+
+      const nextRow = stmtGetNextVersionNumber.get(sessionId) as { next: number };
+      const versionId = randomUUID();
+      stmtInsertVersion.run(versionId, sessionId, nextRow.next, note ?? null);
+
+      for (const item of countedItems) {
+        stmtInsertItemVersion.run(randomUUID(), versionId, item.product_id, item.counted_qty);
+      }
+    });
+  },
+
+  getVersions(sessionId: string): InventoryVersion[] {
+    return stmtGetVersions.all(sessionId) as InventoryVersion[];
+  },
+
+  restoreVersion(versionId: string, note?: string): void {
+    return runInTransaction(() => {
+      const version = db.prepare('SELECT * FROM inventory_versions WHERE id = ?').get(versionId) as InventoryVersion | undefined;
+      if (!version) throw new Error('Version introuvable.');
+      
+      const session = stmtGetById.get(version.session_id) as InventorySession | undefined;
+      if (!session) throw new Error('Session introuvable.');
+      if (session.status === 'VALIDATION') throw new Error('Impossible de restaurer dans une session validée.');
+
+      const vItems = stmtGetVersionItems.all(versionId) as InventoryItemVersion[];
+
+      for (const vItem of vItems) {
+        stmtUpdateItemCounted.run(vItem.counted_qty, vItem.counted_qty, session.id, vItem.product_id);
+      }
+      
+      const vProductIds = new Set(vItems.map(i => i.product_id));
+      const currentItems = stmtGetItems.all(session.id) as InventoryItem[];
+      for (const curr of currentItems) {
+        if (!vProductIds.has(curr.product_id) && curr.counted_qty !== null) {
+          db.prepare('UPDATE inventory_items SET counted_qty = NULL, difference = NULL, status = \'PENDING\' WHERE id = ?').run(curr.id);
+        }
+      }
+
+      // La restauration crée TOUJOURS une NOUVELLE version (jamais d'écrasement)
+      // → audit trail conservé : V1=95, V2=97, V3=96, restore V2 → V4=97.
+      this.createVersion(session.id, note ?? `Restauration de la version ${version.version_number}`);
+    });
+  },
+
+  // ─── Correction post-validation ────────────────────────────────────────────
+
+  correctValidatedInventory(sessionId: string, itemId: string, correctedQty: number): void {
+    return runInTransaction(() => {
+      const session = stmtGetById.get(sessionId) as InventorySession | undefined;
+      if (!session || session.status !== 'VALIDATION') {
+        throw new Error('Seules les sessions validées peuvent être corrigées.');
+      }
+      
+      const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId) as InventoryItem | undefined;
+      if (!item) throw new Error('Produit introuvable dans cette session.');
+      if (item.session_id !== sessionId) throw new Error('Cet article n\'appartient pas à cette session.');
+
+      const oldQty = item.counted_qty ?? item.expected_qty;
+      const diff = correctedQty - oldQty;
+      if (diff === 0) return;
+
+      const product = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(item.product_id) as { purchase_price: number } | undefined;
+
+      StockLedgerService.adjustInventory({
+        product_id: item.product_id,
+        actualCount: StockLedgerService.getStockLevel(item.product_id) + diff,
+        unit_price: product?.purchase_price ?? 0,
+        document_id: sessionId,
+        notes: `CORRECTION INVENTAIRE — ${session.name} (ancien: ${oldQty}, nouveau: ${correctedQty})`,
+      });
+
+      db.prepare('UPDATE inventory_items SET counted_qty = ?, difference = ? - expected_qty WHERE id = ?').run(correctedQty, correctedQty, item.id);
+    });
   }
 };

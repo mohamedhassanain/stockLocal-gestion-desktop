@@ -30,8 +30,9 @@ function movementsOf(productId: string) {
 
 describe('Moteur de stock — StockLedgerService (§3, §5)', () => {
   beforeEach(() => {
-    // Nettoyer les données entre chaque test (base de test isolée)
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    // Nettoyer les données entre chaque test (base de test isolée).
+    // FK RESTRICT : on supprime les balances, puis les mouvements, puis les produits.
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('enregistre un PURCHASE_IN (entrée) et met à jour le stock', () => {
@@ -162,7 +163,7 @@ describe('Moteur de stock — StockLedgerService (§3, §5)', () => {
 
 describe('Inventaire — ajustements directionnels (§4)', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('surplus : théorique 100, compté 110 → ADJUSTMENT_IN 10 → stock 110', () => {
@@ -224,7 +225,7 @@ describe('Inventaire — ajustements directionnels (§4)', () => {
 
 describe('Produits — création, modification, suppression protégée (§9, §17)', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('crée un produit', () => {
@@ -283,9 +284,80 @@ describe('Produits — création, modification, suppression protégée (§9, §1
   });
 });
 
+describe('Cohérence rebuildBalances vs recordMovement (CMUP identique, §14)', () => {
+  beforeEach(() => {
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
+  });
+
+  it('la balance maintenue par recordMovement est identique à celle recalculée par rebuildBalances', () => {
+    const productId = createProduct('COHERENCE-CMUP');
+
+    // Mouvements variés : entrées à prix différents, sorties, retour, ajustement.
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 100, unit_price: 10 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 50, unit_price: 20 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'SALE_OUT', quantity: 30, unit_price: 25 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'RETURN_IN', quantity: 5, unit_price: 15 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'ADJUSTMENT_IN', quantity: 3, unit_price: 12 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'DAMAGE_OUT', quantity: 2, unit_price: 0 });
+
+    // Balance "en direct" (recordMovement)
+    const live = db.prepare('SELECT quantity, total_in_qty, total_in_value, average_cost FROM inventory_balances WHERE product_id = ?').get(productId) as {
+      quantity: number; total_in_qty: number; total_in_value: number; average_cost: number;
+    };
+
+    // Rebuild complet depuis l'historique
+    StockLedgerService.rebuildBalances();
+
+    const rebuilt = db.prepare('SELECT quantity, total_in_qty, total_in_value, average_cost FROM inventory_balances WHERE product_id = ?').get(productId) as {
+      quantity: number; total_in_qty: number; total_in_value: number; average_cost: number;
+    };
+
+    // Les deux balances doivent être strictement identiques (CMUP exact)
+    expect(rebuilt.quantity).toBeCloseTo(live.quantity, 6);
+    expect(rebuilt.total_in_qty).toBeCloseTo(live.total_in_qty, 6);
+    expect(rebuilt.total_in_value).toBeCloseTo(live.total_in_value, 6);
+    expect(rebuilt.average_cost).toBeCloseTo(live.average_cost, 6);
+    expect(rebuilt.average_cost).toBeCloseTo(rebuilt.total_in_value / rebuilt.total_in_qty, 6);
+  });
+
+  it('CMUP exact : 100×10 + 100×20 = 3000 / 200 = 15', () => {
+    const productId = createProduct('COHERENCE-CMUP-2');
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 100, unit_price: 10 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 100, unit_price: 20 });
+
+    const balance = db.prepare('SELECT total_in_qty, total_in_value, average_cost FROM inventory_balances WHERE product_id = ?').get(productId) as {
+      total_in_qty: number; total_in_value: number; average_cost: number;
+    };
+    expect(balance.total_in_qty).toBe(200);
+    expect(balance.total_in_value).toBe(3000);
+    expect(balance.average_cost).toBeCloseTo(15, 10);
+
+    StockLedgerService.rebuildBalances();
+    const rebuilt = db.prepare('SELECT total_in_qty, total_in_value, average_cost FROM inventory_balances WHERE product_id = ?').get(productId) as {
+      total_in_qty: number; total_in_value: number; average_cost: number;
+    };
+    expect(rebuilt.total_in_qty).toBe(200);
+    expect(rebuilt.total_in_value).toBe(3000);
+    expect(rebuilt.average_cost).toBeCloseTo(15, 10);
+  });
+
+  it('sorties ne modifient pas le CMUP (seules les entrées valorisent)', () => {
+    const productId = createProduct('COHERENCE-CMUP-3');
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 10, unit_price: 1 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 10, unit_price: 3 });
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'SALE_OUT', quantity: 5, unit_price: 5 });
+
+    const balance = db.prepare('SELECT total_in_qty, total_in_value, average_cost FROM inventory_balances WHERE product_id = ?').get(productId) as {
+      total_in_qty: number; total_in_value: number; average_cost: number;
+    };
+    // CMUP = (10×1 + 10×3) / 20 = 40/20 = 2 — la sortie ne change pas le coût moyen
+    expect(balance.average_cost).toBeCloseTo(2, 10);
+  });
+});
+
 describe('Transfert entre dépôts (§19)', () => {
   beforeEach(() => {
-    db.exec('DELETE FROM stock_movements; DELETE FROM products;');
+    db.exec('DELETE FROM inventory_balances; DELETE FROM stock_movements; DELETE FROM products;');
   });
 
   it('TRANSFER_OUT + TRANSFER_IN atomiques', () => {

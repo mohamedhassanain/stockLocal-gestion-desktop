@@ -16,6 +16,7 @@ const DOC_COUNT = 300;
 
 function cleanupAll() {
   db.exec(`
+    DELETE FROM inventory_balances;
     DELETE FROM stock_movements;
     DELETE FROM document_items;
     DELETE FROM documents;

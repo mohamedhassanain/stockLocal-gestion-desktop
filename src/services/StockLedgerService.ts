@@ -102,14 +102,17 @@ const stmtInsert = db.prepare(`
     (@id, @product_id, @type, @movement_type, @quantity, @unit_price, @date, @reference_doc, @document_id, @supplier_id, @notes)
 `);
 
-// §14 : solde précalculé (upsert atomique dans la même transaction)
+// §14 : solde précalculé (upsert atomique dans la même transaction).
+// average_cost est maintenu à jour DANS la transaction : jamais de dérive
+// entre total_in_value et average_cost (CMUP correct après chaque entrée).
 const stmtUpsertBalance = db.prepare(`
-  INSERT INTO inventory_balances (product_id, quantity, total_in_qty, total_in_value, updated_at)
-  VALUES (@product_id, @quantity, @total_in_qty, @total_in_value, CURRENT_TIMESTAMP)
+  INSERT INTO inventory_balances (product_id, quantity, total_in_qty, total_in_value, average_cost, updated_at)
+  VALUES (@product_id, @quantity, @total_in_qty, @total_in_value, @average_cost, CURRENT_TIMESTAMP)
   ON CONFLICT(product_id) DO UPDATE SET
     quantity = excluded.quantity,
     total_in_qty = excluded.total_in_qty,
     total_in_value = excluded.total_in_value,
+    average_cost = excluded.average_cost,
     updated_at = CURRENT_TIMESTAMP
 `);
 
@@ -185,7 +188,7 @@ export const StockLedgerService = {
       LEFT JOIN products p ON p.id = sm.product_id
       ORDER BY sm.date DESC
       LIMIT ? OFFSET ?
-    `).all(limit, offset) as any[];
+    `).all(limit, offset) as Array<StockMovementRow & { product_ref?: string; product_name?: string }>;
   },
 
   /**
@@ -264,12 +267,15 @@ export const StockLedgerService = {
       const newQty = direction === 'IN' ? currentQty + quantity : currentQty - quantity;
       const newInQty = direction === 'IN' ? currentInQty + quantity : currentInQty;
       const newInValue = direction === 'IN' ? currentInValue + quantity * movement.unit_price : currentInValue;
+      // CMUP maintenu atomiquement : jamais de dérive entre total_in_value et average_cost.
+      const newAverageCost = newInQty > 0 ? newInValue / newInQty : 0;
 
       stmtUpsertBalance.run({
         product_id: input.product_id,
         quantity: newQty,
         total_in_qty: newInQty,
         total_in_value: newInValue,
+        average_cost: newAverageCost,
       });
 
       return movement;

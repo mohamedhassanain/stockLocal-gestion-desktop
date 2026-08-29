@@ -4,6 +4,13 @@ PRAGMA foreign_keys = ON;
 -- NOTE: La table users a été supprimée. StockLocal est une application single-user.
 -- L'audit trail fonctionne sans compte utilisateur.
 
+-- ──────────────────────────────────────────────────────────────────────────────
+-- Architecture cible : schéma unique consolidé.
+--  - FK historiques en ON DELETE RESTRICT (jamais de cascade destructrice)
+--  - colonnes `status` sur customers / suppliers pour l'archivage
+--  - Précision REAL conservée (documenté ARCHITECTURE_AUDIT.md §15.1)
+-- ──────────────────────────────────────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -19,7 +26,7 @@ CREATE TABLE IF NOT EXISTS subcategories (
     description TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE CASCADE
+    FOREIGN KEY (category_id) REFERENCES categories (id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -67,7 +74,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     supplier_id TEXT,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -83,7 +90,6 @@ CREATE TABLE IF NOT EXISTS stock_movements (
 -- Cette table est maintenue TRANSACTIONNELLEMENT par StockLedgerService :
 -- chaque mouvement met à jour le solde dans la même transaction SQLite.
 -- UNIQUE(product_id) est garanti par PRIMARY KEY.
--- Un backfill idempotent (recalcul depuis stock_movements) est fait au démarrage.
 CREATE TABLE IF NOT EXISTS inventory_balances (
     product_id TEXT PRIMARY KEY,
     quantity REAL NOT NULL DEFAULT 0,
@@ -91,7 +97,7 @@ CREATE TABLE IF NOT EXISTS inventory_balances (
     total_in_value REAL NOT NULL DEFAULT 0,
     average_cost REAL NOT NULL DEFAULT 0,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -118,6 +124,7 @@ CREATE TABLE IF NOT EXISTS customers (
     payment_conditions TEXT,
     credit_limit REAL DEFAULT 0.0,
     category TEXT NOT NULL DEFAULT 'DÉTAIL',
+    status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / ARCHIVED
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -128,6 +135,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
     phone TEXT,
     address TEXT,
     ice TEXT,
+    status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / ARCHIVED
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -141,7 +149,7 @@ CREATE TABLE IF NOT EXISTS client_credits (
     description TEXT,
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE
+    FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS supplier_credits (
@@ -152,7 +160,7 @@ CREATE TABLE IF NOT EXISTS supplier_credits (
     description TEXT,
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE
+    FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -210,7 +218,7 @@ CREATE TABLE IF NOT EXISTS payments (
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reference TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
+    FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE RESTRICT
 );
 
 -- Audit trail (sans user_id, single-user actuel)
@@ -409,3 +417,27 @@ CREATE INDEX IF NOT EXISTS idx_inventory_sessions_status ON inventory_sessions (
 CREATE INDEX IF NOT EXISTS idx_inventory_items_session ON inventory_items (session_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_items_product ON inventory_items (product_id);
 CREATE INDEX IF NOT EXISTS idx_unit_conversions_product ON unit_conversions (product_id);
+
+-- Versioning de l'inventaire physique
+CREATE TABLE IF NOT EXISTS inventory_versions (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    version_number INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    note TEXT,
+    FOREIGN KEY (session_id) REFERENCES inventory_sessions (id) ON DELETE CASCADE,
+    UNIQUE (session_id, version_number)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_item_versions (
+    id TEXT PRIMARY KEY,
+    version_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    counted_qty REAL NOT NULL,
+    FOREIGN KEY (version_id) REFERENCES inventory_versions (id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_versions_session ON inventory_versions (session_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_item_versions_version ON inventory_item_versions (version_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_item_versions_product ON inventory_item_versions (product_id);

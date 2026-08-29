@@ -2,6 +2,7 @@ import { Product, ProductRepository, ProductInput } from '../repositories/Produc
 import { PriceHistoryRepository } from '../repositories/PriceHistoryRepository';
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
+import { EntityCannotBeDeletedError } from '../domain/errors/EntityCannotBeDeletedError';
 
 export class ProductService {
   /**
@@ -125,24 +126,25 @@ export class ProductService {
     const existing = ProductRepository.findById(id);
     if (!existing) throw new Error('Produit introuvable.');
 
-    const movementCount = (db.prepare(
-      'SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?'
-    ).get(id) as { count: number }).count;
-    if (movementCount > 0) {
-      throw new Error(
-        'Suppression refusée : ce produit possède un historique de stock. ' +
-        'Utilisez "Archiver" pour le masquer tout en conservant son historique.'
-      );
-    }
+    const refs: { name: string; count: number }[] = [];
 
-    const docCount = (db.prepare(
-      'SELECT COUNT(*) AS count FROM document_items WHERE product_id = ?'
-    ).get(id) as { count: number }).count;
-    if (docCount > 0) {
-      throw new Error(
-        'Suppression refusée : ce produit figure sur des documents (factures, devis, BL…). ' +
-        'Utilisez "Archiver" pour le masquer tout en conservant son historique.'
-      );
+    const moveCount = (db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?').get(id) as { count: number }).count;
+    if (moveCount > 0) refs.push({ name: 'mouvements de stock', count: moveCount });
+
+    const docCount = (db.prepare('SELECT COUNT(*) AS count FROM document_items WHERE product_id = ?').get(id) as { count: number }).count;
+    if (docCount > 0) refs.push({ name: 'lignes de factures/devis', count: docCount });
+
+    const invCount = (db.prepare('SELECT COUNT(*) AS count FROM inventory_items WHERE product_id = ?').get(id) as { count: number }).count;
+    if (invCount > 0) refs.push({ name: "lignes d'inventaire", count: invCount });
+
+    const poCount = (db.prepare('SELECT COUNT(*) AS count FROM purchase_order_items WHERE product_id = ?').get(id) as { count: number }).count;
+    if (poCount > 0) refs.push({ name: "lignes de commandes d'achat", count: poCount });
+
+    const cnCount = (db.prepare('SELECT COUNT(*) AS count FROM credit_note_refs WHERE product_id = ?').get(id) as { count: number }).count;
+    if (cnCount > 0) refs.push({ name: 'retours / avoirs', count: cnCount });
+
+    if (refs.length > 0) {
+      throw new EntityCannotBeDeletedError('produit', refs);
     }
 
     ProductRepository.remove(id);

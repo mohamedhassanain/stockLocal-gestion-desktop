@@ -1,5 +1,6 @@
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
+import { EntityCannotBeDeletedError } from '../domain/errors/EntityCannotBeDeletedError';
 
 export interface Customer {
   id: string;
@@ -90,6 +91,9 @@ const stmtDelete = db.prepare('DELETE FROM customers WHERE id = ?');
 
 const stmtCountDocuments = db.prepare('SELECT COUNT(*) AS cnt FROM documents WHERE entity_id = ?');
 
+const stmtArchive = db.prepare("UPDATE customers SET status = 'ARCHIVED', updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+const stmtActivate = db.prepare("UPDATE customers SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+
 // ─── Repository ──────────────────────────────────────────────────────────────
 
 export const ClientRepository = {
@@ -140,11 +144,31 @@ export const ClientRepository = {
   remove(id: string): void {
     const existing = this.getById(id);
     if (!existing) throw new Error('Client introuvable : ' + id);
-    const result = stmtCountDocuments.get(id) as { cnt: number };
-    if (result.cnt > 0) {
-      throw new Error('Impossible de supprimer ce client : des documents sont encore lies (factures/avoirs).');
+
+    const refs: { name: string; count: number }[] = [];
+    const docCount = (stmtCountDocuments.get(id) as { cnt: number }).cnt;
+    if (docCount > 0) refs.push({ name: 'documents (factures/avoirs)', count: docCount });
+
+    const creditCount = (db.prepare('SELECT COUNT(*) AS cnt FROM client_credits WHERE customer_id = ?').get(id) as { cnt: number }).cnt;
+    if (creditCount > 0) refs.push({ name: 'crédits/paiements', count: creditCount });
+
+    if (refs.length > 0) {
+      throw new EntityCannotBeDeletedError('client', refs);
     }
+
     stmtDelete.run(id);
+  },
+
+  archive(id: string): void {
+    const existing = this.getById(id);
+    if (!existing) throw new Error('Client introuvable : ' + id);
+    stmtArchive.run(id);
+  },
+
+  activate(id: string): void {
+    const existing = this.getById(id);
+    if (!existing) throw new Error('Client introuvable : ' + id);
+    stmtActivate.run(id);
   },
 
   getHistory(customerId: string): ClientCredit[] {
@@ -177,6 +201,13 @@ export const ClientRepository = {
       WHERE d.entity_id = ?
       ORDER BY d.date DESC
       LIMIT 200
-    `).all(customerId) as any;
+    `).all(customerId) as Array<{
+      id: string;
+      type: string;
+      document_number: string;
+      date: string;
+      total_incl_tax: number;
+      status: string;
+    }>;
   }
 };
