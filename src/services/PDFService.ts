@@ -25,11 +25,12 @@ export const PDFService = {
 
     let y = height - 50;
 
-    // ── En-tête centré : nom agrandi (20) + logo à DROITE, bloc centré ──
+    // ── En-tête : logo CENTRÉ (seul), saut de ligne, nom + titre à GAUCHE ──
     const nameText = settings.name || 'StockLocal';
+    const titleText = 'Relevé de Compte (نسيئة)';
     const nameSize = 20;
-    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
-    const logoW = 72, logoH = 36, logoGap = 14;
+    const titleSize = 16;
+    const logoW = 72, logoH = 36;
     let logoImage: any = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
@@ -38,15 +39,17 @@ export const PDFService = {
         logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
       } catch { logoImage = null; }
     }
-    const headerTotalW = nameW + (logoImage ? logoGap + logoW : 0);
-    const headerStartX = (width - headerTotalW) / 2;
-    page.drawText(nameText, { x: headerStartX, y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    // Logo au CENTRE de la page (seul sur sa ligne)
     if (logoImage) {
-      page.drawImage(logoImage, { x: headerStartX + nameW + logoGap, y: y - 12, width: logoW, height: logoH });
+      page.drawImage(logoImage, { x: (width - logoW) / 2, y: y - 12, width: logoW, height: logoH });
+      y -= 50; // saute la ligne après le logo
+    } else {
+      y -= 10;
     }
+    // Nom + titre alignés à GAUCHE
+    page.drawText(nameText, { x: 50, y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 26;
-
-    page.drawText('Relevé de Compte (نسيئة)', { x: headerStartX, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText(titleText, { x: 50, y, size: titleSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 28;
 
     page.drawText(`Client: ${client.name}`, { x: 50, y, size: 14, font: boldFont });
@@ -108,11 +111,12 @@ export const PDFService = {
 
     let y = height - 50;
 
-    // ── En-tête centré : nom agrandi (20) + logo à DROITE, bloc centré ──
+    // ── En-tête : logo CENTRÉ (seul), saut de ligne, nom + titre à GAUCHE ──
     const nameText = settings.name || 'StockLocal';
+    const titleText = 'Relevé de Compte (Fournisseur)';
     const nameSize = 20;
-    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
-    const logoW = 72, logoH = 36, logoGap = 14;
+    const titleSize = 16;
+    const logoW = 72, logoH = 36;
     let logoImage: any = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
@@ -121,15 +125,17 @@ export const PDFService = {
         logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
       } catch { logoImage = null; }
     }
-    const headerTotalW = nameW + (logoImage ? logoGap + logoW : 0);
-    const headerStartX = (width - headerTotalW) / 2;
-    page.drawText(nameText, { x: headerStartX, y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    // Logo au CENTRE de la page (seul sur sa ligne)
     if (logoImage) {
-      page.drawImage(logoImage, { x: headerStartX + nameW + logoGap, y: y - 12, width: logoW, height: logoH });
+      page.drawImage(logoImage, { x: (width - logoW) / 2, y: y - 12, width: logoW, height: logoH });
+      y -= 50; // saute la ligne après le logo
+    } else {
+      y -= 10;
     }
+    // Nom + titre alignés à GAUCHE
+    page.drawText(nameText, { x: 50, y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 26;
-
-    page.drawText('Relevé de Compte (Fournisseur)', { x: headerStartX, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText(titleText, { x: 50, y, size: titleSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 28;
 
     page.drawText(`Fournisseur: ${supplier.name}`, { x: 50, y, size: 14, font: boldFont });
