@@ -364,15 +364,14 @@ export const PDFService = {
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage();
-    const { height } = page.getSize();
+    const { width, height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const labelMonth = month ?? new Date().toLocaleDateString('fr-MA', { month: 'long', year: 'numeric' });
     let y = height - 50;
 
-    // ── Logo à GAUCHE + nom de l'entreprise à sa droite (côte à côte) ──
-    let headerX = 50;
+    // ── Logo à GAUCHE, nom de l'entreprise CENTRÉ sur la page ──
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
@@ -380,13 +379,13 @@ export const PDFService = {
         const logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
         const logoW = 72, logoH = 36;
         page.drawImage(logoImage, { x: 50, y: y - logoH, width: logoW, height: logoH });
-        headerX = 50 + logoW + 24; // logo à gauche, nom décalé à droite avec espace
       } catch {
         // Logo illisible : on ignore silencieusement
       }
     }
     const nameText = settings.name || 'StockLocal';
-    page.drawText(nameText, { x: headerX, y: y - 14, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    const nameW = boldFont.widthOfTextAtSize(nameText, 20);
+    page.drawText(nameText, { x: (width - nameW) / 2, y: y - 14, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 62; // saute quelques lignes avant le titre
 
     // Titre et date alignés à gauche (début de page)
