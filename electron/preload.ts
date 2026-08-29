@@ -160,6 +160,7 @@ export interface CompanySettingsInput {
   phone?: string;
   email?: string;
   logo_path?: string;
+  show_logo_on_documents?: boolean;
 }
 
 // ── Paramètres globaux ──
@@ -270,6 +271,7 @@ export const api = {
   company: {
     get: () => ipcRenderer.invoke('company:get'),
     save: (settings: CompanySettingsInput) => ipcRenderer.invoke('company:save', settings),
+    pickLogo: () => ipcRenderer.invoke('company:pickLogo'),
   },
 
   // ─── Audit ─────────────────────────────────────────────────────────────────

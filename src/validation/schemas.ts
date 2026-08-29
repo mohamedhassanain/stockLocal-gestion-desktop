@@ -193,6 +193,7 @@ export const CompanySettingsSchema = z.object({
   phone: z.string().max(30).optional(),
   email: z.string().max(200).optional(),
   logo_path: z.string().max(500).optional(),
+  show_logo_on_documents: z.boolean().optional(),
 });
 
 export const GlobalSettingsSchema = z.object({
@@ -207,6 +208,7 @@ export const GlobalSettingsSchema = z.object({
   max_backups: z.number().int().min(1).max(50).optional(),
   inactive_product_days: z.number().min(0).optional(),
   show_inactive_product_alerts: z.boolean().optional(),
+  product_units: z.array(z.string().max(20)).optional(),
 });
 
 // ─── IDs ─────────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { z } from 'zod';
@@ -359,6 +359,31 @@ export function registerReferenceDataHandlers(): void {
   // ─── Paramètres entreprise ─────────────────────────────────────────────────
   ipcMain.handle('company:get', async () => {
     return CompanySettingsService.getAll();
+  });
+
+  // Sélection d'un logo d'entreprise : boîte de dialogue native, puis copie
+  // dans le dossier de données (comme les images produit) pour que la
+  // validation `company:save` (confinée au dataDir) l'accepte.
+  ipcMain.handle('company:pickLogo', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Choisir le logo de l\'entreprise',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }],
+    });
+    if (canceled || filePaths.length === 0) return { success: false, canceled: true };
+    const src = filePaths[0];
+    if (fs.statSync(src).size > FILE_LIMITS.IMAGE_MAX_BYTES) {
+      return { success: false, error: 'Logo trop volumineux (max 5 Mo).' };
+    }
+    const ext = path.extname(src).toLowerCase();
+    const dataPath = DataStorageService.getConfig().dataPath;
+    const dest = path.join(dataPath, `logo_entreprise${ext}`);
+    try {
+      fs.copyFileSync(src, dest);
+    } catch {
+      return { success: false, error: 'Impossible de copier le logo.' };
+    }
+    return { success: true, path: dest };
   });
 
   ipcMain.handle('company:save', async (_, settings: unknown) => {

@@ -11,6 +11,7 @@ export interface CompanySettings {
   phone: string;
   email: string;
   logo_path: string;
+  show_logo_on_documents: boolean;
 }
 
 const DEFAULTS: CompanySettings = {
@@ -24,6 +25,7 @@ const DEFAULTS: CompanySettings = {
   phone: '',
   email: '',
   logo_path: '',
+  show_logo_on_documents: true,
 };
 
 const stmtGet = db.prepare('SELECT key, value FROM company_settings');
@@ -47,6 +49,7 @@ export const CompanySettingsService = {
       phone: map['phone'] ?? DEFAULTS.phone,
       email: map['email'] ?? DEFAULTS.email,
       logo_path: map['logo_path'] ?? DEFAULTS.logo_path,
+      show_logo_on_documents: (map['show_logo_on_documents'] ?? 'true') === 'true',
     };
   },
 
@@ -63,10 +66,13 @@ export const CompanySettingsService = {
       ['phone', settings.phone],
       ['email', settings.email],
       ['logo_path', settings.logo_path],
+      ['show_logo_on_documents', settings.show_logo_on_documents === undefined ? undefined : String(settings.show_logo_on_documents)],
     ];
     const txn = db.transaction(() => {
       for (const [key, value] of entries) {
-        if (value !== undefined && value !== '') stmtSet.run(key, value);
+        // `String(value)` : un booléen `false` devient "false" (sinon better-sqlite3
+        // stockerait 0/1 ambigu). `''` (suppression logo) est aussi persisté.
+        if (value !== undefined) stmtSet.run(key, String(value));
       }
     });
     txn();

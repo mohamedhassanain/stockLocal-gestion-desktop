@@ -170,9 +170,9 @@ export const PDFService = {
 
     let y = height - 50;
 
-    // ── Logo entreprise (si configuré) ──
+    // ── Logo entreprise (optionnel, si activé sur les documents) ──
     let headerX = 50;
-    if (settings.logo_path && fs.existsSync(settings.logo_path)) {
+    if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
         const ext = path.extname(settings.logo_path).toLowerCase();

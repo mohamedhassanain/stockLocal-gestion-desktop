@@ -75,7 +75,8 @@ export const SettingsPage: React.FC = () => {
     action: () => void;
   } | null>(null);
 
-  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '' });
+  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '', show_logo_on_documents: true });
+  const [logoPreview, setLogoPreview] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCat, setNewCat] = useState('');
   const [newSubs, setNewSubs] = useState<Record<string, string>>({});
@@ -137,6 +138,28 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     loadAll().then();
   }, []);
+
+  // Aperçu du logo d'entreprise (base64) quand logo_path change
+  useEffect(() => {
+    if (!company.logo_path) { setLogoPreview(''); return; }
+    const timeout = setTimeout(() => {
+      window.api.products.getImageBase64(company.logo_path).then((r: any) => {
+        if (r && r.success && r.dataUrl) setLogoPreview(r.dataUrl);
+        else setLogoPreview('');
+      }).catch(() => setLogoPreview(''));
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [company.logo_path]);
+
+  const pickCompanyLogo = async () => {
+    const result = await window.api.company.pickLogo();
+    if (result?.success && result.path) {
+      setCompany(prev => ({ ...prev, logo_path: result.path }));
+      notify('✅ Logo sélectionné');
+    } else if (result && !result.canceled) {
+      notify(`❌ ${result.error ?? 'Erreur lors de la sélection du logo.'}`);
+    }
+  };
 
   const saveCompany = async () => {
     const result = await window.api.company.save(company);
@@ -567,6 +590,25 @@ export const SettingsPage: React.FC = () => {
               <Input label="Email" value={company.email} onChange={e => setCompany({ ...company, email: e.target.value })} />
               <Input label="Adresse" value={company.address} onChange={e => setCompany({ ...company, address: e.target.value })} />
             </div>
+
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <span className="form-label">Logo de l'entreprise (optionnel)</span>
+              <div className="flex gap-3 items-center">
+                {logoPreview ? (
+                  <img src={logoPreview} alt="logo" style={{ width: 60, height: 60, objectFit: 'contain', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                ) : null}
+                <Button variant="secondary" size="sm" onClick={pickCompanyLogo}>🖼️ Choisir logo</Button>
+                {company.logo_path && (
+                  <Button variant="ghost" size="sm" onClick={() => { setCompany(prev => ({ ...prev, logo_path: '' })); setLogoPreview(''); }}>Supprimer</Button>
+                )}
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary mb-4">
+              <input type="checkbox" checked={company.show_logo_on_documents} onChange={e => setCompany(prev => ({ ...prev, show_logo_on_documents: e.target.checked }))} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
+              🖼️ Afficher le logo sur les factures & PDF
+            </label>
+
             <Button onClick={saveCompany} className="mt-4">💾 Enregistrer</Button>
           </Card>
         )}
