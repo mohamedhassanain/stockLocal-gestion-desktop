@@ -48,7 +48,16 @@ export const POSPage: React.FC = () => {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!showPayment && !showReceipt && e.key !== 'Tab' && e.key !== 'F2' && e.key !== 'Escape') {
+      // Ne pas voler le focus au champ scanner si l'utilisateur est en train
+      // de saisir dans un champ (quantité, prix, remise, recherche, etc.).
+      const target = e.target as HTMLElement | null;
+      const isTyping = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+      if (!showPayment && !showReceipt && !isTyping && e.key !== 'Tab' && e.key !== 'F2' && e.key !== 'Escape') {
         barcodeRef.current?.focus();
       }
     };
