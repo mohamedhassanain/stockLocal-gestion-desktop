@@ -23,8 +23,9 @@ async function drawCompanyLogo(pdfDoc: PDFDocument, page: PDFPage, settings: Com
       const logoBytes = fs.readFileSync(settings.logo_path);
       const ext = path.extname(settings.logo_path).toLowerCase();
       const logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
-      page.drawImage(logoImage, { x: 50, y: page.getHeight() - 70, width: 90, height: 45 });
-      headerX = 160;
+      // Logo discret (72×36) en haut à gauche ; le nom de l'entreprise est décalé à droite.
+      page.drawImage(logoImage, { x: 50, y: page.getHeight() - 66, width: 72, height: 36 });
+      headerX = 140;
     } catch {
       // Logo illisible : on ignore silencieusement
     }
@@ -47,7 +48,7 @@ export const PDFService = {
     page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 14, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 24;
 
-    page.drawText('Relevé de Compte (نسيئة)', { x: 50, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText('Relevé de Compte (نسيئة)', { x: headerX, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 40;
 
     page.drawText(`Client: ${client.name}`, { x: 50, y, size: 14, font: boldFont });
@@ -113,7 +114,7 @@ export const PDFService = {
     page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 14, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 24;
 
-    page.drawText('Relevé de Compte (Fournisseur)', { x: 50, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText('Relevé de Compte (Fournisseur)', { x: headerX, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 40;
 
     page.drawText(`Fournisseur: ${supplier.name}`, { x: 50, y, size: 14, font: boldFont });
@@ -373,9 +374,9 @@ export const PDFService = {
     const headerX = await drawCompanyLogo(pdfDoc, page, settings);
     page.drawText(settings.name || 'StockLocal', { x: headerX, y, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 22;
-    page.drawText(`Rapport de ventes — ${labelMonth}`, { x: 50, y, size: 14, font: boldFont });
+    page.drawText(`Rapport de ventes — ${labelMonth}`, { x: headerX, y, size: 14, font: boldFont });
     y -= 14;
-    page.drawText(`Généré le ${new Date().toLocaleDateString('fr-MA')}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
+    page.drawText(`Généré le ${new Date().toLocaleDateString('fr-MA')}`, { x: headerX, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 30;
 
     const drawKpi = (label: string, value: string) => {
