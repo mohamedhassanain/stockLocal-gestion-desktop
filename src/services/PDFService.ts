@@ -380,7 +380,7 @@ export const PDFService = {
         const logoW = 72, logoH = 36;
         const logoX = (width - logoW) / 2;
         page.drawImage(logoImage, { x: logoX, y: y - logoH, width: logoW, height: logoH });
-        y -= logoH + 12;
+        y -= logoH + 32; // espace net entre le logo et le nom d'entreprise
       } catch {
         // Logo illisible : on ignore silencieusement
       }
