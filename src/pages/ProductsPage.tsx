@@ -123,13 +123,14 @@ export const ProductsPage: React.FC = () => {
   const handleDelete = (product: Product) => {
     setPendingConfirm({
       title: 'Suppression définitive',
-      message: (
-        <>
-          Supprimer <strong>{product.designation}</strong> ({product.reference}) ?
-          <br /><span className="text-danger font-semibold">Cette action est irréversible.</span>
-          <br />Sera bloquée si le produit possède un historique de stock.
-        </>
-      ),
+        message: (
+          <>
+            Supprimer <strong>{product.designation}</strong> ({product.reference}) ?
+            <br /><span className="text-danger font-semibold">Cette action est irréversible.</span>
+            <br />Son historique de stock (mouvements, solde) sera également supprimé.
+            <br />Les produits liés à des factures, inventaires, commandes d'achat ou avoirs restent bloqués (utilisez « Archiver »).
+          </>
+        ),
       danger: true,
       confirmLabel: 'Supprimer définitivement',
       action: async () => {

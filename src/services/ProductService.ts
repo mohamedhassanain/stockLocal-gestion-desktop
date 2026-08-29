@@ -126,28 +126,41 @@ export class ProductService {
     const existing = ProductRepository.findById(id);
     if (!existing) throw new Error('Produit introuvable.');
 
-    const refs: { name: string; count: number }[] = [];
-
-    const moveCount = (db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?').get(id) as { count: number }).count;
-    if (moveCount > 0) refs.push({ name: 'mouvements de stock', count: moveCount });
+    // Références « dures » (documents, inventaires, commandes, avoirs) :
+    // on bloque la suppression — l'utilisateur doit utiliser « Archiver ».
+    const hardRefs: { name: string; count: number }[] = [];
 
     const docCount = (db.prepare('SELECT COUNT(*) AS count FROM document_items WHERE product_id = ?').get(id) as { count: number }).count;
-    if (docCount > 0) refs.push({ name: 'lignes de factures/devis', count: docCount });
+    if (docCount > 0) hardRefs.push({ name: 'lignes de factures/devis', count: docCount });
 
     const invCount = (db.prepare('SELECT COUNT(*) AS count FROM inventory_items WHERE product_id = ?').get(id) as { count: number }).count;
-    if (invCount > 0) refs.push({ name: "lignes d'inventaire", count: invCount });
+    if (invCount > 0) hardRefs.push({ name: "lignes d'inventaire", count: invCount });
 
     const poCount = (db.prepare('SELECT COUNT(*) AS count FROM purchase_order_items WHERE product_id = ?').get(id) as { count: number }).count;
-    if (poCount > 0) refs.push({ name: "lignes de commandes d'achat", count: poCount });
+    if (poCount > 0) hardRefs.push({ name: "lignes de commandes d'achat", count: poCount });
 
     const cnCount = (db.prepare('SELECT COUNT(*) AS count FROM credit_note_refs WHERE product_id = ?').get(id) as { count: number }).count;
-    if (cnCount > 0) refs.push({ name: 'retours / avoirs', count: cnCount });
+    if (cnCount > 0) hardRefs.push({ name: 'retours / avoirs', count: cnCount });
 
-    if (refs.length > 0) {
-      throw new EntityCannotBeDeletedError('produit', refs);
+    const moveCount = (db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?').get(id) as { count: number }).count;
+
+    if (hardRefs.length > 0) {
+      throw new EntityCannotBeDeletedError('produit', hardRefs);
     }
 
-    ProductRepository.remove(id);
+    // Suppression transactionnelle : un produit dont le seul historique est un
+    // mouvement de stock (ex. stock initial de démo) peut être supprimé — on
+    // nettoie ses mouvements + son solde précalculé, puis on supprime le produit
+    // (les FK RESTRICT sur product_id l'exigent). Les produits liés à des
+    // documents financiers restent bloqués (ici-dessus).
+    const deleteTx = db.transaction(() => {
+      if (moveCount > 0) {
+        db.prepare('DELETE FROM stock_movements WHERE product_id = ?').run(id);
+      }
+      db.prepare('DELETE FROM inventory_balances WHERE product_id = ?').run(id);
+      ProductRepository.remove(id);
+    });
+    deleteTx();
   }
 
   /**
