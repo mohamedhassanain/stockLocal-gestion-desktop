@@ -410,7 +410,7 @@ export const api = {
     delete: (id: string) => ipcRenderer.invoke('inventory:delete', id),
     // Versioning (§P0) : createVersion / getVersions / restoreVersion / correctValidatedInventory
     createVersion: (sessionId: string, note?: string) => ipcRenderer.invoke('inventory:createVersion', { sessionId, note }),
-    getVersions: (sessionId: string) => ipcRenderer.invoke('inventory:getVersions', sessionId),
+    getVersions: (sessionId: string) => ipcRenderer.invoke('inventory:getVersions', { sessionId }),
     restoreVersion: (sessionId: string, versionId: string, note?: string) => ipcRenderer.invoke('inventory:restoreVersion', { sessionId, versionId, note }),
     correctValidatedInventory: (sessionId: string, corrections: Record<string, number>) => ipcRenderer.invoke('inventory:correctValidatedInventory', { sessionId, corrections }),
   },

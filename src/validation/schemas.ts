@@ -115,6 +115,28 @@ export const InventorySchema = z.object({
   notes: z.string().max(500).optional().nullable(),
 });
 
+// ─── Inventaire : versioning / correction (P1) ───────────────────────────────
+
+export const InventoryCreateVersionSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+  note: z.string().max(500).optional().nullable(),
+});
+
+export const InventoryGetVersionsSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+});
+
+export const InventoryRestoreVersionSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+  versionId: z.string().min(1).max(64),
+  note: z.string().max(500).optional().nullable(),
+});
+
+export const InventoryCorrectionSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+  corrections: z.record(z.string().min(1).max(64), z.number().min(0, 'Une quantité corrigée ne peut pas être négative.')),
+});
+
 // ─── Achats / Commandes fournisseur ──────────────────────────────────────────
 
 export const PurchaseOrderItemSchema = z.object({
