@@ -538,8 +538,10 @@ const DocumentDetailPanel: React.FC<{
 }> = ({ doc, onPayment, onConvert, onPrint, onCreditNote, onDelete, onEdit }) => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('CASH');
+  const isCreditNote = doc.type === 'CREDIT_NOTE';
   const remaining = doc.total_incl_tax - (doc.amount_paid ?? 0);
   const statusInfo = STATUS_LABELS[doc.status] || STATUS_LABELS.DRAFT;
+  const statusLabel = isCreditNote && doc.status === 'PAID' ? 'Crédité' : statusInfo.label;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -550,21 +552,36 @@ const DocumentDetailPanel: React.FC<{
             <div style={{ fontSize: '22px', fontWeight: 'bold', color: 'var(--text)' }}>{doc.document_number}</div>
             <div style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{doc.customer_name} · {doc.date?.split('T')[0]}</div>
           </div>
-          <span style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
+          <span style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusLabel}</span>
         </div>
         <div style={{ marginTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
           <div style={{ textAlign: 'center', padding: '12px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Total HT</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{isCreditNote ? 'Crédit HT' : 'Total HT'}</div>
             <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text)' }}>{doc.total_excl_tax?.toFixed(2)} MAD</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '12px', background: 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payé</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--success)' }}>{(doc.amount_paid ?? 0).toFixed(2)} MAD</div>
-          </div>
-          <div style={{ textAlign: 'center', padding: '12px', background: remaining > 0 ? 'var(--danger-soft)' : 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reste dû</div>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: remaining > 0 ? 'var(--danger)' : 'var(--success)' }}>{remaining.toFixed(2)} MAD</div>
-          </div>
+          {isCreditNote ? (
+            <>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>TVA</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text)' }}>{doc.total_tax?.toFixed(2)} MAD</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Crédit TTC</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--success)' }}>{doc.total_incl_tax?.toFixed(2)} MAD</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ textAlign: 'center', padding: '12px', background: 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Payé</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--success)' }}>{(doc.amount_paid ?? 0).toFixed(2)} MAD</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '12px', background: remaining > 0 ? 'var(--danger-soft)' : 'var(--success-soft)', borderRadius: 'var(--radius-md)' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Reste dû</div>
+                <div style={{ fontSize: '20px', fontWeight: 'bold', color: remaining > 0 ? 'var(--danger)' : 'var(--success)' }}>{remaining.toFixed(2)} MAD</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -827,13 +844,14 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
           <div style={{ height: `${documentVirtualizer.getTotalSize()}px`, position: 'relative' }}>
           {documentVirtualizer.getVirtualItems().map(virtualRow => { const doc = documents[virtualRow.index];
             const statusInfo = STATUS_LABELS[doc.status] || STATUS_LABELS.DRAFT;
+            const statusLabel = doc.type === 'CREDIT_NOTE' && doc.status === 'PAID' ? 'Crédité' : statusInfo.label;
             const isSelected = selectedDocument?.id === doc.id;
             return (
               <div key={doc.id} onClick={() => selectDocument(doc)}
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)`, padding: '14px 20px', boxSizing: 'border-box', cursor: 'pointer', borderBottom: '1px solid var(--border)', background: isSelected ? 'var(--info-soft)' : 'transparent', borderLeft: isSelected ? `4px solid ${TYPE_LABELS[activeType].color}` : '4px solid transparent', transition: 'all 0.15s' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <span style={{ fontWeight: '700', fontSize: '15px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '1 1 auto', minWidth: 0 }}>{doc.document_number}</span>
-                  <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusInfo.label}</span>
+                  <span style={{ padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '700', background: statusInfo.bg, color: statusInfo.color }}>{statusLabel}</span>
                 </div>
                 <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.customer_name}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
