@@ -10,6 +10,7 @@ export interface StatCardProps {
   sub?: React.ReactNode;
   tone?: StatTone;
   softBg?: string;
+  onClick?: () => void;
 }
 
 const TONE_COLOR: Record<StatTone, string> = {
@@ -37,8 +38,9 @@ export const StatCard: React.FC<StatCardProps> = ({
   sub,
   tone = 'default',
   softBg,
+  onClick,
 }) => (
-  <div className="card stat-card">
+  <div className="card stat-card" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
     {icon ? (
       <div className="flex items-center gap-2">
         <span className="stat-card-icon" style={{ background: softBg ?? TONE_SOFT[tone] }}>
