@@ -22,7 +22,6 @@ export const POSPage: React.FC = () => {
   const loadClients = useClientStore((state) => state.loadClients);
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [barcodeInput, setBarcodeInput] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [showPayment, setShowPayment] = useState(false);
@@ -30,11 +29,11 @@ export const POSPage: React.FC = () => {
   const [cashGiven, setCashGiven] = useState<number>(0);
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastSale, setLastSale] = useState<{ docNumber: string; total: number; items: CartItem[] } | null>(null);
-  const barcodeRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadClients();
-    barcodeRef.current?.focus();
+    searchRef.current?.focus();
   }, []);
 
   useEffect(() => {
@@ -58,7 +57,7 @@ export const POSPage: React.FC = () => {
         target.isContentEditable
       );
       if (!showPayment && !showReceipt && !isTyping && e.key !== 'Tab' && e.key !== 'F2' && e.key !== 'Escape') {
-        barcodeRef.current?.focus();
+        searchRef.current?.focus();
       }
     };
     window.addEventListener('keydown', handler);
@@ -135,24 +134,23 @@ export const POSPage: React.FC = () => {
   const filteredProducts = products.filter((product) => product.status === 'ACTIVE');
 
   const handleBarcodeSubmit = async () => {
-    const code = barcodeInput.trim();
+    const code = productSearch.trim();
     if (!code) return;
 
     try {
       const byBarcode = await window.api.products.getByBarcode(code);
       if (byBarcode) {
         addToCart(byBarcode);
-        setBarcodeInput('');
+        setProductSearch('');
         return;
       }
       const byReference = await window.api.products.getByReference(code);
       if (byReference) {
         addToCart(byReference);
-        setBarcodeInput('');
+        setProductSearch('');
         return;
       }
-      setProductSearch(code);
-      setBarcodeInput('');
+      // Non trouvé par code-barres/référence exacte : la recherche live reste active.
     } catch {
       toast.error('La recherche du produit a échoué. Réessayez.');
     }
@@ -224,30 +222,12 @@ export const POSPage: React.FC = () => {
               <option value="">Client comptoir</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <Button variant="danger" size="sm" onClick={clearCart}>🗑️ Vider</Button>
           </>
         }
       />
 
       <div className="flex flex-1 pos-main" style={{ overflow: 'hidden', flexDirection: 'row-reverse' }}>
         <div className="pos-column">
-          <div style={{ padding: 'var(--space-4) var(--space-5)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-            <div className="flex gap-3">
-              <input
-                ref={barcodeRef}
-                type="text"
-                className="input input-lg flex-1"
-                value={barcodeInput}
-                onChange={e => setBarcodeInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleBarcodeSubmit(); }}
-                placeholder="📷 Scanner le code-barres ou taper la référence..."
-                autoFocus
-                style={{ borderColor: 'var(--primary)' }}
-              />
-              <Button variant="primary" size="lg" onClick={handleBarcodeSubmit}>Ajouter</Button>
-            </div>
-          </div>
-
           <div className="flex-1" style={{ overflowY: 'auto', overflowX: 'hidden', padding: 'var(--space-4) var(--space-5)' }}>
             {cart.length === 0 ? (
               <div className="state-box" style={{ height: '100%' }}>
@@ -339,11 +319,13 @@ export const POSPage: React.FC = () => {
         <div className="pos-sidebar">
           <div style={{ padding: '14px var(--space-4)', borderBottom: '1px solid var(--border)' }}>
             <input
+              ref={searchRef}
               type="text"
-              className="input w-full"
+              className="input input-lg w-full"
               value={productSearch}
               onChange={e => setProductSearch(e.target.value)}
-              placeholder="🔍 Rechercher un produit..."
+              onKeyDown={e => { if (e.key === 'Enter') handleBarcodeSubmit(); }}
+              placeholder="🔍 Rechercher un produit... (code-barres / référence)"
             />
           </div>
           <div className="flex-1" style={{ overflowY: 'auto', padding: 'var(--space-2)' }}>
@@ -419,7 +401,7 @@ export const POSPage: React.FC = () => {
         </ModalFooter>
       </Modal>
 
-      <Modal open={showReceipt && !!lastSale} onClose={() => { setShowReceipt(false); setLastSale(null); barcodeRef.current?.focus(); }} width={400}>
+      <Modal open={showReceipt && !!lastSale} onClose={() => { setShowReceipt(false); setLastSale(null); searchRef.current?.focus(); }} width={400}>
         <ModalBody className="text-center">
           <div style={{ fontSize: 48, marginBottom: 'var(--space-3)' }}>✅</div>
           <h2 className="text-success" style={{ margin: '0 0 var(--space-2)' }}>Vente enregistrée !</h2>
@@ -441,7 +423,7 @@ export const POSPage: React.FC = () => {
               </div>
             </>
           )}
-          <Button variant="primary" block size="lg" onClick={() => { setShowReceipt(false); setLastSale(null); barcodeRef.current?.focus(); }}>
+          <Button variant="primary" block size="lg" onClick={() => { setShowReceipt(false); setLastSale(null); searchRef.current?.focus(); }}>
             Nouvelle vente
           </Button>
         </ModalBody>
