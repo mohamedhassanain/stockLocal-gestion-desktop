@@ -535,8 +535,8 @@ export function registerReferenceDataHandlers(): void {
   });
 
   ipcMain.handle('export:dashboard', async () => {
-    return humanError(() => {
-      const filePath = ExportService.exportDashboard();
+    return humanError(async () => {
+      const filePath = await ExportService.exportDashboard();
       shell.openPath(filePath);
       return { success: true, filePath };
     });

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import ExcelJS from 'exceljs';
 import { DataStorageService } from './DataStorageService';
 import { DashboardRepository } from '../repositories/DashboardRepository';
 import { db } from '../database/config/connection';
@@ -49,42 +50,6 @@ function createCsvFile(filename: string, header: unknown[]): string {
 function appendCsvLines(filePath: string, lines: string[]): void {
   if (lines.length === 0) return;
   fs.appendFileSync(filePath, lines.join('\r\n') + '\r\n', 'utf-8');
-}
-
-// ─── Helpers Excel (.xls = tableau HTML, sans dépendance) ─────────────────────
-
-/** Échappe une valeur pour un tableau HTML Excel (anti-injection de formule + HTML). */
-function htmlEsc(val: unknown): string {
-  let s = String(val ?? '');
-  // Anti-injection de formule (§1.4) : préfixe par apostrophe
-  if (/^[=+\-@]/.test(s)) {
-    s = `'${s}`;
-  }
-  return s
-    .replace(/&/g, '&' + 'amp;')
-    .replace(/</g, '&' + 'lt;')
-    .replace(/>/g, '&' + 'gt;')
-    .replace(/"/g, '&' + 'quot;');
-}
-
-/** Écrit un fichier .xls (tableau HTML reconnu par Excel) — colonnes élargies + texte en gras. */
-function writeXls(filename: string, bodyHtml: string): string {
-  const exportsDir = DataStorageService.getExportsPath();
-  if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
-  const filePath = path.join(exportsDir, filename);
-  const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
-<head><meta charset="UTF-8">
-<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Rapport</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-<style>
-  table { border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
-  td, th { border: 1px solid #c4c9d0; padding: 6px 8px; }
-  th { background: #eef2f7; font-weight: bold; }
-  .hdr { background: #1f4e79; color: #fff; font-weight: bold; font-size: 12pt; }
-  .sec { background: #d9e2f3; font-weight: bold; }
-</style></head>
-<body>${bodyHtml}</body></html>`;
-  fs.writeFileSync(filePath, '\uFEFF' + html, 'utf-8');
-  return filePath;
 }
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
@@ -252,52 +217,96 @@ export const ExportService = {
   },
 
   /** Export du rapport de gestion (données agrégées — petits volumes). */
-  exportDashboard(): string {
+  async exportDashboard(): Promise<string> {
     const stats = DashboardRepository.getStats();
     const topProducts = DashboardRepository.getTopProducts();
     const topClients = DashboardRepository.getTopClients();
     const lowStock = DashboardRepository.getLowStockAlerts();
 
-    // Largeurs de colonnes (px). Excel respecte l'attribut width sur <td>/<col>,
-    // mais IGNORE <colgroup> avec un simple style : on met width en attribut partout.
-    const widths = [220, 150, 100, 110, 120, 100];
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'StockLocal';
+    wb.created = new Date();
+    const ws = wb.addWorksheet('Rapport');
 
-    const cell = (val: unknown, idx: number, opts: { th?: boolean; cls?: string; colSpan?: number; blank?: boolean } = {}): string => {
-      const tag = opts.th ? 'th' : 'td';
-      const w = opts.colSpan ? '' : ` width="${widths[idx] ?? 100}"`;
-      const colSpanAttr = opts.colSpan ? ` colspan="${opts.colSpan}"` : '';
-      const cls = opts.cls ? ` class="${opts.cls}"` : '';
-      const extra = opts.blank ? ' style="border:none;height:10px"' : '';
-      return `<${tag}${w}${colSpanAttr}${cls}${extra}>${htmlEsc(val)}</${tag}>`;
+    // Largeurs de colonnes (en caractères) — vrai .xlsx : appliquées par Excel.
+    ws.columns = [
+      { width: 24 }, // A — Produit / Client / Document
+      { width: 16 }, // B — Référence / Factures / Client
+      { width: 12 }, // C — Quantité / CA / Échéance
+      { width: 14 }, // D — CA / Marge / Reste
+      { width: 14 }, // E — Valeur / Jours
+      { width: 12 }, // F — Impayés
+    ];
+
+    const thinBorder: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+      left: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+      bottom: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+      right: { style: 'thin', color: { argb: 'FFC4C9D0' } },
     };
 
-    const sec = (title: string) => `<tr>${cell(title, 0, { cls: 'sec', colSpan: 6 })}</tr>`;
-    const hdrRow = (cells: string[]) => `<tr>${cells.map((c, i) => cell(c, i, { th: true })).join('')}</tr>`;
-    const dataRow = (vals: unknown[]) => `<tr>${vals.map((v, i) => cell(v, i)).join('')}</tr>`;
-    const spacer = () => `<tr>${cell('', 0, { blank: true, colSpan: 6 })}</tr>`;
+    const styleRow = (row: ExcelJS.Row, opts: { bold?: boolean; fill?: string; color?: string; center?: boolean } = {}) => {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = thinBorder;
+        cell.alignment = { vertical: 'middle', wrapText: true, ...(opts.center ? { horizontal: 'center' } : {}) };
+        const font: Partial<ExcelJS.Font> = { ...(cell.font ?? {}) };
+        if (opts.bold) font.bold = true;
+        if (opts.color) font.color = { argb: opts.color };
+        cell.font = font;
+        if (opts.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
+      });
+    };
 
-    const rows: string[] = [];
-    // Titre sur une seule cellule fusionnée (évite la troncature « Rapport de g »)
-    rows.push(`<tr><td colspan="6" class="hdr">${htmlEsc('RAPPORT DE GESTION — ' + new Date().toISOString().split('T')[0])}</td></tr>`);
-    rows.push(sec('INDICATEURS'));
-    rows.push(hdrRow(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']));
-    rows.push(dataRow([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]));
-    rows.push(spacer());
-    rows.push(sec('TOP PRODUITS'));
-    rows.push(hdrRow(['Produit', 'Référence', 'Quantité', 'CA']));
-    topProducts.forEach(p => rows.push(dataRow([p.designation, p.reference, p.total_qty, p.total_revenue])));
-    rows.push(spacer());
-    rows.push(sec('TOP CLIENTS'));
-    rows.push(hdrRow(['Client', 'Factures', 'CA']));
-    topClients.forEach(c => rows.push(dataRow([c.name, c.invoice_count, c.total_revenue])));
-    rows.push(spacer());
-    rows.push(sec('ALERTES STOCK'));
-    rows.push(hdrRow(['Produit', 'Référence', 'Stock', 'Min']));
-    lowStock.forEach(s => rows.push(dataRow([s.designation, s.reference, s.current_stock, s.min_stock])));
+    const addSection = (title: string) => {
+      const row = ws.addRow([title]);
+      ws.mergeCells(row.number, 1, row.number, 6);
+      styleRow(row, { bold: true, fill: 'FFD9E2F3' });
+      return row;
+    };
+    const addHeader = (cells: string[]) => {
+      const row = ws.addRow(cells);
+      styleRow(row, { bold: true, fill: 'FFEEF2F7' });
+      return row;
+    };
+    const addData = (vals: unknown[]) => {
+      const row = ws.addRow(vals);
+      styleRow(row);
+      return row;
+    };
+    const addSpacer = () => {
+      const row = ws.addRow([]);
+      row.height = 6;
+      return row;
+    };
 
-    const colgroup = widths.map(w => `<col width="${w}" style="mso-width-source:userset">`).join('');
-    const body = `<table><colgroup>${colgroup}</colgroup>${rows.join('')}</table>`;
+    // Titre
     const date = new Date().toISOString().split('T')[0];
-    return writeXls(`rapport_${date}.xls`, body);
+    const titleRow = ws.addRow([`RAPPORT DE GESTION — ${date}`]);
+    ws.mergeCells(titleRow.number, 1, titleRow.number, 6);
+    styleRow(titleRow, { bold: true, fill: 'FF1F4E79', color: 'FFFFFFFF', center: true });
+    titleRow.height = 24;
+
+    addSpacer();
+    addSection('INDICATEURS');
+    addHeader(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']);
+    addData([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]);
+    addSpacer();
+    addSection('TOP PRODUITS');
+    addHeader(['Produit', 'Référence', 'Quantité', 'CA']);
+    topProducts.forEach(p => addData([p.designation, p.reference, p.total_qty, p.total_revenue]));
+    addSpacer();
+    addSection('TOP CLIENTS');
+    addHeader(['Client', 'Factures', 'CA']);
+    topClients.forEach(c => addData([c.name, c.invoice_count, c.total_revenue]));
+    addSpacer();
+    addSection('ALERTES STOCK');
+    addHeader(['Produit', 'Référence', 'Stock', 'Min']);
+    lowStock.forEach(s => addData([s.designation, s.reference, s.current_stock, s.min_stock]));
+
+    const exportsDir = DataStorageService.getExportsPath();
+    if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
+    const filePath = path.join(exportsDir, `rapport_${date}.xlsx`);
+    await wb.xlsx.writeFile(filePath);
+    return filePath;
   }
 };
