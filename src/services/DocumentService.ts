@@ -53,9 +53,9 @@ export const DocumentService = {
     return DocumentRepository.updateDocument(id, data);
   },
 
-  getDocuments(type: DocumentType, query = '', limit = 100, offset = 0): Document[] {
-    if (query.trim() === '') return DocumentRepository.getAll(type, limit, offset);
-    return DocumentRepository.search(type, query.trim());
+  getDocuments(type: DocumentType, query = '', limit = 100, offset = 0, status?: string): Document[] {
+    if (query.trim() === '') return DocumentRepository.getAll(type, limit, offset, status);
+    return DocumentRepository.search(type, query.trim(), status);
   },
 
   getDocument(id: string): Document | undefined {

@@ -109,9 +109,9 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
-  // Navigation vers une autre page (événement écouté par App).
-  const navigate = (page: string) => {
-    window.dispatchEvent(new CustomEvent('navigate', { detail: page }));
+  // Navigation vers une autre page (événement écouté par App). `status` filtre les factures.
+  const navigate = (page: string, status?: string) => {
+    window.dispatchEvent(new CustomEvent('navigate', { detail: status ? { page, status } : page }));
   };
 
   if (isLoading) {
@@ -155,7 +155,7 @@ export const DashboardPage: React.FC = () => {
           <StatCard icon="📈" label="CA Ce Mois" value={`${stats?.revenue_month.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_month ?? 0} facture(s)`} tone="success" onClick={() => navigate('invoices')} />
           <StatCard icon="💹" label="Marge (mois)" value={`${stats?.gross_margin_month.toFixed(2) ?? '0.00'} MAD`} softBg="var(--accent-soft)" onClick={() => navigate('reports')} />
           <StatCard icon="📦" label="Valeur du stock" value={`${stats?.total_stock_value.toFixed(2) ?? '0.00'} MAD`} tone="info" onClick={() => navigate('stock')} />
-          <StatCard icon="⚠️" label="Impayés clients" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" tone="danger" onClick={() => navigate('client-credits')} />
+          <StatCard icon="⚠️" label="Impayés clients" value={`${stats?.unpaid_total.toFixed(2) ?? '0.00'} MAD`} sub="Factures non soldées" tone="danger" onClick={() => navigate('invoices', 'UNPAID')} />
           <StatCard icon="🏭" label="Dettes fournisseurs" value={`${stats?.supplier_debt_total.toFixed(2) ?? '0.00'} MAD`} sub="Crédits fournisseurs en cours" tone="warning" onClick={() => navigate('suppliers')} />
         </div>
 
@@ -163,9 +163,9 @@ export const DashboardPage: React.FC = () => {
         {alertSummary && (
           <div className="stat-grid">
             <StatCard label="Stock bas" value={alertSummary.low_stock_count} icon="📦" tone="warning" onClick={() => navigate('stock-alerts')} />
-            <StatCard label="Impayés" value={alertSummary.unpaid_count} icon="💰" tone="danger" onClick={() => navigate('client-credits')} />
-            <StatCard label="En retard" value={alertSummary.overdue_count} icon="⏰" tone="danger" onClick={() => navigate('client-credits')} />
-            <StatCard label="Échéance J-7" value={alertSummary.expiring_soon_count} icon="📅" tone="warning" onClick={() => navigate('client-credits')} />
+            <StatCard label="Impayés" value={alertSummary.unpaid_count} icon="💰" tone="danger" onClick={() => navigate('invoices', 'UNPAID')} />
+            <StatCard label="En retard" value={alertSummary.overdue_count} icon="⏰" tone="danger" onClick={() => navigate('invoices', 'UNPAID')} />
+            <StatCard label="Échéance J-7" value={alertSummary.expiring_soon_count} icon="📅" tone="warning" onClick={() => navigate('invoices')} />
           </div>
         )}
 

@@ -44,6 +44,7 @@ export const App: React.FC = () => {
   const [diskMessage, setDiskMessage] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('');
 
   const checkAppReady = useCallback(async () => {
     try {
@@ -108,9 +109,19 @@ export const App: React.FC = () => {
     ]);
 
     const handleNavigate = (e: Event) => {
-      const target = (e as CustomEvent).detail as Page;
-      if (target && VALID_PAGES.has(target)) {
-        setCurrentPage(target);
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === 'string') {
+        if (detail && VALID_PAGES.has(detail as Page)) {
+          setCurrentPage(detail as Page);
+          setInvoiceStatusFilter('');
+        }
+      } else if (detail && typeof detail === 'object') {
+        const target = (detail as { page?: string }).page as Page | undefined;
+        const status = (detail as { status?: string }).status;
+        if (target && VALID_PAGES.has(target)) {
+          setCurrentPage(target);
+          setInvoiceStatusFilter(status ?? '');
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -173,10 +184,10 @@ export const App: React.FC = () => {
       {currentPage === 'stock' && <StockPage />}
       {currentPage === 'clients' && <ClientsPage />}
       {currentPage === 'suppliers' && <SuppliersPage />}
-      {currentPage === 'invoices' && <InvoicePage initialType="INVOICE" />}
-      {currentPage === 'devis' && <InvoicePage initialType="QUOTE" />}
-      {currentPage === 'delivery-notes' && <InvoicePage initialType="DELIVERY_NOTE" />}
-      {currentPage === 'credit-notes' && <InvoicePage initialType="CREDIT_NOTE" />}
+      {currentPage === 'invoices' && <InvoicePage initialType="INVOICE" initialStatusFilter={invoiceStatusFilter} />}
+      {currentPage === 'devis' && <InvoicePage initialType="QUOTE" initialStatusFilter={invoiceStatusFilter} />}
+      {currentPage === 'delivery-notes' && <InvoicePage initialType="DELIVERY_NOTE" initialStatusFilter={invoiceStatusFilter} />}
+      {currentPage === 'credit-notes' && <InvoicePage initialType="CREDIT_NOTE" initialStatusFilter={invoiceStatusFilter} />}
       {currentPage === 'settings' && <SettingsPage />}
       {currentPage === 'pos' && <POSPage />}
       {currentPage === 'purchases' && <PurchasesPage />}

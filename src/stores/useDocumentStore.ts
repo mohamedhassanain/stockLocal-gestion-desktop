@@ -6,11 +6,13 @@ interface DocumentState {
   selectedDocument: Document | null;
   activeType: DocumentType;
   searchQuery: string;
+  statusFilter: string;
   isLoading: boolean;
   error: string | null;
 
   setActiveType: (type: DocumentType) => void;
   setSearchQuery: (q: string) => void;
+  setStatusFilter: (status: string) => void;
   loadDocuments: () => Promise<void>;
   loadMoreDocuments: () => Promise<void>;
   selectDocument: (doc: Document) => Promise<void>;
@@ -28,11 +30,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   selectedDocument: null,
   activeType: 'INVOICE',
   searchQuery: '',
+  statusFilter: '',
   isLoading: false,
   error: null,
 
   setActiveType: (type) => {
-    set({ activeType: type, selectedDocument: null, searchQuery: '' });
+    set({ activeType: type, selectedDocument: null, searchQuery: '', statusFilter: '' });
     get().loadDocuments();
   },
 
@@ -41,13 +44,19 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     get().loadDocuments();
   },
 
+  setStatusFilter: (status) => {
+    set({ statusFilter: status, selectedDocument: null });
+    get().loadDocuments();
+  },
+
   loadDocuments: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { activeType, searchQuery } = get();
+      const { activeType, searchQuery, statusFilter } = get();
+      const status = statusFilter ? statusFilter : undefined;
       const data = searchQuery.trim()
-        ? await window.api.documents.search(activeType, searchQuery)
-        : await window.api.documents.getAll(activeType, { limit: 100, offset: 0 });
+        ? await window.api.documents.search(activeType, searchQuery, status)
+        : await window.api.documents.getAll(activeType, { limit: 100, offset: 0, status });
       set({ documents: data, isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
@@ -55,11 +64,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   loadMoreDocuments: async () => {
-    const { activeType, searchQuery, documents, isLoading } = get();
+    const { activeType, searchQuery, documents, isLoading, statusFilter } = get();
     if (isLoading || searchQuery.trim()) return;
     set({ isLoading: true });
     try {
-      const next = await window.api.documents.getAll(activeType, { limit: 100, offset: documents.length });
+      const status = statusFilter ? statusFilter : undefined;
+      const next = await window.api.documents.getAll(activeType, { limit: 100, offset: documents.length, status });
       set({ documents: [...documents, ...next], isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });

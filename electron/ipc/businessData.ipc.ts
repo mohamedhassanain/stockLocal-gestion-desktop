@@ -234,15 +234,17 @@ export function registerBusinessDataHandlers(): void {
 
   ipcMain.handle('documents:getAll', async (_, type: unknown, params?: unknown) => {
     const safeType = safeDocumentType(type);
-    const p = (params ?? {}) as { limit?: unknown; offset?: unknown };
+    const p = (params ?? {}) as { limit?: unknown; offset?: unknown; status?: unknown };
     const limit = Math.min(Math.max(Number(p.limit ?? 100) || 100, 1), 500);
     const offset = Math.max(Number(p.offset ?? 0) || 0, 0);
-    return DocumentService.getDocuments(safeType, '', limit, offset);
+    const status = typeof p.status === 'string' && p.status ? p.status : undefined;
+    return DocumentService.getDocuments(safeType, '', limit, offset, status);
   });
 
-  ipcMain.handle('documents:search', async (_, { type, query }: { type: unknown; query: unknown }) => {
+  ipcMain.handle('documents:search', async (_, { type, query, status }: { type: unknown; query: unknown; status?: unknown }) => {
     const safeType = safeDocumentType(type);
-    return DocumentService.getDocuments(safeType, typeof query === 'string' ? query.trim().slice(0, 200) : '');
+    const safeStatus = typeof status === 'string' && status ? status : undefined;
+    return DocumentService.getDocuments(safeType, typeof query === 'string' ? query.trim().slice(0, 200) : '', undefined, undefined, safeStatus);
   });
 
   ipcMain.handle('documents:getById', async (_, id: unknown) => {

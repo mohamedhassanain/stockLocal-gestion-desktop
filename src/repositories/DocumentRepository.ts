@@ -92,6 +92,26 @@ const stmtSearch = db.prepare<[string, string, string]>(`
   LIMIT 200
 `);
 
+const stmtGetAllByStatus = db.prepare<[string, string, number, number]>(`
+  SELECT d.*, c.name AS customer_name,
+    COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0) AS amount_paid
+  FROM documents d
+  LEFT JOIN customers c ON c.id = d.entity_id
+  WHERE d.type = ? AND d.status = ?
+  ORDER BY d.date DESC
+  LIMIT ? OFFSET ?
+`);
+
+const stmtSearchByStatus = db.prepare<[string, string, string, string]>(`
+  SELECT d.*, c.name AS customer_name,
+    COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0) AS amount_paid
+  FROM documents d
+  LEFT JOIN customers c ON c.id = d.entity_id
+  WHERE d.type = ? AND d.status = ? AND (c.name LIKE ? OR d.document_number LIKE ?)
+  ORDER BY d.date DESC
+  LIMIT 200
+`);
+
 const stmtGetById = db.prepare<[string]>(`
   SELECT d.*, c.name AS customer_name,
     COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0) AS amount_paid
@@ -196,12 +216,14 @@ export const DocumentRepository = {
     return `${prefixes[type]}-${year}-${String(seq).padStart(5, '0')}`;
   },
 
-  getAll(type: DocumentType, limit = 100, offset = 0): Document[] {
+  getAll(type: DocumentType, limit = 100, offset = 0, status?: string): Document[] {
+    if (status) return stmtGetAllByStatus.all(type, status, limit, offset) as Document[];
     return stmtGetAll.all(type, limit, offset) as Document[];
   },
 
-  search(type: DocumentType, query: string): Document[] {
+  search(type: DocumentType, query: string, status?: string): Document[] {
     const q = `%${query}%`;
+    if (status) return stmtSearchByStatus.all(type, status, q, q) as Document[];
     return stmtSearch.all(type, q, q) as Document[];
   },
 

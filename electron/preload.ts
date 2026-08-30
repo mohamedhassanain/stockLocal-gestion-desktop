@@ -329,8 +329,8 @@ export const api = {
 
   // ─── Documents ─────────────────────────────────────────────────────────────
   documents: {
-    getAll: (type: string, params?: { limit?: number; offset?: number }) => ipcRenderer.invoke('documents:getAll', type, params),
-    search: (type: string, query: string) => ipcRenderer.invoke('documents:search', { type, query }),
+    getAll: (type: string, params?: { limit?: number; offset?: number; status?: string }) => ipcRenderer.invoke('documents:getAll', type, params),
+    search: (type: string, query: string, status?: string) => ipcRenderer.invoke('documents:search', { type, query, status }),
     getById: (id: string) => ipcRenderer.invoke('documents:getById', id),
     create: (data: SaleCreateInput) => ipcRenderer.invoke('documents:create', data),
     addPayment: (data: PaymentInput) => ipcRenderer.invoke('documents:addPayment', data),

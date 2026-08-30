@@ -673,8 +673,8 @@ const DocumentDetailPanel: React.FC<{
 
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
-export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialType }) => {
-  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
+export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFilter?: string }> = ({ initialType, initialStatusFilter }) => {
+  const { documents, selectedDocument, activeType, searchQuery, statusFilter, isLoading, setActiveType, setSearchQuery, setStatusFilter, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
@@ -686,6 +686,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
 
   useEffect(() => {
     if (initialType) setActiveType(initialType);
+    if (initialStatusFilter !== undefined) setStatusFilter(initialStatusFilter);
   }, []);
 
   useEffect(() => { loadDocuments(); }, []);
@@ -820,11 +821,19 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
         </div>
       </div>
 
-      {/* Barre de recherche */}
-      <div style={{ padding: '12px 28px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+      {/* Barre de recherche + filtre statut */}
+      <div style={{ padding: '12px 28px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <input type="text" placeholder={`Rechercher dans les ${TYPE_LABELS[activeType].label}...`}
           value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-          className="input" />
+          className="input" style={{ flex: 1 }} />
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          className="select" style={{ width: 'auto', minWidth: '150px' }}>
+          <option value="">Tous les statuts</option>
+          <option value="PAID">Payée</option>
+          <option value="UNPAID">Impayée</option>
+          <option value="PARTIAL">Partielle</option>
+          <option value="CANCELLED">Annulée</option>
+        </select>
       </div>
 
       {/* Contenu */}
