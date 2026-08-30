@@ -109,7 +109,15 @@ export const SettingsPage: React.FC = () => {
     product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
   });
   const [newUnit, setNewUnit] = useState('');
-  const [productsList, setProductsList] = useState<Array<{ id: string; designation: string; min_stock: number }>>([]);
+  const [productsList, setProductsList] = useState<Array<{ id: string; designation: string; reference: string; min_stock: number }>>([]);
+  const [minStockSearch, setMinStockSearch] = useState('');
+
+  // Produits filtrés pour la section « Seuils de stock par produit »
+  const filteredMinStockProducts = productsList.filter(p => {
+    const q = minStockSearch.trim().toLowerCase();
+    if (!q) return true;
+    return p.designation.toLowerCase().includes(q) || p.reference.toLowerCase().includes(q);
+  });
 
   const notify = (text: string) => { setMessage(text); setTimeout(() => setMessage(null), 3500); };
 
@@ -132,7 +140,7 @@ export const SettingsPage: React.FC = () => {
       setDataPath(path);
       setConversions(convs ?? []);
       if (gs) setGlobalSettings(prev => ({ ...prev, ...gs }));
-      setProductsList((prods ?? []).map((p: any) => ({ id: p.id, designation: p.designation, min_stock: p.min_stock ?? 0 })));
+      setProductsList((prods ?? []).map((p: any) => ({ id: p.id, designation: p.designation, reference: p.reference ?? '', min_stock: p.min_stock ?? 0 })));
     } catch (e: any) {
       notify(e.message);
     }
@@ -874,8 +882,16 @@ export const SettingsPage: React.FC = () => {
             <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
               Définissez le seuil minimum (alerte « Stock bas ») pour chaque produit. Stock sous ce seuil → notification.
             </p>
-            {productsList.length === 0 ? (
-              <div className="text-muted text-center" style={{ padding: 16 }}>Aucun produit.</div>
+            <Input
+              placeholder="🔍 Rechercher un produit..."
+              value={minStockSearch}
+              onChange={e => setMinStockSearch(e.target.value)}
+              className="mb-3"
+            />
+            {filteredMinStockProducts.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>
+                {productsList.length === 0 ? 'Aucun produit.' : 'Aucun produit trouvé.'}
+              </div>
             ) : (
               <div style={{ maxHeight: 360, overflowY: 'auto' }}>
                 <table className="table">
@@ -887,7 +903,7 @@ export const SettingsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {productsList.map(p => (
+                    {filteredMinStockProducts.map(p => (
                       <tr key={p.id}>
                         <td className="font-semibold">{p.designation}</td>
                         <td>
