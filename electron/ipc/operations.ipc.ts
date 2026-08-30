@@ -1,7 +1,8 @@
 import { ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { requireId, toHumanError, csvEscape } from '../ipcValidation';
+import ExcelJS from 'exceljs';
+import { requireId, toHumanError } from '../ipcValidation';
 import { DashboardRepository } from '../../src/repositories/DashboardRepository';
 import { PurchaseOrderRepository } from '../../src/repositories/PurchaseOrderRepository';
 import { InventorySessionRepository } from '../../src/repositories/InventorySessionRepository';
@@ -195,7 +196,7 @@ export function registerOperationsHandlers(): void {
   // Export CSV du rapport de gestion — anti-injection de formule CSV §1.4
   // via csvEscape() centralisé (idéntique à ExportService).
   ipcMain.handle('reports:exportCsv', async (_, data: unknown) => {
-    return run(() => {
+    return run(async () => {
       // Le payload vient du renderer : on ne lit que des champs connus et on
       // ignore le reste — pas de `any` à la frontière (validé structurellement).
       interface ReportRow { [key: string]: unknown }
@@ -203,37 +204,94 @@ export function registerOperationsHandlers(): void {
       const stats = (payload['stats'] && typeof payload['stats'] === 'object' && !Array.isArray(payload['stats']) ? payload['stats'] : {}) as ReportRow;
       const rows = (value: unknown): ReportRow[] => Array.isArray(value) ? value as ReportRow[] : [];
 
-      const csv = (row: unknown[]) => row.map(csvEscape).join(';');
-      const { writeFileSync, mkdirSync } = fs;
-      const { join } = path;
-      const lines: string[] = [];
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'StockLocal';
+      wb.created = new Date();
+      const ws = wb.addWorksheet('Rapport');
 
-      lines.push('\uFEFF');
-      lines.push(csv(['Rapport de gestion', new Date().toISOString().split('T')[0]]));
-      lines.push('');
-      lines.push(csv(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']));
-      lines.push(csv([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]));
-      lines.push('');
-      lines.push(csv(['TOP PRODUITS']));
-      lines.push(csv(['Produit', 'Référence', 'Quantité', 'CA']));
-      for (const p of rows(payload['topProducts'])) lines.push(csv([p.designation, p.reference, p.total_qty, p.total_revenue]));
-      lines.push('');
-      lines.push(csv(['TOP CLIENTS']));
-      lines.push(csv(['Client', 'Factures', 'CA']));
-      for (const c of rows(payload['topClients'])) lines.push(csv([c.name, c.invoice_count, c.total_revenue]));
-      lines.push('');
-      lines.push(csv(['ALERTES STOCK']));
-      lines.push(csv(['Produit', 'Référence', 'Stock', 'Min']));
-      for (const s of rows(payload['lowStock'])) lines.push(csv([s.designation, s.reference, s.current_stock, s.min_stock]));
-      lines.push('');
-      lines.push(csv(['ECHEANCES']));
-      lines.push(csv(['Document', 'Client', 'Echéance', 'Reste', 'Jours']));
-      for (const d of rows(payload['dues'])) lines.push(csv([d.document_number, d.customer_name, d.due_date, d.remaining, d.days_left]));
+      // Largeurs de colonnes — vrai .xlsx : appliquées par Excel.
+      ws.columns = [
+        { width: 24 }, // A — Produit / Client / Document
+        { width: 18 }, // B — Référence / Factures / Client
+        { width: 12 }, // C — Quantité / CA / Échéance
+        { width: 14 }, // D — CA / Marge / Reste
+        { width: 14 }, // E — Valeur / Jours
+        { width: 12 }, // F — Impayés
+      ];
+
+      const thinBorder: Partial<ExcelJS.Borders> = {
+        top: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+        left: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+        bottom: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+        right: { style: 'thin', color: { argb: 'FFC4C9D0' } },
+      };
+
+      const styleRow = (row: ExcelJS.Row, opts: { bold?: boolean; fill?: string; color?: string; center?: boolean } = {}) => {
+        row.eachCell({ includeEmpty: true }, (cell) => {
+          cell.border = thinBorder;
+          cell.alignment = { vertical: 'middle', wrapText: true, ...(opts.center ? { horizontal: 'center' } : {}) };
+          const font: Partial<ExcelJS.Font> = { ...(cell.font ?? {}) };
+          if (opts.bold) font.bold = true;
+          if (opts.color) font.color = { argb: opts.color };
+          cell.font = font;
+          if (opts.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opts.fill } };
+        });
+      };
+
+      const addSection = (title: string, span: number) => {
+        const row = ws.addRow([title]);
+        ws.mergeCells(row.number, 1, row.number, span);
+        styleRow(row, { bold: true, fill: 'FFD9E2F3' });
+        return row;
+      };
+      const addHeader = (cells: string[]) => {
+        const row = ws.addRow(cells);
+        styleRow(row, { bold: true, fill: 'FFEEF2F7' });
+        return row;
+      };
+      const addData = (vals: unknown[]) => {
+        const row = ws.addRow(vals);
+        styleRow(row);
+        return row;
+      };
+      const addSpacer = () => {
+        const row = ws.addRow([]);
+        row.height = 6;
+        return row;
+      };
+
+      // Titre
+      const date = new Date().toISOString().split('T')[0];
+      const titleRow = ws.addRow([`Rapport de gestion — ${date}`]);
+      ws.mergeCells(titleRow.number, 1, titleRow.number, 6);
+      styleRow(titleRow, { bold: true, fill: 'FF1F4E79', color: 'FFFFFFFF', center: true });
+      titleRow.height = 24;
+
+      addSpacer();
+      addSection('INDICATEURS', 6);
+      addHeader(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']);
+      addData([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]);
+      addSpacer();
+      addSection('TOP PRODUITS', 4);
+      addHeader(['Produit', 'Référence', 'Quantité', 'CA']);
+      for (const p of rows(payload['topProducts'])) addData([p.designation, p.reference, p.total_qty, p.total_revenue]);
+      addSpacer();
+      addSection('TOP CLIENTS', 3);
+      addHeader(['Client', 'Factures', 'CA']);
+      for (const c of rows(payload['topClients'])) addData([c.name, c.invoice_count, c.total_revenue]);
+      addSpacer();
+      addSection('ALERTES STOCK', 4);
+      addHeader(['Produit', 'Référence', 'Stock', 'Min']);
+      for (const s of rows(payload['lowStock'])) addData([s.designation, s.reference, s.current_stock, s.min_stock]);
+      addSpacer();
+      addSection('ECHEANCES', 5);
+      addHeader(['Document', 'Client', 'Echéance', 'Reste', 'Jours']);
+      for (const d of rows(payload['dues'])) addData([d.document_number, d.customer_name, d.due_date, d.remaining, d.days_left]);
 
       const exportsDir = DataStorageService.getExportsPath();
-      mkdirSync(exportsDir, { recursive: true });
-      const filePath = join(exportsDir, `rapport_${new Date().toISOString().split('T')[0]}.csv`);
-      writeFileSync(filePath, lines.join('\r\n'), 'utf-8');
+      fs.mkdirSync(exportsDir, { recursive: true });
+      const filePath = path.join(exportsDir, `rapport_${date}.xlsx`);
+      await wb.xlsx.writeFile(filePath);
       shell.openPath(filePath);
       return { success: true, filePath };
     });
