@@ -234,6 +234,74 @@ export const MCP_TOOLS: Record<string, McpToolDef> = {
     },
   },
 
+  get_low_stock_products: {
+    name: 'get_low_stock_products',
+    description: 'Liste les produits en stock faible (sous le seuil min_stock) pour anticiper les ruptures.',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => DashboardRepository.getLowStockAlerts(),
+  },
+
+  get_stock_value: {
+    name: 'get_stock_value',
+    description: 'Valeur totale du stock (au coût moyen pondéré) et indicateurs associés.',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => DashboardRepository.getStats(),
+  },
+
+  get_sales_analysis: {
+    name: 'get_sales_analysis',
+    description: 'Analyse des ventes : CA, marge, impayés, top produits.',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => {
+      const stats = DashboardRepository.getStats();
+      const top = DashboardRepository.getTopProducts();
+      return { stats, topProducts: top };
+    },
+  },
+
+  get_top_selling_products: {
+    name: 'get_top_selling_products',
+    description: 'Top produits par volume de vente (meilleures ventes).',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => DashboardRepository.getTopProducts(),
+  },
+
+  get_top_clients: {
+    name: 'get_top_clients',
+    description: 'Top clients par chiffre d\'affaires.',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => DashboardRepository.getTopClients(),
+  },
+
+  get_revenue_summary: {
+    name: 'get_revenue_summary',
+    description: 'Résumé du chiffre d\'affaires (aujourd\'hui, mois) et des impayés.',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => DashboardRepository.getStats(),
+  },
+
+  // Résumé structuré pour AI Business Insights — chiffres REELS fournis au LLM
+  // (le LLM ne fait que narrer/recommander, il n'invente jamais les chiffres).
+  get_business_summary: {
+    name: 'get_business_summary',
+    description: 'Résumé business structuré pour analyse IA : CA, marge, valeur stock, stock faible, impayés, alertes, recommandations.',
+    kind: 'READ',
+    inputSchema: z.object({}).default({}),
+    execute: () => {
+      const stats = DashboardRepository.getStats();
+      const alerts = DashboardRepository.getAlertSummary();
+      const lowStock = DashboardRepository.getLowStockAlerts();
+      const lowStockCount = Array.isArray(lowStock) ? lowStock.length : 0;
+      return { stats, alerts, lowStockCount };
+    },
+  },
+
   // ═══ Écriture ═══
   create_product: {
     name: 'create_product',
