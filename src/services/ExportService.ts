@@ -258,13 +258,27 @@ export const ExportService = {
     const topClients = DashboardRepository.getTopClients();
     const lowStock = DashboardRepository.getLowStockAlerts();
 
-    const sec = (title: string) => `<tr><td colspan="6" class="sec">${htmlEsc(title)}</td></tr>`;
-    const hdrRow = (cells: string[]) => `<tr>${cells.map(c => `<th>${htmlEsc(c)}</th>`).join('')}</tr>`;
-    const dataRow = (cells: unknown[]) => `<tr>${cells.map(c => `<td>${htmlEsc(c)}</td>`).join('')}</tr>`;
-    const spacer = () => `<tr><td colspan="6" style="border:none;height:10px"></td></tr>`;
+    // Largeurs de colonnes (px). Excel respecte l'attribut width sur <td>/<col>,
+    // mais IGNORE <colgroup> avec un simple style : on met width en attribut partout.
+    const widths = [220, 150, 100, 110, 120, 100];
+
+    const cell = (val: unknown, idx: number, opts: { th?: boolean; cls?: string; colSpan?: number; blank?: boolean } = {}): string => {
+      const tag = opts.th ? 'th' : 'td';
+      const w = opts.colSpan ? '' : ` width="${widths[idx] ?? 100}"`;
+      const colSpanAttr = opts.colSpan ? ` colspan="${opts.colSpan}"` : '';
+      const cls = opts.cls ? ` class="${opts.cls}"` : '';
+      const extra = opts.blank ? ' style="border:none;height:10px"' : '';
+      return `<${tag}${w}${colSpanAttr}${cls}${extra}>${htmlEsc(val)}</${tag}>`;
+    };
+
+    const sec = (title: string) => `<tr>${cell(title, 0, { cls: 'sec', colSpan: 6 })}</tr>`;
+    const hdrRow = (cells: string[]) => `<tr>${cells.map((c, i) => cell(c, i, { th: true })).join('')}</tr>`;
+    const dataRow = (vals: unknown[]) => `<tr>${vals.map((v, i) => cell(v, i)).join('')}</tr>`;
+    const spacer = () => `<tr>${cell('', 0, { blank: true, colSpan: 6 })}</tr>`;
 
     const rows: string[] = [];
-    rows.push(`<tr><td colspan="2" class="hdr">RAPPORT DE GESTION</td><td colspan="4" class="hdr">${new Date().toISOString().split('T')[0]}</td></tr>`);
+    // Titre sur une seule cellule fusionnée (évite la troncature « Rapport de g »)
+    rows.push(`<tr><td colspan="6" class="hdr">${htmlEsc('RAPPORT DE GESTION — ' + new Date().toISOString().split('T')[0])}</td></tr>`);
     rows.push(sec('INDICATEURS'));
     rows.push(hdrRow(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']));
     rows.push(dataRow([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]));
@@ -281,7 +295,8 @@ export const ExportService = {
     rows.push(hdrRow(['Produit', 'Référence', 'Stock', 'Min']));
     lowStock.forEach(s => rows.push(dataRow([s.designation, s.reference, s.current_stock, s.min_stock])));
 
-    const body = `<table><colgroup><col style="width:45px"><col style="width:110px"><col style="width:70px"><col style="width:110px"><col style="width:90px"><col style="width:80px"></colgroup>${rows.join('')}</table>`;
+    const colgroup = widths.map(w => `<col width="${w}" style="mso-width-source:userset">`).join('');
+    const body = `<table><colgroup>${colgroup}</colgroup>${rows.join('')}</table>`;
     const date = new Date().toISOString().split('T')[0];
     return writeXls(`rapport_${date}.xls`, body);
   }
