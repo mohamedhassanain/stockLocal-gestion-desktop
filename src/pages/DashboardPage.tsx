@@ -162,10 +162,10 @@ export const DashboardPage: React.FC = () => {
         {/* Résumé des alertes */}
         {alertSummary && (
           <div className="stat-grid">
-            <StatCard label="Stock bas" value={alertSummary.low_stock_count} icon="📦" tone="warning" onClick={() => navigate('stock-alerts')} />
-            <StatCard label="Impayés" value={alertSummary.unpaid_count} icon="💰" tone="danger" onClick={() => navigate('invoices', 'UNPAID')} />
-            <StatCard label="En retard" value={alertSummary.overdue_count} icon="⏰" tone="danger" onClick={() => navigate('invoices', 'UNPAID')} />
-            <StatCard label="Échéance J-7" value={alertSummary.expiring_soon_count} icon="📅" tone="warning" onClick={() => navigate('invoices')} />
+            <StatCard label="Stock bas" value={alertSummary.low_stock_count} icon="📦" tone="warning" />
+            <StatCard label="Impayés" value={alertSummary.unpaid_count} icon="💰" tone="danger" />
+            <StatCard label="En retard" value={alertSummary.overdue_count} icon="⏰" tone="danger" />
+            <StatCard label="Échéance J-7" value={alertSummary.expiring_soon_count} icon="📅" tone="warning" />
           </div>
         )}
 
