@@ -166,6 +166,11 @@ export const SettingsPage: React.FC = () => {
     const result = await window.api.company.pickLogo();
     if (result?.success && result.path) {
       setCompany(prev => ({ ...prev, logo_path: result.path }));
+      // Auto-persistance : le logo apparaît immédiatement dans les PDF, sans cliquer sur « Enregistrer ».
+      try {
+        const saved = await window.api.company.save({ logo_path: result.path });
+        if (saved && saved.success) setCompany(saved.data);
+      } catch { /* silencieux */ }
       notify('✅ Logo sélectionné');
     } else if (result && !result.canceled) {
       notify(`❌ ${result.error ?? 'Erreur lors de la sélection du logo.'}`);
@@ -651,7 +656,14 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary mb-4">
-              <input type="checkbox" checked={company.show_logo_on_documents} onChange={e => setCompany(prev => ({ ...prev, show_logo_on_documents: e.target.checked }))} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
+              <input type="checkbox" checked={company.show_logo_on_documents} onChange={e => {
+                const checked = e.target.checked;
+                setCompany(prev => ({ ...prev, show_logo_on_documents: checked }));
+                // Auto-persistance : le réglage s'applique immédiatement aux PDF.
+                window.api.company.save({ show_logo_on_documents: checked })
+                  .then(r => { if (r && r.success) setCompany(r.data); })
+                  .catch(() => {});
+              }} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
               🖼️ Afficher le logo sur les factures & PDF
             </label>
 
