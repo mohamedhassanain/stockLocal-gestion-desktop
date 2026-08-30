@@ -17,6 +17,7 @@ import {
   StockExitSchema,
   InventorySchema,
   SaleSchema,
+  DocumentUpdateSchema,
   PaymentSchema,
   CreditNoteCreateSchema,
   ClientCreateSchema,
@@ -337,6 +338,28 @@ export function registerBusinessDataHandlers(): void {
       DocumentRepository.updateDocumentNotes(safeId, notes);
       AuditService.log('DOCUMENT_UPDATE', 'document', safeId, 'Notes du document modifiées');
       return { success: true };
+    });
+  });
+
+  ipcMain.handle('documents:update', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { id?: unknown; data?: unknown };
+      const safeId = requireId(p.id, 'id document');
+      const safe = nullToUndefined(safeParse(DocumentUpdateSchema, p.data, 'Modification document'));
+      const doc = DocumentService.updateDocument(safeId, {
+        entity_id: safe.entity_id,
+        date: safe.date,
+        due_date: safe.due_date ?? undefined,
+        notes: safe.notes ?? undefined,
+        items: safe.items.map(i => ({
+          product_id: i.product_id,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          discount: i.discount ?? 0,
+        })),
+      });
+      AuditService.log('DOCUMENT_UPDATE', 'document', safeId, `${doc.type} ${doc.document_number} modifié`);
+      return { success: true, data: doc };
     });
   });
 }

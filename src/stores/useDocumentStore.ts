@@ -19,6 +19,7 @@ interface DocumentState {
   convertBL: (deliveryNoteId: string) => Promise<Document>;
   deleteDocument: (id: string) => Promise<void>;
   updateNotes: (id: string, notes: string) => Promise<void>;
+  updateDocument: (id: string, data: any) => Promise<Document>;
   clearSelectedDocument: () => void;
 }
 
@@ -147,6 +148,24 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       }
       await get().loadDocuments();
       set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  updateDocument: async (id, data) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.documents.update(id, data);
+      if (!result.success) throw new Error(result.error);
+      if (get().selectedDocument?.id === id) {
+        const full = await window.api.documents.getById(id);
+        set({ selectedDocument: full });
+      }
+      await get().loadDocuments();
+      set({ isLoading: false });
+      return result.data;
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
       throw err;

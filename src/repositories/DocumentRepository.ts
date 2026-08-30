@@ -510,6 +510,85 @@ export const DocumentRepository = {
   },
 
   /**
+   * Met à jour un document (devis, BL, facture) : client, date, lignes produits, notes.
+   * Pour INVOICE/DELIVERY_NOTE, le stock est ré-inversé puis ré-appliqué atomiquement.
+   */
+  updateDocument(id: string, data: {
+    entity_id: string;
+    date: string;
+    due_date?: string;
+    notes?: string;
+    items: ItemInput[];
+  }): Document {
+    const doc = stmtGetById.get(id) as Document | undefined;
+    if (!doc) throw new Error('Document introuvable.');
+    if (doc.type === 'CREDIT_NOTE') {
+      throw new Error('Un avoir ne peut pas être entièrement modifié ici. Utilisez la modification des notes.');
+    }
+
+    // Recalcul des totaux (TVA ligne par ligne)
+    let totalExclTax = 0;
+    let totalTax = 0;
+    let totalInclTax = 0;
+    let discountAmount = 0;
+    const itemTotals = data.items.map(item => {
+      const vatRow = stmtGetProductVat.get(item.product_id) as { vat_rate: number } | undefined;
+      const vatRate = Number(vatRow?.vat_rate ?? 20);
+      const totals = computeLineTotals(item, vatRate);
+      totalExclTax += totals.lineExclTax;
+      totalTax += totals.lineTax;
+      totalInclTax += totals.lineInclTax;
+      discountAmount += item.quantity * item.unit_price * (item.discount / 100);
+      return { vatRate, totals };
+    });
+    totalExclTax = round2(totalExclTax);
+    totalTax = round2(totalTax);
+    totalInclTax = round2(totalInclTax);
+    discountAmount = round2(discountAmount);
+
+    const applyStock = doc.type === 'INVOICE' || doc.type === 'DELIVERY_NOTE';
+
+    runInTransaction(() => {
+      // Retirer les anciens mouvements de stock (restauration)
+      if (applyStock) {
+        db.prepare(`DELETE FROM stock_movements WHERE document_id = ?`).run(id);
+      }
+
+      // Mettre à jour l'entête
+      db.prepare(`
+        UPDATE documents SET entity_id = ?, date = ?, due_date = ?, notes = ?,
+          total_excl_tax = ?, total_tax = ?, total_incl_tax = ?, discount_amount = ?,
+          updated_at = CURRENT_TIMESTAMP WHERE id = ?
+      `).run(data.entity_id, data.date, data.due_date ?? null, data.notes ?? null, totalExclTax, totalTax, totalInclTax, discountAmount, id);
+
+      // Remplacer les lignes
+      db.prepare(`DELETE FROM document_items WHERE document_id = ?`).run(id);
+      for (let i = 0; i < data.items.length; i++) {
+        const item = data.items[i];
+        const vatRate = itemTotals[i].vatRate;
+        stmtInsertItem.run(randomUUID(), id, item.product_id, item.quantity, item.unit_price, item.discount, itemTotals[i].totals.lineExclTax, vatRate);
+      }
+
+      // Ré-appliquer le stock
+      if (applyStock) {
+        for (const item of data.items) {
+          StockLedgerService.recordMovement({
+            product_id: item.product_id,
+            movement_type: 'SALE_OUT',
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            reference_doc: doc.document_number,
+            document_id: id,
+            notes: `${doc.type === 'INVOICE' ? 'VENTE' : 'LIVRAISON'} — ${doc.document_number}`,
+          });
+        }
+      }
+    });
+
+    return this.getById(id)!;
+  },
+
+  /**
    * Conversion BL → Facture.
    *
    * IMPORTANT : le stock a déjà été décrémenté lors de la création du BL.

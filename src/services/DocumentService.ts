@@ -31,6 +31,28 @@ export const DocumentService = {
     return DocumentRepository.create({ ...data, manageStock });
   },
 
+  /**
+   * Met à jour un document (devis, BL, facture) : client, date, lignes produits, notes.
+   * Le stock est géré atomiquement par le repository (ré-inversion + ré-application).
+   */
+  updateDocument(id: string, data: {
+    entity_id: string;
+    date: string;
+    due_date?: string;
+    notes?: string;
+    items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
+  }): Document {
+    if (!data.items || data.items.length === 0) throw new Error('Le document doit contenir au moins une ligne de produit.');
+
+    for (const item of data.items) {
+      if (item.quantity <= 0) throw new Error('La quantité doit être supérieure à 0.');
+      if (item.unit_price < 0) throw new Error('Le prix unitaire ne peut pas être négatif.');
+      if (item.discount < 0 || item.discount > 100) throw new Error('La remise doit être comprise entre 0 et 100%.');
+    }
+
+    return DocumentRepository.updateDocument(id, data);
+  },
+
   getDocuments(type: DocumentType, query = '', limit = 100, offset = 0): Document[] {
     if (query.trim() === '') return DocumentRepository.getAll(type, limit, offset);
     return DocumentRepository.search(type, query.trim());

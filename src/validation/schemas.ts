@@ -74,6 +74,15 @@ export const SaleSchema = z.object({
   items: z.array(SaleItemSchema).min(1, 'Le document doit contenir au moins une ligne.'),
 });
 
+/** Schéma de modification d'un document (client, date, lignes, notes). */
+export const DocumentUpdateSchema = z.object({
+  entity_id: z.string().max(64),
+  date: z.string().min(1),
+  due_date: z.string().optional().nullable(),
+  notes: z.string().max(1000).optional().nullable(),
+  items: z.array(SaleItemSchema).min(1, 'Le document doit contenir au moins une ligne.'),
+});
+
 export const PaymentSchema = z.object({
   document_id: z.string().min(1).max(64),
   amount: z.number().positive('Le montant du paiement doit être supérieur à 0.'),

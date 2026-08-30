@@ -369,6 +369,162 @@ const NewDocumentModal: React.FC<{
   );
 };
 
+// ─── Modal d'Édition Complète d'un Document ─────────────────────────────────
+
+const EditDocumentModal: React.FC<{
+  doc: Document;
+  onClose: () => void;
+  onSave: (data: { entity_id: string; date: string; due_date?: string; notes?: string; items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }> }) => void;
+}> = ({ doc, onClose, onSave }) => {
+  const { clients, loadClients } = useClientStore();
+  const { products, loadProducts } = useProductStore();
+  const [entityId, setEntityId] = useState(doc.entity_id || '');
+  const [date, setDate] = useState((doc.date || new Date().toISOString()).split('T')[0]);
+  const [dueDate, setDueDate] = useState(doc.due_date ? doc.due_date.split('T')[0] : '');
+  const [notes, setNotes] = useState(doc.notes ?? '');
+  const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; discount: number; _name?: string }>>(
+    (doc.items ?? []).map(it => ({ product_id: it.product_id, quantity: it.quantity, unit_price: it.unit_price, discount: it.discount, _name: `${it.product_ref} — ${it.product_name}` }))
+  );
+  const [productSearch, setProductSearch] = useState('');
+
+  useEffect(() => { loadClients(); loadProducts(); }, []);
+
+  const filteredProducts = products.filter(p =>
+    productSearch === '' || p.designation.toLowerCase().includes(productSearch.toLowerCase()) || p.reference.toLowerCase().includes(productSearch.toLowerCase())
+  );
+
+  const addLine = (product: any) => {
+    setItems(prev => [...prev, { product_id: product.id, quantity: 1, unit_price: product.selling_price ?? 0, discount: 0, _name: `${product.reference} — ${product.designation}` }]);
+    setProductSearch('');
+  };
+
+  const updateLine = (idx: number, key: string, val: number) => {
+    setItems(prev => prev.map((item, i) => i === idx ? { ...item, [key]: val } : item));
+  };
+
+  const removeLine = (idx: number) => {
+    setItems(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const total = items.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - it.discount / 100), 0);
+
+  const handleSave = () => {
+    onSave({ entity_id: entityId, date, due_date: dueDate || undefined, notes, items: items.map(({ _name, ...rest }) => rest) });
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-xl)', width: '800px', maxHeight: '90vh', overflowY: 'auto', boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={{ padding: '24px 28px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span style={{ fontSize: '24px' }}>{TYPE_LABELS[doc.type].icon}</span>
+          <h2 style={{ margin: 0, color: 'var(--text)' }}>Modifier {TYPE_LABELS[doc.type].label} — {doc.document_number}</h2>
+        </div>
+
+        <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Infos générales */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Client *</label>
+              <select value={entityId} onChange={e => setEntityId(e.target.value)} className="select">
+                <option value="">— Sélectionnez un client —</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Date *</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input" />
+            </div>
+            {doc.type === 'INVOICE' && (
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Échéance</label>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="input" />
+              </div>
+            )}
+            <div style={{ gridColumn: doc.type === 'INVOICE' ? '2 / 3' : '1 / 3' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Notes</label>
+              <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Remarques, instructions..." className="input" />
+            </div>
+          </div>
+
+          {/* Recherche produit */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Ajouter un produit</label>
+            <input type="text" placeholder="Tapez une référence ou désignation..." value={productSearch} onChange={e => setProductSearch(e.target.value)} className="input" />
+            {productSearch && filteredProducts.length > 0 && (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', marginTop: '6px', maxHeight: '180px', overflowY: 'auto', background: 'var(--surface)', boxShadow: 'var(--shadow-md)' }}>
+                {filteredProducts.slice(0, 8).map(p => (
+                  <div key={p.id} onClick={() => addLine(p)}
+                    style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <span><strong>{p.reference}</strong> — {p.designation}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{p.selling_price?.toFixed(2)} MAD</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Lignes produits */}
+          {items.length > 0 && (
+            <div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface-2)', textAlign: 'left' }}>
+                    <th style={{ padding: '10px', borderBottom: '2px solid var(--border)' }}>Produit</th>
+                    <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>Qté</th>
+                    <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid var(--border)', textAlign: 'right' }}>P.U. (MAD)</th>
+                    <th style={{ padding: '10px', width: '80px', borderBottom: '2px solid var(--border)', textAlign: 'center' }}>Rem%</th>
+                    <th style={{ padding: '10px', width: '110px', borderBottom: '2px solid var(--border)', textAlign: 'right' }}>Total</th>
+                    <th style={{ padding: '10px', width: '40px', borderBottom: '2px solid var(--border)' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => {
+                    const lineTotal = item.quantity * item.unit_price * (1 - item.discount / 100);
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px' }}>{item._name}</td>
+                        <td style={{ padding: '4px 8px' }}>
+                          <input type="number" min="1" value={item.quantity} onChange={e => updateLine(idx, 'quantity', Number(e.target.value))} className="input" />
+                        </td>
+                        <td style={{ padding: '4px 8px' }}>
+                          <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateLine(idx, 'unit_price', Number(e.target.value))} className="input" />
+                        </td>
+                        <td style={{ padding: '4px 8px' }}>
+                          <input type="number" min="0" max="100" value={item.discount} onChange={e => updateLine(idx, 'discount', Number(e.target.value))} className="input" />
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600' }}>{lineTotal.toFixed(2)}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                          <button onClick={() => removeLine(idx)} className="btn btn-ghost" style={{ color: 'var(--danger)', fontSize: '18px' }}>×</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'var(--surface-2)', fontWeight: 'bold' }}>
+                    <td colSpan={4} style={{ padding: '12px 10px', textAlign: 'right', fontSize: '16px' }}>TOTAL HT :</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '18px', color: 'var(--text)' }}>{total.toFixed(2)} MAD</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '20px 28px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button onClick={onClose} className="btn btn-secondary">Annuler</button>
+          <button onClick={handleSave} disabled={!entityId || items.length === 0} className="btn btn-primary">💾 Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Détail d'un document ─────────────────────────────────────────────────────
 
 const DocumentDetailPanel: React.FC<{
@@ -501,10 +657,11 @@ const DocumentDetailPanel: React.FC<{
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
 export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialType }) => {
-  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, deleteDocument, updateNotes, clearSelectedDocument } = useDocumentStore();
+  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
+  const [editDoc, setEditDoc] = useState<Document | null>(null);
   const [editNotesDoc, setEditNotesDoc] = useState<Document | null>(null);
   const [editNotesValue, setEditNotesValue] = useState('');
   const documentListRef = useRef<HTMLDivElement>(null);
@@ -591,10 +748,16 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
     }
   };
 
-  const openEditNotes = () => {
+  const openEdit = () => {
     if (!selectedDocument) return;
-    setEditNotesDoc(selectedDocument);
-    setEditNotesValue(selectedDocument.notes ?? '');
+    // Un avoir (document de crédit) ne peut être que partiellement modifié (notes).
+    // Les devis / BL / factures sont entièrement modifiables (client, date, lignes).
+    if (selectedDocument.type === 'CREDIT_NOTE') {
+      setEditNotesDoc(selectedDocument);
+      setEditNotesValue(selectedDocument.notes ?? '');
+    } else {
+      setEditDoc(selectedDocument);
+    }
   };
 
   const handleSaveNotes = async () => {
@@ -603,6 +766,17 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
       await updateNotes(editNotesDoc.id, editNotesValue);
       toast.success('Notes modifiées.');
       setEditNotesDoc(null);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleSaveEdit = async (data: any) => {
+    if (!editDoc) return;
+    try {
+      await updateDocument(editDoc.id, data);
+      toast.success('Document modifié avec succès.');
+      setEditDoc(null);
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -686,7 +860,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
               onPrint={handlePrint}
               onCreditNote={selectedDocument.type === 'INVOICE' ? handleCreditNoteClick : undefined}
               onDelete={() => setPendingDelete(selectedDocument)}
-              onEdit={openEditNotes}
+              onEdit={openEdit}
             />
           )}
         </div>
@@ -713,6 +887,14 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
           confirmLabel="Supprimer définitivement"
           onConfirm={() => { void handleDeleteDocument(); }}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {editDoc && (
+        <EditDocumentModal
+          doc={editDoc}
+          onClose={() => setEditDoc(null)}
+          onSave={handleSaveEdit}
         />
       )}
 

@@ -105,6 +105,14 @@ export interface SaleCreateInput {
   items: SaleItemInput[];
 }
 
+export interface DocumentUpdateInput {
+  entity_id: string;
+  date: string;
+  due_date?: string | null;
+  notes?: string | null;
+  items: SaleItemInput[];
+}
+
 export interface PaymentInput {
   document_id: string;
   amount: number;
@@ -334,6 +342,7 @@ export const api = {
     exportPdf: (documentId: string) => ipcRenderer.invoke('documents:exportPdf', documentId),
     delete: (id: string) => ipcRenderer.invoke('documents:delete', id),
     updateNotes: (id: string, notes: string) => ipcRenderer.invoke('documents:updateNotes', { id, notes }),
+    update: (id: string, data: DocumentUpdateInput) => ipcRenderer.invoke('documents:update', { id, data }),
   },
 
   // ─── Dashboard ─────────────────────────────────────────────────────────────
