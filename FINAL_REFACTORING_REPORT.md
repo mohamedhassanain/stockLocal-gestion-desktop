@@ -1,6 +1,19 @@
 # Rapport de Refactoring — StockLocal (Application Desktop Electron)
 
-> **Statut honnête.** Ce rapport reflète ce qui a **réellement été modifié, testé et vérifié**. Le chantier demandé (18 catégories P0/P1) est un effort **multi-sessions**. J'ai complété et **validé par tests** les correctifs **P0 les plus critiques** (intégrité des données), et documenté clairement ce qui **reste** à faire. **Je ne prétends pas "100% complete".**
+> **Statut honnête.** Ce rapport reflète ce qui a **réellement été modifié, testé et vérifié**. Le chantier demandé (18 catégories P0/P1) est un effort **multi-sessions**. J'ai complété et **validé par tests** les correctifs **P0 les plus critiques** (intégrité des données) **et plusieurs items P1 concrets**, et documenté clairement ce qui **reste** à faire. **Je ne prétends pas "100% complete".**
+
+---
+
+## 0. Mise à jour (avancement P1)
+
+Ces items P1 ont ensuite été **implémentés et vérifiés** (`tsc` OK) :
+
+- **Backup — tri fiable** : `listBackupsInDir` trie désormais par **`mtimeMs`** (nombre), plus jamais par la chaîne formatée `date` (`toLocaleString`).
+- **Backup — validation par checksum** : `backup()` écrit un fichier `.sha256` (SHA-256) à côté du backup ; `validateBackup()` vérifie `integrity_check` **puis** le checksum (`altéré` détecté).
+- **Backup — au démarrage si expiré** : nouvelle méthode `checkAndBackupIfDue()` appelée au démarrage (`main.ts`) — si la dernière sauvegarde est expirée (ou absente) et que `auto_backup_enabled` est actif, un backup est créé **immédiatement** (fire-and-forget).
+- **Sécurité Electron — CSP durcie** : ajout de `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'` à la CSP de production (ne casse ni React ni Electron). `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, `webSecurity:true` déjà présents.
+- **IPC Security — Zod pour inventaire versioning** : nouveaux schémas `InventoryCreateVersionSchema`, `InventoryGetVersionsSchema`, `InventoryRestoreVersionSchema`, `InventoryCorrectionSchema` utilisés dans les handlers IPC (`safeParse`). Le preload envoie `{ sessionId }` pour `getVersions` (cohérent avec le schéma).
+- **CSV — anti-injection de formule** : déjà centralisé dans `ExportService.csvEscape` (`=`, `+`, `-`, `@` → apostrophe) — **aucune modification nécessaire**.
 
 ---
 
