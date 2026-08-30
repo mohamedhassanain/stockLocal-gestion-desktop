@@ -363,6 +363,8 @@ CREATE INDEX IF NOT EXISTS idx_products_subcategory ON products (subcategory_id)
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements (product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON stock_movements (date);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_type ON stock_movements (type);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_movement_type ON stock_movements (movement_type);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_document ON stock_movements (document_id);
 
 CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents (entity_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents (status);

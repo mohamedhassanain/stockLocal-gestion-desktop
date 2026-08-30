@@ -127,8 +127,8 @@ describe('Phase 4 — Exports CSV par batch (plus de plafond silencieux)', () =>
     expect(content).toContain(`'+SUM`);
   });
 
-  it('exportDashboard appelle bien la nouvelle requête agrégée (dettes fournisseurs)', () => {
-    const filePath = ExportService.exportDashboard();
+  it('exportDashboard appelle bien la nouvelle requête agrégée (dettes fournisseurs)', async () => {
+    const filePath = await ExportService.exportDashboard();
     expect(fs.existsSync(filePath)).toBe(true);
   });
 });
