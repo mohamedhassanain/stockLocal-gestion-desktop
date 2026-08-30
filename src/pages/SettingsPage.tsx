@@ -109,7 +109,7 @@ export const SettingsPage: React.FC = () => {
     product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
   });
   const [newUnit, setNewUnit] = useState('');
-  const [productsList, setProductsList] = useState<Array<{ id: string; designation: string }>>([]);
+  const [productsList, setProductsList] = useState<Array<{ id: string; designation: string; min_stock: number }>>([]);
 
   const notify = (text: string) => { setMessage(text); setTimeout(() => setMessage(null), 3500); };
 
@@ -132,7 +132,7 @@ export const SettingsPage: React.FC = () => {
       setDataPath(path);
       setConversions(convs ?? []);
       if (gs) setGlobalSettings(prev => ({ ...prev, ...gs }));
-      setProductsList((prods ?? []).map((p: any) => ({ id: p.id, designation: p.designation })));
+      setProductsList((prods ?? []).map((p: any) => ({ id: p.id, designation: p.designation, min_stock: p.min_stock ?? 0 })));
     } catch (e: any) {
       notify(e.message);
     }
@@ -506,6 +506,20 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // Seuil de stock bas par produit (notification « Stock bas »)
+  const saveProductMinStock = async (productId: string, minStock: number) => {
+    try {
+      const result = await window.api.products.update(productId, { min_stock: minStock });
+      if (result.success) {
+        notify('✅ Seuil min mis à jour');
+      } else {
+        notify(`❌ ${result.error}`);
+      }
+    } catch (e: any) {
+      notify(`❌ ${e.message}`);
+    }
+  };
+
   const persistUnits = async (units: string[]) => {
     setGlobalSettings(prev => ({ ...prev, product_units: units }));
     try {
@@ -854,6 +868,46 @@ export const SettingsPage: React.FC = () => {
             </div>
 
             <Button onClick={saveGlobalSettings}>💾 Enregistrer les paramètres</Button>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '24px 0' }} />
+            <SectionTitle icon="📦" title="Seuils de stock par produit" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
+              Définissez le seuil minimum (alerte « Stock bas ») pour chaque produit. Stock sous ce seuil → notification.
+            </p>
+            {productsList.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>Aucun produit.</div>
+            ) : (
+              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Produit</th>
+                      <th style={{ width: 120 }}>Seuil min</th>
+                      <th style={{ width: 90 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productsList.map(p => (
+                      <tr key={p.id}>
+                        <td className="font-semibold">{p.designation}</td>
+                        <td>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={p.min_stock}
+                            onChange={e => setProductsList(prev => prev.map(x => x.id === p.id ? { ...x, min_stock: Number(e.target.value) } : x))}
+                            inputSize="sm"
+                          />
+                        </td>
+                        <td>
+                          <Button size="sm" onClick={() => saveProductMinStock(p.id, p.min_stock)}>💾</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         )}
 
