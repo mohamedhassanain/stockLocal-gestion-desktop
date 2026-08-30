@@ -51,12 +51,39 @@ function appendCsvLines(filePath: string, lines: string[]): void {
   fs.appendFileSync(filePath, lines.join('\r\n') + '\r\n', 'utf-8');
 }
 
-/** Export mono-lot (petits volumes) — conserve le comportement historique. */
-function writeCsv(filename: string, lines: string[]): string {
+// ─── Helpers Excel (.xls = tableau HTML, sans dépendance) ─────────────────────
+
+/** Échappe une valeur pour un tableau HTML Excel (anti-injection de formule + HTML). */
+function htmlEsc(val: unknown): string {
+  let s = String(val ?? '');
+  // Anti-injection de formule (§1.4) : préfixe par apostrophe
+  if (/^[=+\-@]/.test(s)) {
+    s = `'${s}`;
+  }
+  return s
+    .replace(/&/g, '&' + 'amp;')
+    .replace(/</g, '&' + 'lt;')
+    .replace(/>/g, '&' + 'gt;')
+    .replace(/"/g, '&' + 'quot;');
+}
+
+/** Écrit un fichier .xls (tableau HTML reconnu par Excel) — colonnes élargies + texte en gras. */
+function writeXls(filename: string, bodyHtml: string): string {
   const exportsDir = DataStorageService.getExportsPath();
   if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
   const filePath = path.join(exportsDir, filename);
-  fs.writeFileSync(filePath, '\uFEFF' + lines.join('\r\n'), 'utf-8');
+  const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head><meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Rapport</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>
+  table { border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
+  td, th { border: 1px solid #c4c9d0; padding: 6px 8px; }
+  th { background: #eef2f7; font-weight: bold; }
+  .hdr { background: #1f4e79; color: #fff; font-weight: bold; font-size: 12pt; }
+  .sec { background: #d9e2f3; font-weight: bold; }
+</style></head>
+<body>${bodyHtml}</body></html>`;
+  fs.writeFileSync(filePath, '\uFEFF' + html, 'utf-8');
   return filePath;
 }
 
@@ -231,26 +258,31 @@ export const ExportService = {
     const topClients = DashboardRepository.getTopClients();
     const lowStock = DashboardRepository.getLowStockAlerts();
 
-    const lines: string[] = [
-      csvRow(['RAPPORT DE GESTION', new Date().toISOString().split('T')[0]]),
-      '',
-      csvRow(['INDICATEURS']),
-      csvRow(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']),
-      csvRow([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]),
-      '',
-      csvRow(['TOP PRODUITS']),
-      csvRow(['Produit', 'Référence', 'Quantité', 'CA']),
-      ...topProducts.map(p => csvRow([p.designation, p.reference, p.total_qty, p.total_revenue])),
-      '',
-      csvRow(['TOP CLIENTS']),
-      csvRow(['Client', 'Factures', 'CA']),
-      ...topClients.map(c => csvRow([c.name, c.invoice_count, c.total_revenue])),
-      '',
-      csvRow(['ALERTES STOCK']),
-      csvRow(['Produit', 'Référence', 'Stock', 'Min']),
-      ...lowStock.map(s => csvRow([s.designation, s.reference, s.current_stock, s.min_stock])),
-    ];
+    const sec = (title: string) => `<tr><td colspan="6" class="sec">${htmlEsc(title)}</td></tr>`;
+    const hdrRow = (cells: string[]) => `<tr>${cells.map(c => `<th>${htmlEsc(c)}</th>`).join('')}</tr>`;
+    const dataRow = (cells: unknown[]) => `<tr>${cells.map(c => `<td>${htmlEsc(c)}</td>`).join('')}</tr>`;
+    const spacer = () => `<tr><td colspan="6" style="border:none;height:10px"></td></tr>`;
+
+    const rows: string[] = [];
+    rows.push(`<tr><td colspan="2" class="hdr">RAPPORT DE GESTION</td><td colspan="4" class="hdr">${new Date().toISOString().split('T')[0]}</td></tr>`);
+    rows.push(sec('INDICATEURS'));
+    rows.push(hdrRow(['CA Jour', 'CA Semaine', 'CA Mois', 'Marge Mois', 'Valeur Stock', 'Impayés']));
+    rows.push(dataRow([stats.revenue_today, stats.revenue_week, stats.revenue_month, stats.gross_margin_month, stats.total_stock_value, stats.unpaid_total]));
+    rows.push(spacer());
+    rows.push(sec('TOP PRODUITS'));
+    rows.push(hdrRow(['Produit', 'Référence', 'Quantité', 'CA']));
+    topProducts.forEach(p => rows.push(dataRow([p.designation, p.reference, p.total_qty, p.total_revenue])));
+    rows.push(spacer());
+    rows.push(sec('TOP CLIENTS'));
+    rows.push(hdrRow(['Client', 'Factures', 'CA']));
+    topClients.forEach(c => rows.push(dataRow([c.name, c.invoice_count, c.total_revenue])));
+    rows.push(spacer());
+    rows.push(sec('ALERTES STOCK'));
+    rows.push(hdrRow(['Produit', 'Référence', 'Stock', 'Min']));
+    lowStock.forEach(s => rows.push(dataRow([s.designation, s.reference, s.current_stock, s.min_stock])));
+
+    const body = `<table><colgroup><col style="width:45px"><col style="width:110px"><col style="width:70px"><col style="width:110px"><col style="width:90px"><col style="width:80px"></colgroup>${rows.join('')}</table>`;
     const date = new Date().toISOString().split('T')[0];
-    return writeCsv(`rapport_${date}.csv`, lines);
+    return writeXls(`rapport_${date}.xls`, body);
   }
 };
