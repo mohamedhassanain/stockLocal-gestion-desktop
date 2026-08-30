@@ -32,6 +32,10 @@ const PRODUCTION_CSP = [
   "img-src 'self' data: file:",
   "font-src 'self' data:",
   "connect-src 'self'",
+  // P1 — Durcissement CSP (ne casse ni React ni Electron)
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
 ].join('; ');
 
 function installContentSecurityPolicy(): void {
@@ -155,6 +159,8 @@ app.whenReady().then(() => {
     console.error('[Seed] Échec du jeu de données de démonstration :', error);
   }
   AuditService.log('APP_START', 'system', 'stocklocal', 'Application démarrée');
+  // P1 : vérifie au démarrage si la sauvegarde automatique est expirée → backup immédiat.
+  BackupService.checkAndBackupIfDue();
   BackupService.scheduleAutoBackup();
   createWindow();
 });

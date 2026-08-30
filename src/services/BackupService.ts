@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { DataStorageService } from './DataStorageService';
 import { GlobalSettingsService } from './GlobalSettingsService';
 
@@ -11,6 +12,7 @@ export interface BackupInfo {
   date: string;
   sizeKB: number;
   valid: boolean;
+  mtimeMs: number; // valeur numérique pour un tri fiable (jamais la chaîne formatée)
 }
 
 export const BackupService = {
@@ -61,6 +63,9 @@ export const BackupService = {
     // Conserver seulement les 10 dernières sauvegardes
     this.cleanupOldBackups(backupDir, 10);
 
+    // Checksum SHA-256 : empreinte de référence pour la validation (P1)
+    this.writeChecksum(backupPath);
+
     console.log(`[Backup] Sauvegarde créée : ${backupPath}`);
     return backupPath;
   },
@@ -108,9 +113,11 @@ export const BackupService = {
           date: stats.mtime.toLocaleString('fr-MA'),
           sizeKB: Math.round(stats.size / 1024),
           valid,
+          mtimeMs: stats.mtimeMs,
         };
       })
-      .sort((a, b) => b.date.localeCompare(a.date));
+      // P1 : tri par mtimeMs (nombre), jamais par la chaîne formatée `date`.
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
   },
 
   /**
@@ -193,15 +200,24 @@ export const BackupService = {
       if (stats.size === 0) {
         return { valid: false, error: 'Le fichier est vide.' };
       }
-      // Essayer d'ouvrir le backup en lecture seule
+      // 1. Intégrité SQLite
       const Database = (await import('better-sqlite3')).default;
       const testDb = new Database(backupPath, { readonly: true });
       const result = testDb.pragma('integrity_check') as Array<{ integrity_check: string }>;
       testDb.close();
-      if (result[0]?.integrity_check === 'ok') {
-        return { valid: true };
+      if (result[0]?.integrity_check !== 'ok') {
+        return { valid: false, error: `Intégrité compromise : ${result[0]?.integrity_check}` };
       }
-      return { valid: false, error: `Intégrité compromise : ${result[0]?.integrity_check}` };
+      // 2. Checksum SHA-256 (si un fichier .sha256 a été écrit à la création)
+      const checksumPath = backupPath + '.sha256';
+      if (fs.existsSync(checksumPath)) {
+        const expected = fs.readFileSync(checksumPath, 'utf8').trim();
+        const actual = this.computeChecksum(backupPath);
+        if (actual !== expected) {
+          return { valid: false, error: 'Checksum invalide : le fichier a été altéré.' };
+        }
+      }
+      return { valid: true };
     } catch (e: any) {
       return { valid: false, error: `Validation échouée : ${e.message}` };
     }
@@ -251,6 +267,53 @@ export const BackupService = {
     } else {
       // 'on_close' : la sauvegarde est déclenchée à la fermeture de l'app (main.ts).
       console.log('[Backup] Sauvegarde automatique à la fermeture activée.');
+    }
+  },
+
+  /** P1 — Checksum SHA-256 d'un fichier (empreinte de référence). */
+  computeChecksum(filePath: string): string {
+    const data = fs.readFileSync(filePath);
+    return createHash('sha256').update(data).digest('hex');
+  },
+
+  /** P1 — Écrit le checksum à côté du backup (fichier .sha256). */
+  writeChecksum(backupPath: string): void {
+    try {
+      const checksum = this.computeChecksum(backupPath);
+      fs.writeFileSync(backupPath + '.sha256', checksum + '\n', 'utf8');
+    } catch (e) {
+      console.warn('[Backup] Impossible d\'écrire le checksum:', e);
+    }
+  },
+
+  /**
+   * P1 — Vérifie au démarrage si un backup automatique est dû.
+   * "Application startup → check last successful backup → if backup expired → create backup."
+   * Ne bloque pas le démarrage (fire-and-forget). Respecte l'option auto_backup_enabled.
+   */
+  checkAndBackupIfDue(): void {
+    const settings = GlobalSettingsService.getAll();
+    if (!settings.auto_backup_enabled) return;
+
+    const DAY = 24 * 60 * 60 * 1000;
+    const intervals: Record<string, number> = {
+      daily: DAY,
+      weekly: 7 * DAY,
+      monthly: 30 * DAY,
+    };
+    const interval = intervals[settings.auto_backup_frequency];
+    if (!interval) return; // on_close : géré à la fermeture
+
+    const backups = this.listBackups();
+    if (backups.length === 0) {
+      // Aucune sauvegarde : on en crée une immédiatement.
+      this.backup().catch(e => console.error('[Backup] Backup démarrage échoué:', e));
+      return;
+    }
+
+    const lastMtime = Math.max(...backups.map(b => b.mtimeMs));
+    if (Date.now() - lastMtime >= interval) {
+      this.backup().catch(e => console.error('[Backup] Backup démarrage (expiré) échoué:', e));
     }
   }
 };
