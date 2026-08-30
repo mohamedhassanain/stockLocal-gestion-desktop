@@ -117,6 +117,7 @@ export const InventoryPage: React.FC = () => {
   const {
     sessions,
     selectedSession,
+    versions,
     isLoading,
     error,
     loadSessions,
@@ -129,6 +130,10 @@ export const InventoryPage: React.FC = () => {
     validateSession,
     deleteSession,
     selectSession,
+    createVersion,
+    getVersions,
+    restoreVersion,
+    correctValidatedInventory,
   } = useInventoryStore();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -189,6 +194,7 @@ export const InventoryPage: React.FC = () => {
   const handleSelectSession = async (session: InventorySession) => {
     selectSession(session);
     await loadSessionById(session.id);
+    await getVersions(session.id);
   };
 
   const handleStartCounting = async () => {
@@ -215,6 +221,49 @@ export const InventoryPage: React.FC = () => {
     try {
       await calculateGaps(selectedSession.id);
       toast.success('Écarts calculés avec succès.');
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleCreateVersion = async () => {
+    if (!selectedSession) return;
+    try {
+      await createVersion(selectedSession.id);
+      toast.success('Version enregistrée.');
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string) => {
+    if (!selectedSession) return;
+    setPendingConfirm({
+      title: 'Restaurer cette version ?',
+      message: (
+        <>
+          Les comptages seront remplacés par ceux de la version choisie.<br />
+          <strong>Une nouvelle version sera créée</strong> (l'historique reste intact).
+        </>
+      ),
+      danger: true,
+      confirmLabel: 'Restaurer',
+      action: async () => {
+        try {
+          await restoreVersion(selectedSession!.id, versionId);
+          toast.success('Version restaurée. Une nouvelle version a été créée.');
+        } catch (e: any) {
+          toast.error(e.message);
+        }
+      },
+    });
+  };
+
+  const handleCorrectItem = async (itemId: string, correctedQty: number) => {
+    if (!selectedSession) return;
+    try {
+      await correctValidatedInventory(selectedSession.id, { [itemId]: correctedQty });
+      toast.success('Correction appliquée. Le stock a été ajusté.');
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -284,6 +333,7 @@ export const InventoryPage: React.FC = () => {
   const totalItems = selectedSession?.items?.length || 0;
   const status = selectedSession?.status ?? 'DRAFT';
   const canCount = status === 'COMPTAGE';
+  const canCorrect = status === 'VALIDATION';
 
   const diffBadgeVariant = (diff: number): 'success' | 'info' | 'danger' => {
     if (diff === 0) return 'success';
@@ -485,7 +535,36 @@ export const InventoryPage: React.FC = () => {
                       ✅ Valider l'Inventaire
                     </Button>
                   )}
+                  {status !== 'DRAFT' && (
+                    <Button variant="secondary" onClick={handleCreateVersion} disabled={isLoading} title="Enregistrer un instantané des comptages">
+                      💾 Enregistrer une version
+                    </Button>
+                  )}
                 </div>
+
+                {versions.length > 0 && status !== 'DRAFT' && (
+                  <div className="mb-4" style={{ padding: 12, backgroundColor: 'var(--surface-2, #f5f5f5)', borderRadius: 8 }}>
+                    <div className="font-semibold text-sm" style={{ marginBottom: 8 }}>
+                      🕘 Historique des versions
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {versions.map(v => (
+                        <div key={v.id} className="flex justify-between items-center" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                          <div>
+                            <span className="font-semibold text-sm">Version {v.version_number}</span>
+                            <span className="text-xs text-muted" style={{ marginLeft: 8 }}>
+                              {new Date(v.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {v.note && <span className="text-xs text-muted"> — {v.note}</span>}
+                          </div>
+                          <Button variant="secondary" size="sm" onClick={() => handleRestoreVersion(v.id)} disabled={isLoading}>
+                            Restaurer
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {selectedSession.items && selectedSession.items.length > 0 && (
                   <div className="mb-4">
@@ -557,7 +636,7 @@ export const InventoryPage: React.FC = () => {
                                         if (e.key === 'Escape') setEditingItemId(null);
                                       }}
                                     />
-                                    <Button variant="success" size="sm" onClick={() => handleCountItem(item.id)}>✓</Button>
+                                    <Button variant="success" size="sm" onClick={() => (canCorrect ? handleCorrectItem(item.id, countInput) : handleCountItem(item.id))}>✓</Button>
                                   </div>
                                 ) : (
                                   <span className={`qty font-semibold ${item.counted_qty !== null ? '' : 'text-muted'}`}>
@@ -585,6 +664,18 @@ export const InventoryPage: React.FC = () => {
                                     }}
                                   >
                                     Compter
+                                  </Button>
+                                )}
+                                {!isEditing && canCorrect && (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingItemId(item.id);
+                                      setCountInput(item.counted_qty ?? item.expected_qty);
+                                    }}
+                                  >
+                                    Corriger
                                   </Button>
                                 )}
                               </td>
