@@ -81,6 +81,81 @@ function describeParams(toolName: string, params: unknown): string {
   return `${toolName}`;
 }
 
+// ─── System Prompt StockLocal (zone 15) ──────────────────────────────────────
+const AI_SYSTEM_PROMPT = `Tu es StockLocal AI, un assistant spécialisé dans la gestion de stock, le commerce, les ventes, les clients et l'analyse commerciale pour un grossiste/détaillant (devise : MAD).
+
+Règles :
+1. N'invente JAMAIS de données. Utilise les outils uniquement quand une donnée réelle est nécessaire.
+2. Explique clairement les résultats en langage simple adapté à un commerçant.
+3. Demande confirmation pour toute action d'écriture/suppression (WRITE, FINANCIAL, DESTRUCTIVE).
+4. Ne prétends jamais avoir exécuté une action sans résultat réel.
+5. Si une information manque, indique-le clairement.
+6. Ne contourne jamais les permissions.
+7. Quand tu utilises un outil, attends son résultat avant de répondre définitivement.`;
+
+// ─── Helpers VRAIE Tool-Calling Loop (Anthropic + OpenAI-compatible) ─────────
+const MAX_TOOL_ITERATIONS = 10;
+
+interface ExtractedToolUse { id: string; name: string; input: Record<string, unknown>; }
+type ToolExecResult = { toolName: string; success: boolean; error?: string; data?: unknown };
+
+function safeParseJson(s: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(s);
+    return (typeof v === 'object' && v !== null) ? v as Record<string, unknown> : {};
+  } catch { return {}; }
+}
+
+function extractToolUses(data: Record<string, unknown>, provider: AiProvider): ExtractedToolUse[] {
+  if (provider === 'anthropic') {
+    const content = data.content as Array<Record<string, unknown>> | undefined;
+    return (content ?? [])
+      .filter((b) => b.type === 'tool_use')
+      .map((b) => ({ id: String(b.id ?? ''), name: String(b.name ?? ''), input: (b.input ?? {}) as Record<string, unknown> }));
+  }
+  const choices = data.choices as Array<Record<string, unknown>> | undefined;
+  const msg = choices?.[0]?.message as Record<string, unknown> | undefined;
+  const calls = msg?.tool_calls as Array<Record<string, unknown>> | undefined;
+  return (calls ?? []).map((c) => {
+    const fn = c.function as Record<string, unknown> | undefined;
+    return { id: String(c.id ?? ''), name: String(fn?.name ?? ''), input: safeParseJson(String(fn?.arguments ?? '{}')) };
+  });
+}
+
+function extractText(data: Record<string, unknown>, provider: AiProvider): string {
+  if (provider === 'anthropic') {
+    const content = data.content as Array<Record<string, unknown>> | undefined;
+    return (content ?? []).filter((b) => b.type === 'text').map((b) => String(b.text ?? '')).join('\n').trim();
+  }
+  const choices = data.choices as Array<Record<string, unknown>> | undefined;
+  const msg = choices?.[0]?.message as Record<string, unknown> | undefined;
+  return String(msg?.content ?? '').trim();
+}
+
+function appendToolResults(
+  convo: Array<Record<string, unknown>>,
+  toolUses: ExtractedToolUse[],
+  results: ToolExecResult[],
+  provider: AiProvider,
+): Array<Record<string, unknown>> {
+  if (provider === 'anthropic') {
+    const assistantContent = toolUses.map((tu) => ({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input }));
+    const userContent = results.map((r, i) => ({
+      type: 'tool_result',
+      tool_use_id: toolUses[i]?.id ?? '',
+      content: r.success ? JSON.stringify(r.data) : JSON.stringify({ error: r.error }),
+    }));
+    return [...convo, { role: 'assistant', content: assistantContent }, { role: 'user', content: userContent }];
+  }
+  const assistantMsg: Record<string, unknown> = {
+    role: 'assistant',
+    content: null,
+    tool_calls: toolUses.map((tu) => ({ id: tu.id, type: 'function', function: { name: tu.name, arguments: JSON.stringify(tu.input) } })),
+  };
+  const toolMsgs = results.map((r, i) => ({ role: 'tool', tool_call_id: toolUses[i]?.id ?? '', content: r.success ? JSON.stringify(r.data) : JSON.stringify({ error: r.error }) }));
+  return [...convo, assistantMsg, ...toolMsgs];
+}
+
 export const AiAssistantService = {
   getConfig(): AiConfigView {
     const s = GlobalSettingsService.getAll();
@@ -169,8 +244,6 @@ export const AiAssistantService = {
     if (!config.connected) {
       throw new Error(config.expired ? 'Connexion IA expirée.' : 'Aucune connexion IA configurée.');
     }
-    // Le rate-limit des APPELS D'OUTILS est appliqué dans executeMcpTool (McpTools).
-    // Ici on ne limite que l'appel LLM lui-même, via le même compteur partagé.
 
     const tools = Object.entries(MCP_TOOLS).map(([name, tool]) => ({
       name,
@@ -178,41 +251,68 @@ export const AiAssistantService = {
       input_schema: tool.inputSchema,
     }));
 
-    const body: Record<string, unknown> = {
-      model: config.model,
-      max_tokens: 1500,
-      messages,
-    };
-    if (tools.length > 0) body.tools = tools;
+    // Conversation : system en champ séparé (Anthropic) ou message role system (OpenAI).
+    const baseMessages = messages.map((m) => ({ role: m.role, content: m.content }));
+    let convo: Array<Record<string, unknown>> =
+      config.provider === 'anthropic' ? [...baseMessages] : [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...baseMessages];
 
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (config.provider === 'anthropic') {
-      headers['x-api-key'] = GlobalSettingsService.getAll().ai_api_key;
-      headers['anthropic-version'] = '2023-06-01';
-    } else {
-      headers['authorization'] = `Bearer ${GlobalSettingsService.getAll().ai_api_key}`;
+    for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+      const body: Record<string, unknown> = { model: config.model, max_tokens: 1500, messages: convo };
+      if (config.provider === 'anthropic') body.system = AI_SYSTEM_PROMPT;
+      if (tools.length > 0) body.tools = tools;
+
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (config.provider === 'anthropic') {
+        headers['x-api-key'] = GlobalSettingsService.getAll().ai_api_key;
+        headers['anthropic-version'] = '2023-06-01';
+      } else {
+        headers['authorization'] = `Bearer ${GlobalSettingsService.getAll().ai_api_key}`;
+      }
+
+      const res = await fetch(`${config.baseUrl}/messages`, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Erreur LLM (${res.status}) : ${text.slice(0, 200)}`);
+      }
+      const data = await res.json() as Record<string, unknown>;
+
+      // 1) Pas de tool_use → réponse finale.
+      const toolUses = extractToolUses(data, config.provider);
+      if (toolUses.length === 0) {
+        const reply = extractText(data, config.provider) || 'Réponse vide.';
+        return { reply, pendingAction: undefined, toolResults: [] };
+      }
+
+      // 2) Outils demandés. READ → exécution immédiate ; WRITE/DESTRUCTIVE → confirmer.
+      const toolResults: ToolExecResult[] = [];
+      let pendingAction: PendingAction | undefined;
+      for (const tu of toolUses) {
+        const tool = MCP_TOOLS[tu.name];
+        if (!tool) {
+          toolResults.push({ toolName: tu.name, success: false, error: `Outil inconnu : ${tu.name}` });
+          continue;
+        }
+        if (tool.kind === 'READ') {
+          const r = executeMcpTool(tu.name, tu.input, 'integrated');
+          toolResults.push(r.success ? { toolName: tu.name, success: true, data: r.data } : { toolName: tu.name, success: false, error: r.error });
+        } else {
+          // WRITE / FINANCIAL / DESTRUCTIVE → met en attente ; l'utilisateur confirme via confirmAction.
+          const req = this.requestTool(tu.name, tu.input);
+          if (req.pendingAction) { pendingAction = req.pendingAction; break; }
+          toolResults.push({ toolName: tu.name, success: false, error: req.result?.error ?? 'Action refusée (confirmation requise).' });
+        }
+      }
+
+      // 3) Action en attente → renvoyer à l'UI, on stoppe la boucle.
+      if (pendingAction) {
+        return { reply: `L'assistant souhaite effectuer une action « ${pendingAction.summary} » — veuillez confirmer.`, pendingAction, toolResults };
+      }
+
+      // 4) Injecter les tool_results dans la conversation et reboucler.
+      convo = appendToolResults(convo, toolUses, toolResults, config.provider);
     }
 
-    const res = await fetch(`${config.baseUrl}/messages`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Erreur LLM (${res.status}) : ${text.slice(0, 200)}`);
-    }
-    const data = await res.json() as { content?: Array<{ type: string; text?: string }>; stop_reason?: string };
-
-    // Lire la réponse texte
-    const reply = (data.content ?? [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text ?? '')
-      .join('\n')
-      .trim() || 'Réponse vide.';
-
-    return { reply, pendingAction: undefined, toolResults: [] };
+    throw new Error('Limite maximale d\'itérations d\'outils atteinte (boucle interrompue).');
   },
 
   /** Exécute un outil. READ → immédiat ; WRITE/DESTRUCTIVE → mis en attente. */
