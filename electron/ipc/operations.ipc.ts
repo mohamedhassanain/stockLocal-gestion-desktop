@@ -177,6 +177,55 @@ export function registerOperationsHandlers(): void {
     });
   });
 
+  // ─── Inventaire : Versioning ───────────────────────────────────────────────
+  ipcMain.handle('inventory:createVersion', async (_, { sessionId, note }: { sessionId: unknown; note: unknown }) => {
+    return run(() => {
+      const safeId = requireId(sessionId, 'id session');
+      const safeNote = typeof note === 'string' ? note.trim().slice(0, 500) : undefined;
+      InventorySessionRepository.createVersion(safeId, safeNote);
+      AuditService.log('INVENTORY_VERSION', 'inventory', safeId, `Version sauvegardée${safeNote ? ` — ${safeNote}` : ''}`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('inventory:getVersions', async (_, sessionId: unknown) => {
+    return InventorySessionRepository.getVersions(requireId(sessionId, 'id session'));
+  });
+
+  ipcMain.handle('inventory:restoreVersion', async (_, { sessionId, versionId, note }: { sessionId: unknown; versionId: unknown; note: unknown }) => {
+    return run(() => {
+      const safeSessionId = requireId(sessionId, 'id session');
+      const safeVersionId = requireId(versionId, 'id version');
+      const safeNote = typeof note === 'string' ? note.trim().slice(0, 500) : undefined;
+      InventorySessionRepository.restoreVersion(safeVersionId, safeNote);
+      AuditService.log('INVENTORY_RESTORE', 'inventory', safeSessionId, `Version ${safeVersionId} restaurée`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('inventory:correctValidatedInventory', async (_, { sessionId, corrections }: { sessionId: unknown; corrections: unknown }) => {
+    return run(() => {
+      const safeSessionId = requireId(sessionId, 'id session');
+      if (!corrections || typeof corrections !== 'object' || Array.isArray(corrections)) {
+        throw new Error('Corrections invalides : objet { itemId → quantité } attendu.');
+      }
+      const safeCorrections: Record<string, number> = {};
+      for (const [itemId, qty] of Object.entries(corrections as Record<string, unknown>)) {
+        const numQty = Number(qty);
+        if (!itemId || !Number.isFinite(numQty) || numQty < 0) {
+          throw new Error(`Quantité corrigée invalide pour l'article ${itemId}.`);
+        }
+        safeCorrections[itemId.slice(0, 64)] = numQty;
+      }
+      if (Object.keys(safeCorrections).length === 0) throw new Error('Aucune correction fournie.');
+      for (const [itemId, qty] of Object.entries(safeCorrections)) {
+        InventorySessionRepository.correctValidatedInventory(safeSessionId, itemId, qty);
+      }
+      AuditService.log('INVENTORY_CORRECT', 'inventory', safeSessionId, `Correction post-validation : ${Object.keys(safeCorrections).length} article(s)`);
+      return { success: true };
+    });
+  });
+
   // ─── Audit ─────────────────────────────────────────────────────────────────
   ipcMain.handle('audit:getLogs', async (_, limit?: unknown) => {
     const l = Math.min(Math.max(Number(limit) || 200, 1), 1000);

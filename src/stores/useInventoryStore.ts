@@ -29,6 +29,15 @@ export interface InventorySession {
   summary?: { total_products: number; counted: number; discrepancies: number };
 }
 
+export interface InventoryVersion {
+  id: string;
+  session_id: string;
+  version_number: number;
+  created_at: string;
+  note?: string | null;
+  items?: Array<{ product_id: string; counted_qty: number }>;
+}
+
 // ─── Workflow labels (UI) ────────────────────────────────────────────────────
 
 export const INVENTORY_STATUS_LABELS: Record<InventorySessionStatus, string> = {
@@ -43,6 +52,7 @@ export const INVENTORY_STATUS_LABELS: Record<InventorySessionStatus, string> = {
 interface InventoryState {
   sessions: InventorySession[];
   selectedSession: InventorySession | null;
+  versions: InventoryVersion[];
   isLoading: boolean;
   error: string | null;
 
@@ -56,11 +66,18 @@ interface InventoryState {
   validateSession: (id: string) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
   selectSession: (session: InventorySession | null) => void;
+
+  // Versioning (P0-5)
+  createVersion: (sessionId: string, note?: string) => Promise<void>;
+  getVersions: (sessionId: string) => Promise<InventoryVersion[]>;
+  restoreVersion: (sessionId: string, versionId: string, note?: string) => Promise<void>;
+  correctValidatedInventory: (sessionId: string, corrections: Record<string, number>) => Promise<void>;
 }
 
 export const useInventoryStore = create<InventoryState>((set, get) => ({
   sessions: [],
   selectedSession: null,
+  versions: [],
   isLoading: false,
   error: null,
 
@@ -185,5 +202,57 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
   selectSession: (session: InventorySession | null) => {
     set({ selectedSession: session });
+  },
+
+  createVersion: async (sessionId: string, note?: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.inventory.createVersion(sessionId, note);
+      if (result && result.success === false) throw new Error(result.error || 'Création de version impossible.');
+      await get().getVersions(sessionId);
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  getVersions: async (sessionId: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const versions = await window.api.inventory.getVersions(sessionId);
+      set({ versions: versions || [], isLoading: false });
+      return versions || [];
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  restoreVersion: async (sessionId: string, versionId: string, note?: string) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.inventory.restoreVersion(sessionId, versionId, note);
+      if (result && result.success === false) throw new Error(result.error || 'Restauration impossible.');
+      await get().loadSessionById(sessionId);
+      await get().getVersions(sessionId);
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  correctValidatedInventory: async (sessionId: string, corrections: Record<string, number>) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.inventory.correctValidatedInventory(sessionId, corrections);
+      if (result && result.success === false) throw new Error(result.error || 'Correction impossible.');
+      await get().loadSessionById(sessionId);
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
   },
 }));
