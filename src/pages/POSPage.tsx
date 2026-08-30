@@ -229,7 +229,7 @@ export const POSPage: React.FC = () => {
         }
       />
 
-      <div className="flex flex-1 pos-main" style={{ overflow: 'hidden' }}>
+      <div className="flex flex-1 pos-main" style={{ overflow: 'hidden', flexDirection: 'row-reverse' }}>
         <div className="pos-column">
           <div style={{ padding: 'var(--space-4) var(--space-5)', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
             <div className="flex gap-3">
@@ -253,7 +253,7 @@ export const POSPage: React.FC = () => {
               <div className="state-box" style={{ height: '100%' }}>
                 <div className="state-icon">🛒</div>
                 <div className="state-title">Le panier est vide</div>
-                <div className="state-text">Scannez un produit ou recherchez-le ci-contre</div>
+                <div className="state-text">Scannez un produit ou recherchez-le à gauche</div>
               </div>
             ) : (
               <>
