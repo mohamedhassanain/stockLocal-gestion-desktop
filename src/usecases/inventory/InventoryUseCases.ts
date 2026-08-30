@@ -107,6 +107,7 @@ export function finalizeInventoryUseCase(sessionId: string): InventorySession {
  */
 export function restoreInventoryVersionUseCase(input: RestoreInventoryVersionInput): void {
   InventorySessionRepository.restoreVersion(
+    input.sessionId,
     input.versionId,
     input.note ?? undefined
   );
@@ -133,9 +134,8 @@ export function saveInventoryVersionUseCase(sessionId: string, note?: string): v
  * L'inventaire validé lui-même n'est JAMAIS modifié directement.
  */
 export function correctValidatedInventoryUseCase(input: CorrectInventoryInput): void {
-  for (const [itemId, correctedQty] of Object.entries(input.corrections)) {
-    InventorySessionRepository.correctValidatedInventory(input.sessionId, itemId, correctedQty);
-  }
+  // P0-4 : correction en lot ATOMIQUE (une seule transaction).
+  InventorySessionRepository.correctValidatedInventoryBatch(input.sessionId, input.corrections);
   const count = Object.keys(input.corrections).length;
   AuditService.log(
     'INVENTORY_CORRECT',

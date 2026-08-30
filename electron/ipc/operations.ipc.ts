@@ -195,7 +195,8 @@ export function registerOperationsHandlers(): void {
   ipcMain.handle('inventory:restoreVersion', async (_, data: unknown) => {
     return run(() => {
       const safe = safeParse(InventoryRestoreVersionSchema, data, 'Restauration de version');
-      InventorySessionRepository.restoreVersion(safe.versionId, safe.note ?? undefined);
+      // P0-5 : le repo vérifie que version.session_id === safe.sessionId.
+      InventorySessionRepository.restoreVersion(safe.sessionId, safe.versionId, safe.note ?? undefined);
       AuditService.log('INVENTORY_RESTORE', 'inventory', safe.sessionId, `Version ${safe.versionId} restaurée`);
       return { success: true };
     });
@@ -204,9 +205,8 @@ export function registerOperationsHandlers(): void {
   ipcMain.handle('inventory:correctValidatedInventory', async (_, data: unknown) => {
     return run(() => {
       const safe = safeParse(InventoryCorrectionSchema, data, 'Correction inventaire');
-      for (const [itemId, qty] of Object.entries(safe.corrections)) {
-        InventorySessionRepository.correctValidatedInventory(safe.sessionId, itemId, qty);
-      }
+      // P0-4 : correction en lot ATOMIQUE (une seule transaction).
+      InventorySessionRepository.correctValidatedInventoryBatch(safe.sessionId, safe.corrections);
       AuditService.log('INVENTORY_CORRECT', 'inventory', safe.sessionId, `Correction post-validation : ${Object.keys(safe.corrections).length} article(s)`);
       return { success: true };
     });

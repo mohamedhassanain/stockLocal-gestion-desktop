@@ -133,7 +133,7 @@ describe('Inventaire — P0-6 : restauration d’une version (nouvelle version, 
     expect(versionsBefore.map(v => v.version_number)).toEqual([3, 2, 1]); // ordre DESC
 
     const v2 = versionsBefore.find(v => v.version_number === 2)!;
-    InventorySessionRepository.restoreVersion(v2.id, 'Restauration V2');
+    InventorySessionRepository.restoreVersion(session.id, v2.id, 'Restauration V2');
 
     const versionsAfter = InventorySessionRepository.getVersions(session.id);
     expect(versionsAfter).toHaveLength(4); // nouvelle version créée, pas d'écrasement
@@ -150,6 +150,42 @@ describe('Inventaire — P0-6 : restauration d’une version (nouvelle version, 
     const v4 = versionsAfter.find(v => v.version_number === 4)!;
     const v4Items = db.prepare('SELECT * FROM inventory_item_versions WHERE version_id = ?').all(v4.id) as Array<{ counted_qty: number }>;
     expect(v4Items[0].counted_qty).toBe(97);
+  });
+});
+
+describe('Inventaire — P0-5 : version / session mismatch refusé', () => {
+  beforeEach(() => {
+    db.exec(`
+      DELETE FROM inventory_item_versions;
+      DELETE FROM inventory_versions;
+      DELETE FROM inventory_items;
+      DELETE FROM inventory_sessions;
+      DELETE FROM inventory_balances;
+      DELETE FROM stock_movements;
+      DELETE FROM products;
+    `);
+  });
+
+  it('restaurer une version d’une AUTRE session → REFUSÉ', () => {
+    const productId = createProduct('INV-MISMATCH');
+    StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 100 });
+
+    const sessionA = InventorySessionRepository.create({ name: 'Session A' });
+    InventorySessionRepository.startCounting(sessionA.id);
+    const itemA = sessionA.items!.find(i => i.product_id === productId)!;
+    InventorySessionRepository.countItem(itemA.id, 95);
+    InventorySessionRepository.createVersion(sessionA.id, 'V1-A');
+
+    const sessionB = InventorySessionRepository.create({ name: 'Session B' });
+    InventorySessionRepository.startCounting(sessionB.id);
+    const itemB = sessionB.items!.find(i => i.product_id === productId)!;
+    InventorySessionRepository.countItem(itemB.id, 98);
+    InventorySessionRepository.createVersion(sessionB.id, 'V1-B');
+
+    const versionA = InventorySessionRepository.getVersions(sessionA.id)[0];
+    // On tente de restaurer la version de A dans la session B → refusé.
+    expect(() => InventorySessionRepository.restoreVersion(sessionB.id, versionA.id))
+      .toThrow(/n\'appartient pas à cette session/);
   });
 });
 

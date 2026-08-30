@@ -313,10 +313,14 @@ export const InventorySessionRepository = {
     return stmtGetVersions.all(sessionId) as InventoryVersion[];
   },
 
-  restoreVersion(versionId: string, note?: string): void {
+  restoreVersion(sessionId: string, versionId: string, note?: string): void {
     return runInTransaction(() => {
       const version = db.prepare('SELECT * FROM inventory_versions WHERE id = ?').get(versionId) as InventoryVersion | undefined;
       if (!version) throw new Error('Version introuvable.');
+      // P0-5 : la version doit appartenir à la session demandée (sinon rejet).
+      if (version.session_id !== sessionId) {
+        throw new Error('Cette version n\'appartient pas à cette session d\'inventaire.');
+      }
       
       const session = stmtGetById.get(version.session_id) as InventorySession | undefined;
       if (!session) throw new Error('Session introuvable.');
@@ -370,6 +374,45 @@ export const InventorySessionRepository = {
       });
 
       db.prepare('UPDATE inventory_items SET counted_qty = ?, difference = ? - expected_qty WHERE id = ?').run(correctedQty, correctedQty, item.id);
+    });
+  },
+
+  /**
+   * P0-4 — Correction en lot, ATOMIQUE : si une seule correction échoue,
+   * TOUT est annulé (aucun mouvement partiel committé).
+   */
+  correctValidatedInventoryBatch(sessionId: string, corrections: Record<string, number>): void {
+    return runInTransaction(() => {
+      const session = stmtGetById.get(sessionId) as InventorySession | undefined;
+      if (!session || session.status !== 'VALIDATION') {
+        throw new Error('Seules les sessions validées peuvent être corrigées.');
+      }
+
+      for (const [itemId, correctedQty] of Object.entries(corrections)) {
+        const qty = Number(correctedQty);
+        if (!Number.isFinite(qty) || qty < 0) {
+          throw new Error(`Quantité corrigée invalide pour l'article ${itemId}.`);
+        }
+
+        const item = db.prepare('SELECT * FROM inventory_items WHERE id = ?').get(itemId) as InventoryItem | undefined;
+        if (!item) throw new Error('Produit introuvable dans cette session.');
+        if (item.session_id !== sessionId) throw new Error('Cet article n\'appartient pas à cette session.');
+
+        const oldQty = item.counted_qty ?? item.expected_qty;
+        const diff = qty - oldQty;
+        if (diff === 0) continue;
+
+        const product = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(item.product_id) as { purchase_price: number } | undefined;
+        StockLedgerService.adjustInventory({
+          product_id: item.product_id,
+          actualCount: StockLedgerService.getStockLevel(item.product_id) + diff,
+          unit_price: product?.purchase_price ?? 0,
+          document_id: sessionId,
+          notes: `CORRECTION INVENTAIRE — ${session.name} (ancien: ${oldQty}, nouveau: ${correctedQty})`,
+        });
+
+        db.prepare('UPDATE inventory_items SET counted_qty = ?, difference = ? - expected_qty WHERE id = ?').run(qty, qty, item.id);
+      }
     });
   }
 };
