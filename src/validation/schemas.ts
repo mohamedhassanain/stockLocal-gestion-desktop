@@ -66,7 +66,7 @@ export const SaleItemSchema = z.object({
 // entity_id peut être vide : les ventes comptoir (POS) n'ont pas de client.
 // La validation client est laissée au service (DocumentService l'autorise).
 export const SaleSchema = z.object({
-  type: z.enum(['QUOTE', 'DELIVERY_NOTE', 'INVOICE']),
+  type: z.enum(['QUOTE', 'DELIVERY_NOTE', 'INVOICE', 'CREDIT_NOTE']),
   entity_id: z.string().max(64),
   date: z.string().min(1),
   due_date: z.string().optional().nullable(),
