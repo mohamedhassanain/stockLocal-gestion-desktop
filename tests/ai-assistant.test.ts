@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AiAssistantService } from '../src/ai/AiAssistantService';
-import { executeMcpTool, MCP_TOOLS } from '../src/ai/McpTools';
+import { executeMcpTool, MCP_TOOLS, resetRateLimitCounter } from '../src/ai/McpTools';
 import { GlobalSettingsService } from '../src/services/GlobalSettingsService';
+import { AuditService } from '../src/services/AuditService';
 
 /**
  * Tests Phase B — Assistant IA / MCP.
@@ -155,5 +156,74 @@ describe('MCP tools — lecture immédiate vs écriture différée', () => {
     // mais on vérifie que l'appel a bien été exécuté, pas simplement mis en attente).
     expect(res.success).toBe(true);
     expect(res.data).toBeDefined();
+  });
+});
+
+describe('Garde-fous du serveur MCP standalone (executeMcpTool direct)', () => {
+  beforeEach(() => {
+    resetRateLimitCounter();
+    GlobalSettingsService.save({
+      ai_provider: 'anthropic',
+      ai_base_url: '',
+      ai_api_key: '',
+      ai_model: '',
+      ai_expiry_mode: 'none',
+      ai_expiry_date: '',
+      ai_rate_limit_per_min: 30,
+    });
+  });
+
+  it('exige une confirmation explicite pour un outil DESTRUCTIVE', () => {
+    const res = executeMcpTool('archive_product', { id: 'produit-inexistant' });
+    expect(res.success).toBe(false);
+    expect(res.needsConfirmation).toBe(true);
+    expect(res.kind).toBe('DESTRUCTIVE');
+    expect((res.data as { confirmationRequired?: boolean }).confirmationRequired).toBe(true);
+  });
+
+  it('exige une confirmation explicite pour un outil WRITE', () => {
+    const res = executeMcpTool('create_product', {
+      reference: 'REF-NOCONF',
+      designation: 'Sans confirmation',
+      purchase_price: 1,
+      selling_price: 2,
+    });
+    expect(res.success).toBe(false);
+    expect(res.needsConfirmation).toBe(true);
+  });
+
+  it('exécute un DESTRUCTIVE confirmé et l\'audite (provenance assistant IA)', () => {
+    // 1) Créer un produit (confirmé) → on récupère son id
+    const created = executeMcpTool('create_product', {
+      reference: `REF-AUDIT-${Date.now()}`,
+      designation: 'Produit à auditer',
+      purchase_price: 3,
+      selling_price: 9,
+      confirmed: true,
+    }, 'external');
+    expect(created.success).toBe(true);
+    const id = (created.data as { id: string }).id;
+
+    // 2) Archiver le produit (confirmé) → doit être audité
+    const archived = executeMcpTool('archive_product', { id, confirmed: true }, 'external');
+    expect(archived.success).toBe(true);
+
+    // 3) Vérifier la trace d'audit
+    const logs = AuditService.getLogs(50);
+    const entry = logs.find((l) => l.action === 'AI_ARCHIVE_PRODUCT');
+    expect(entry).toBeDefined();
+    expect(entry!.details).toContain('assistant IA');
+    expect(entry!.details).toContain('connexion externe');
+  });
+
+  it('applique le rate-limit du serveur MCP standalone', () => {
+    GlobalSettingsService.save({ ai_rate_limit_per_min: 1 });
+    // 1er appel → passe (compteur = 1)
+    const first = executeMcpTool('list_products', { query: '', limit: 1 });
+    expect(first.success).toBe(true);
+    // 2e appel → dépasse la limite → erreur
+    const second = executeMcpTool('list_products', { query: '', limit: 1 });
+    expect(second.success).toBe(false);
+    expect(second.error).toContain('Limite de débit');
   });
 });

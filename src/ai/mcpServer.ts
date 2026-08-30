@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import os from 'node:os';
 import path from 'node:path';
 import { MCP_TOOLS, executeMcpTool } from './McpTools';
+import { GlobalSettingsService } from '../services/GlobalSettingsService';
 // Initialise la base de données (lit storage-config.json depuis userData)
 import '../database/config/connection';
 
@@ -51,7 +52,15 @@ for (const [name, tool] of Object.entries(MCP_TOOLS)) {
       inputSchema: tool.inputSchema,
     },
     async (args: Record<string, unknown>) => {
-      const result = executeMcpTool(name, args ?? {});
+      const result = executeMcpTool(name, args ?? {}, 'external');
+      // Outil d'écriture/destruction appelé sans confirmation → renvoyer une
+      // réponse structurée indiquant que `confirmed: true` est requis.
+      if (result.needsConfirmation) {
+        return {
+          content: [{ type: 'text', text: `CONFIRMATION_REQUIRED: ${result.error ?? 'Confirmation requise.'}` }],
+          structuredContent: (result.data as Record<string, unknown>) ?? { confirmationRequired: true, toolName: name, params: args },
+        };
+      }
       if (!result.success) {
         throw new Error(result.error ?? 'Erreur inconnue.');
       }
@@ -62,7 +71,11 @@ for (const [name, tool] of Object.entries(MCP_TOOLS)) {
   );
 }
 
+// Lis la config sauvegardée par l'utilisateur au démarrage (provider / rate-limit)
+// pour appliquer le même garde-fou de débit que l'app intégrée.
+const cfg = GlobalSettingsService.getAll();
+// eslint-disable-next-line no-console
+console.error(`[MCP] Serveur StockLocal connecté sur stdio — ${Object.keys(MCP_TOOLS).length} outils exposés. Rate-limit: ${cfg.ai_rate_limit_per_min}/min (provider: ${cfg.ai_provider}).`);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
-// eslint-disable-next-line no-console
-console.error('[MCP] Serveur StockLocal connecté sur stdio —', Object.keys(MCP_TOOLS).length, 'outils exposés.');

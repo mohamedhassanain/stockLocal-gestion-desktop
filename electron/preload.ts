@@ -479,6 +479,7 @@ export const api = {
     requestTool: (name: string, params: unknown) => ipcRenderer.invoke('ai:requestTool', { name, params }),
     confirmAction: (actionId: string, confirmed: boolean) => ipcRenderer.invoke('ai:confirmAction', { actionId, confirmed }),
     listTools: () => ipcRenderer.invoke('ai:listTools'),
+    getMcpConfig: () => ipcRenderer.invoke('ai:getMcpConfig'),
   },
 };
 

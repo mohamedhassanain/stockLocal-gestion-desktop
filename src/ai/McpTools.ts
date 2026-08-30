@@ -7,6 +7,8 @@ import { ProductRepository } from '../repositories/ProductRepository';
 import { ClientRepository } from '../repositories/ClientRepository';
 import { DocumentRepository } from '../repositories/DocumentRepository';
 import { DashboardRepository } from '../repositories/DashboardRepository';
+import { AuditService } from '../services/AuditService';
+import { GlobalSettingsService } from '../services/GlobalSettingsService';
 
 /**
  * ─── Registre d'outils MCP ─────────────────────────────────────────────────────
@@ -40,6 +42,31 @@ export interface McpToolResult {
   data?: unknown;
   error?: string;
   kind?: ToolKind;
+  /** Outil destructif appelé sans confirmation → le client doit ré-invoquer avec confirmed:true. */
+  needsConfirmation?: boolean;
+}
+
+// ─── Rate-limit partagé (appels d'outils / minute) ─────────────────────────────
+// Un compteur unique en mémoire, utilisé par l'app (chat intégré) ET le serveur
+// MCP standalone : impossible de contourner la limite en passant par l'un ou
+// l'autre chemin.
+const toolCallCounts: Record<string, number> = {};
+function minuteKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
+}
+export function assertWithinRateLimit(limit: number): void {
+  const key = minuteKey();
+  const count = (toolCallCounts[key] ?? 0) + 1;
+  toolCallCounts[key] = count;
+  if (count > limit) {
+    throw new Error(`Limite de débit atteinte : maximum ${limit} appels d'outils par minute. Patientez une minute.`);
+  }
+}
+
+/** Réinitialise le compteur de rate-limit (utile pour des tests déterministes). */
+export function resetRateLimitCounter(): void {
+  for (const key of Object.keys(toolCallCounts)) delete toolCallCounts[key];
 }
 
 // ─── Schémas de validation des paramètres d'outils ─────────────────────────────
@@ -363,19 +390,78 @@ export const MCP_TOOLS: Record<string, McpToolDef> = {
 };
 
 /**
- * Exécute un outil MCP après validation Zod.
- * IMPORTANT : les outils WRITE/DESTRUCTIVE sont exécutés UNIQUEMENT après
- * confirmation explicite de l'utilisateur (voir l'appelant / le handler IPC).
+ * Résumé lisible d'une action pour l'audit (jamais de valeurs sensibles).
  */
-export function executeMcpTool(name: string, params: unknown): McpToolResult {
+function describeParams(toolName: string, params: Record<string, unknown>): string {
+  if (toolName === 'delete_product' || toolName === 'archive_product') return `${toolName} — id=${String(params.id ?? '')}`;
+  if (toolName === 'create_product') return `Création produit : ${String(params.designation ?? params.reference ?? '')}`;
+  if (toolName === 'update_product') return `Modification produit id=${String(params.id ?? '')}`;
+  if (toolName === 'create_document') return `Création document ${String(params.type ?? '')}`;
+  if (toolName === 'create_stock_movement') return `Mouvement de stock ${String(params.movement_type ?? '')} (qty ${String(params.quantity ?? '')})`;
+  if (toolName === 'add_payment') return `Paiement sur document ${String(params.document_id ?? '')}`;
+  if (toolName === 'add_client_debt') return `Dette client ${String(params.customer_id ?? '')}`;
+  if (toolName === 'add_client_payment') return `Paiement client ${String(params.customer_id ?? '')}`;
+  return toolName;
+}
+
+/**
+ * Exécute un outil MCP après validation Zod.
+ *
+ * GARDE-FOUS INTÉGRÉS (quel que soit l'appelant — chat intégré OU serveur MCP
+ * externe) :
+ *   - Rate-limit : chaque appel d'outil est compté (limite lue depuis la config).
+ *   - WRITE / DESTRUCTIVE : exigent `confirmed: true`. Sinon, renvoient
+ *     `needsConfirmation: true` (le client externe doit ré-invoquer avec
+ *     confirmed:true). Les outils READ s'exécutent immédiatement.
+ *   - Audit : toute exécution WRITE/DESTRUCTIVE confirmée est journalisée dans
+ *     AuditService avec mention de la provenance (assistant IA, interne/externe).
+ */
+export function executeMcpTool(
+  name: string,
+  params: unknown,
+  source: 'integrated' | 'external' = 'external',
+): McpToolResult {
   const tool = MCP_TOOLS[name];
   if (!tool) {
     return { success: false, error: `Outil inconnu : ${name}` };
   }
 
   try {
-    const parsed = tool.inputSchema.parse(params ?? {});
+    // Rate-limit : tous les appels d'outils passent par le même compteur.
+    assertWithinRateLimit(GlobalSettingsService.getAll().ai_rate_limit_per_min);
+
+    const parsed = tool.inputSchema.parse(params ?? {}) as Record<string, unknown>;
+
+    if (tool.kind === 'READ') {
+      const data = tool.execute(parsed);
+      return { success: true, data, kind: tool.kind };
+    }
+
+    // WRITE / DESTRUCTIVE : confirmation explicite requise.
+    // `confirmed` est lu depuis les paramètres bruts (le schéma Zod le strippe).
+    const raw = (params ?? {}) as Record<string, unknown>;
+    const confirmed = raw['confirmed'] === true;
+    if (!confirmed) {
+      return {
+        success: false,
+        needsConfirmation: true,
+        kind: tool.kind,
+        error: `Action ${tool.kind === 'DESTRUCTIVE' ? 'destructive' : "d'écriture"} : confirmation requise. Ré-invoquez avec confirmed:true.`,
+        data: { confirmationRequired: true, toolName: name, params: parsed },
+      };
+    }
+
+    // Confirmée : exécuter puis journaliser dans l'audit.
     const data = tool.execute(parsed);
+    const origin = source === 'external' ? ' — connexion externe (client MCP)' : '';
+    AuditService.log(
+      `AI_${name.toUpperCase()}`,
+      'system',
+      'ai-assistant',
+      `Action « ${describeParams(name, parsed)} » exécutée par l'assistant IA${origin}.`,
+      undefined,
+      data,
+    );
     return { success: true, data, kind: tool.kind };
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {

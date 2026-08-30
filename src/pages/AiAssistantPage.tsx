@@ -49,6 +49,7 @@ export const AiAssistantPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [showConfigTab, setShowConfigTab] = useState(true);
+  const [copied, setCopied] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadConfig = async () => {
@@ -116,6 +117,38 @@ export const AiAssistantPage: React.FC = () => {
     await window.api.ai.disconnect();
     toast.info('Assistant IA déconnecté.');
     await loadConfig();
+  };
+
+  /** Génère le bloc JSON MCP exact pour Claude Desktop / Cursor, puis le copie. */
+  const handleCopyMcpConfig = async () => {
+    try {
+      const info = await window.api.ai.getMcpConfig();
+      const json = JSON.stringify({
+        mcpServers: {
+          stocklocal: {
+            command: 'node',
+            args: [info.mcpServerPath],
+            env: { STOCKLOCAL_USER_DATA_DIR: info.userDataDir },
+          },
+        },
+      }, null, 2);
+      await navigator.clipboard.writeText(json);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+      toast.success('Configuration MCP copiée dans le presse-papier.');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** Ouvre le dossier contenant le fichier de config du client (Claude/Cursor). */
+  const handleOpenConfigFolder = async () => {
+    try {
+      // Le dossier userData est recalculé côté main (getMcpConfig → userDataDir).
+      await window.api.storage.openFolder((await window.api.ai.getMcpConfig()).userDataDir);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const handleSend = async () => {
@@ -228,6 +261,37 @@ export const AiAssistantPage: React.FC = () => {
           <button onClick={handleSave} style={primaryBtn}>Enregistrer</button>
           <button onClick={handleTest} disabled={testing} style={secondaryBtn}>{testing ? 'Test en cours...' : 'Tester la connexion'}</button>
           {config?.connected && <button onClick={handleDisconnect} style={dangerBtn}>Déconnecter</button>}
+        </div>
+      </div>
+
+      {/* ─── Connexion MCP externe (Mode B) — Claude Desktop / Cursor ───── */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', marginBottom: 24 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: '#1f2937' }}>Connexion à un client MCP externe (Mode B)</h2>
+        <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
+          Utilisez StockLocal comme outil depuis <strong>Claude Desktop</strong>, <strong>Cursor</strong> ou tout autre client MCP,
+          sans passer par l'écran de chat intégré. Copiez le bloc ci-dessous dans le fichier de configuration du client.
+        </p>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          <button onClick={handleCopyMcpConfig} style={primaryBtn}>
+            {copied ? '✓ Copié !' : 'Copier la configuration MCP'}
+          </button>
+          <button onClick={handleOpenConfigFolder} style={secondaryBtn}>Ouvrir le dossier de configuration</button>
+        </div>
+
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>Emplacement du fichier de config (selon l'OS / le client) :</div>
+          <ul style={{ fontSize: 13, color: '#374151', margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            <li><strong>Claude Desktop (Windows)</strong> : <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+            <li><strong>Claude Desktop (macOS)</strong> : <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+            <li><strong>Cursor (Windows)</strong> : <code>%APPDATA%\Cursor\mcp.json</code></li>
+            <li><strong>Cursor (macOS)</strong> : <code>~/Library/Application Support/Cursor/mcp.json</code></li>
+          </ul>
+        </div>
+
+        <div style={{ fontSize: 13, color: '#6b7280' }}>
+          Collez le JSON copié, avec le nom <code>stocklocal</code> sous <code>mcpServers</code>, puis redémarrez le client.
+          Les garde-fous (audit, rate-limit, confirmation des actions destructives) s'appliquent identiquement à ce mode externe.
         </div>
       </div>
 

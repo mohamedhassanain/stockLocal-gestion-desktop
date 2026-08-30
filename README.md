@@ -27,6 +27,7 @@
 - [Tests](#tests)
 - [Build & packaging](#build--packaging)
 - [Sauvegarde & restauration](#sauvegarde--restauration)
+- [Assistant IA](#assistant-ia)
 - [Raccourcis clavier](#raccourcis-clavier)
 - [Known limitations](#known-limitations)
 
@@ -190,8 +191,8 @@ exports batch, confinement des chemins) et volumétrie (10 000 produits,
 50 000 mouvements).
 
 ```
-Test Files  5 passed (5)
-     Tests  70 passed (70)
+Test Files  8 passed (8)
+     Tests  110 passed (110)
 ```
 
 ---
@@ -286,6 +287,58 @@ auprès d'un émetteur reconnu, valable pour Windows).
 | `F10` | Inventaire |
 
 Sur la page Produits : `Ctrl+F` focus recherche, `F8` nouveau produit.
+
+---
+
+## Assistant IA
+
+StockLocal intègre désormais un assistant conversationnel **provider-agnostique**
+(Anthropic/Claude, OpenAI/Codex, ou tout endpoint compatible) accessible depuis la
+sidebar → **Assistant IA**. Deux modes coexistent :
+
+### Mode A — Chat intégré (dans l'app StockLocal)
+
+Depuis l'écran **Assistant IA → Chat**, vous configurez le fournisseur, l'URL de
+base de l'API, la clé API (masquée, jamais journalisée), le modèle, l'**expiration
+de session** (date précise ou sans expiration) et la **limite d'appels/minute**.
+L'app appelle directement l'API du LLM choisi et peut lire/créer/modifier/supprimer
+des données via les outils `McpTools`. Toute action d'écriture/destruction demande
+une **confirmation explicite** dans l'UI avant exécution.
+
+### Mode B — Serveur MCP externe (Claude Desktop, Cursor, etc.)
+
+StockLocal expose ses données/actions comme un **serveur MCP** (`src/ai/mcpServer.ts`,
+transport stdio) utilisable depuis Claude Desktop, Cursor ou tout autre client MCP
+externe, **sans passer par l'écran de chat de l'app**. La page **Assistant IA →
+Configuration** propose un bouton **« Copier la configuration MCP »** qui génère le
+bloc `claude_desktop_config.json` (ou `mcp.json` pour Cursor) avec le chemin absolu
+vers `dist-electron/mcp-server.js`, ainsi que les instructions par OS/client.
+
+```json
+{
+  "mcpServers": {
+    "stocklocal": {
+      "command": "node",
+      "args": ["C:/chemin/vers/dist-electron/mcp-server.js"],
+      "env": { "STOCKLOCAL_USER_DATA_DIR": "C:/Users/.../AppData/Roaming/StockLocal" }
+    }
+  }
+}
+```
+
+### Garde-fous communs aux deux modes
+
+Les garde-fous sont appliqués **dans `executeMcpTool`** (`src/ai/McpTools.ts`),
+quel que soit l'appelant (chat intégré ou serveur MCP externe) :
+
+- **Confirmation explicite** : tout outil `WRITE`/`DESTRUCTIVE` exige `confirmed: true`.
+  Sans quoi il renvoie `needsConfirmation: true` (le client externe ré-invoque avec
+  `confirmed: true` ; dans l'app, l'utilisateur confirme dans l'UI).
+- **Audit** : toute exécution confirmée est journalisée dans `AuditService` avec la
+  mention « assistant IA » et la provenance (`connexion externe (client MCP)` pour le
+  mode B).
+- **Rate-limit** : chaque appel d'outil est compté (limite lue depuis
+  `global_settings.ai_rate_limit_per_min`), partagé entre les deux modes.
 
 ---
 

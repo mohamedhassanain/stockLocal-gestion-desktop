@@ -1,5 +1,4 @@
 import { GlobalSettingsService } from '../services/GlobalSettingsService';
-import { AuditService } from '../services/AuditService';
 import { executeMcpTool, MCP_TOOLS, type ToolKind, type McpToolResult } from './McpTools';
 
 /**
@@ -60,23 +59,8 @@ const PROVIDER_DEFAULT_BASE_URL: Record<AiProvider, string> = {
   custom: '',
 };
 
-// Rate-limit in-memory : { minuteKey: count }
-const toolCallCounts: Record<string, number> = {};
+// Actions en attente de confirmation utilisateur (chat intégré).
 let pendingActions: Record<string, PendingAction> = {};
-
-function minuteKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${d.getMinutes()}`;
-}
-
-function assertWithinRateLimit(limit: number): void {
-  const key = minuteKey();
-  const count = (toolCallCounts[key] ?? 0) + 1;
-  toolCallCounts[key] = count;
-  if (count > limit) {
-    throw new Error(`Limite de débit atteinte : maximum ${limit} appels d'outils par minute. Patientez une minute.`);
-  }
-}
 
 function resolveBaseUrl(provider: AiProvider, explicit: string): string {
   const trimmed = explicit.trim();
@@ -185,7 +169,8 @@ export const AiAssistantService = {
     if (!config.connected) {
       throw new Error(config.expired ? 'Connexion IA expirée.' : 'Aucune connexion IA configurée.');
     }
-    assertWithinRateLimit(config.rateLimitPerMin);
+    // Le rate-limit des APPELS D'OUTILS est appliqué dans executeMcpTool (McpTools).
+    // Ici on ne limite que l'appel LLM lui-même, via le même compteur partagé.
 
     const tools = Object.entries(MCP_TOOLS).map(([name, tool]) => ({
       name,
@@ -236,7 +221,7 @@ export const AiAssistantService = {
     if (!tool) return { result: { success: false, error: `Outil inconnu : ${toolName}` } };
     const actionId = Math.random().toString(36).slice(2, 10);
     if (tool.kind === 'READ') {
-      const result = executeMcpTool(toolName, params);
+      const result = executeMcpTool(toolName, params, 'integrated');
       return { result };
     }
     // WRITE / DESTRUCTIVE → attente de confirmation
@@ -258,18 +243,13 @@ export const AiAssistantService = {
     delete pendingActions[actionId];
     if (!confirmed) return { success: false, error: 'Action annulée par l\'utilisateur.' };
 
-    const result = executeMcpTool(pending.toolName, pending.params);
-    // Journaliser toute écriture/destruction provenant de l'assistant IA.
-    if (result.success) {
-      AuditService.log(
-        `AI_${pending.toolName.toUpperCase()}`,
-        'system',
-        'ai-assistant',
-        `Action « ${pending.summary} » exécutée par l'assistant IA (confirmée par l'utilisateur).`,
-        undefined,
-        result.data,
-      );
-    }
+    // La confirmation utilisateur est passée à executeMcpTool, qui journalise
+    // désormais lui-même (garde-fou interne, quel que soit l'appelant).
+    const result = executeMcpTool(
+      pending.toolName,
+      { ...(pending.params as object), confirmed: true },
+      'integrated',
+    );
     return result;
   },
 };
