@@ -26,6 +26,31 @@ const RankBadge: React.FC<{ rank: number; variant?: 'primary' | 'accent' }> = ({
   </span>
 );
 
+/** Génère la liste complète des labels (jours ou mois) d'une période, pour que
+ *  la courbe s'affiche TOUJOURS même si certains jours/mois n'ont pas de vente. */
+function buildPeriodLabels(period: string): string[] {
+  const now = new Date();
+  const labels: string[] = [];
+  if (period === 'week') {
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      labels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+  } else if (period === 'month') {
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      labels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    }
+  } else {
+    const months = period === 'year' ? 12 : period === '3months' ? 3 : 6;
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      labels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+  }
+  return labels;
+}
+
 // ─── Page Tableau de Bord ─────────────────────────────────────────────────────
 export const DashboardPage: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -188,16 +213,19 @@ export const DashboardPage: React.FC = () => {
               ))}
             </div>
           </div>
-          {monthlyRevenue.length === 0 ? (
-            <div className="text-center text-sm text-muted" style={{ padding: '20px 0' }}>
-              Aucune donnée pour cette période.
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2" style={{ height: 160, padding: '0 8px', alignItems: 'flex-end' }}>
-                {(() => {
-                  const maxRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
-                  return monthlyRevenue.map((m) => {
+          {(() => {
+            const labels = buildPeriodLabels(revenuePeriod);
+            const points = labels.map(label => {
+              const found = monthlyRevenue.find(m => m.label === label);
+              return { label, revenue: found?.revenue ?? 0, margin: found?.margin ?? 0, invoice_count: found?.invoice_count ?? 0 };
+            });
+            const maxRevenue = Math.max(...points.map(p => p.revenue), 1);
+            const totalInvoices = points.reduce((s, p) => s + p.invoice_count, 0);
+            const totalMargin = points.reduce((s, p) => s + p.margin, 0);
+            return (
+              <>
+                <div className="flex items-center gap-2" style={{ height: 160, padding: '0 8px', alignItems: 'flex-end' }}>
+                  {points.map((m) => {
                     const heightPct = (m.revenue / maxRevenue) * 100;
                     const label = m.label.slice(5);
                     return (
@@ -207,15 +235,15 @@ export const DashboardPage: React.FC = () => {
                         <div className="money text-sm text-secondary font-semibold">{label}</div>
                       </div>
                     );
-                  });
-                })()}
-              </div>
-              <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
-                <span>📊 {monthlyRevenue.reduce((s, m) => s + m.invoice_count, 0)} factures au total</span>
-                <span className="text-success">💹 Marge totale : {monthlyRevenue.reduce((s, m) => s + m.margin, 0).toFixed(2)} MAD</span>
-              </div>
-            </>
-          )}
+                  })}
+                </div>
+                <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
+                  <span>📊 {totalInvoices} factures au total</span>
+                  <span className="text-success">💹 Marge totale : {totalMargin.toFixed(2)} MAD</span>
+                </div>
+              </>
+            );
+          })()}
         </Card>
 
         {/* Top Produits + Top Clients */}
