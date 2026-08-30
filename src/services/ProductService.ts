@@ -142,21 +142,23 @@ export class ProductService {
     const cnCount = (db.prepare('SELECT COUNT(*) AS count FROM credit_note_refs WHERE product_id = ?').get(id) as { count: number }).count;
     if (cnCount > 0) hardRefs.push({ name: 'retours / avoirs', count: cnCount });
 
+    // P0 — Les mouvements de stock sont une référence HISTORIQUE : ils doivent
+    // BLOQUER la suppression (jamais supprimés avec le produit).
     const moveCount = (db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?').get(id) as { count: number }).count;
+    if (moveCount > 0) hardRefs.push({ name: 'mouvement(s) de stock', count: moveCount });
+
+    // Historique des prix : donnée historique, à protéger elle aussi.
+    const priceHistoryCount = (db.prepare('SELECT COUNT(*) AS count FROM price_history WHERE product_id = ?').get(id) as { count: number }).count;
+    if (priceHistoryCount > 0) hardRefs.push({ name: 'historique de prix', count: priceHistoryCount });
 
     if (hardRefs.length > 0) {
       throw new EntityCannotBeDeletedError('produit', hardRefs);
     }
 
-    // Suppression transactionnelle : un produit dont le seul historique est un
-    // mouvement de stock (ex. stock initial de démo) peut être supprimé — on
-    // nettoie ses mouvements + son solde précalculé, puis on supprime le produit
-    // (les FK RESTRICT sur product_id l'exigent). Les produits liés à des
-    // documents financiers restent bloqués (ici-dessus).
+    // Produit « propre » (aucune référence historique) : suppression directe.
+    // La balance précalculée (inventory_balances) est une donnée DÉRIVÉE, pas de
+    // l'historique — on la nettoie pour ne pas être bloqué par la FK RESTRICT.
     const deleteTx = db.transaction(() => {
-      if (moveCount > 0) {
-        db.prepare('DELETE FROM stock_movements WHERE product_id = ?').run(id);
-      }
       db.prepare('DELETE FROM inventory_balances WHERE product_id = ?').run(id);
       ProductRepository.remove(id);
     });
