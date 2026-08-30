@@ -458,6 +458,28 @@ export const api = {
   logs: {
     exportErrorLog: () => ipcRenderer.invoke('logs:exportErrorLog'),
   },
+
+  // ─── Assistant IA (Phase B) ────────────────────────────────────────────
+  ai: {
+    getConfig: () => ipcRenderer.invoke('ai:getConfig'),
+    saveConfig: (input: {
+      provider: 'anthropic' | 'openai' | 'custom';
+      baseUrl?: string;
+      apiKey?: string;
+      model?: string;
+      expiryMode?: 'none' | 'date';
+      expiryDate?: string;
+      rateLimitPerMin?: number;
+    }) => ipcRenderer.invoke('ai:saveConfig', input),
+    testConnection: (input: { provider: 'anthropic' | 'openai' | 'custom'; baseUrl?: string; apiKey: string; model: string }) =>
+      ipcRenderer.invoke('ai:testConnection', input),
+    disconnect: () => ipcRenderer.invoke('ai:disconnect'),
+    chat: (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>) =>
+      ipcRenderer.invoke('ai:chat', messages),
+    requestTool: (name: string, params: unknown) => ipcRenderer.invoke('ai:requestTool', { name, params }),
+    confirmAction: (actionId: string, confirmed: boolean) => ipcRenderer.invoke('ai:confirmAction', { actionId, confirmed }),
+    listTools: () => ipcRenderer.invoke('ai:listTools'),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

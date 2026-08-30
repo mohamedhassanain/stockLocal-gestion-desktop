@@ -110,7 +110,7 @@ export async function checkForUpdatesManually(): Promise<{ success: boolean; mes
   try {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, message: result ? 'Vérification terminée.' : 'Aucune mise à jour disponible.' };
-  } catch (e: any) {
+  } catch (e: unknown) {
     return { success: false, message: 'Impossible de vérifier les mises à jour. Vérifiez votre connexion internet.' };
   } finally {
     isChecking = false;

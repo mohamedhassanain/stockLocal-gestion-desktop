@@ -215,9 +215,9 @@ export const ImportService = {
       try {
         ProductService.createProduct(product);
         imported++;
-      } catch (e: any) {
+      } catch (e: unknown) {
         errors++;
-        messages.push(`Produit ${product.reference} (ligne ${i + 1}) : ${e.message}`);
+        messages.push(`Produit ${product.reference} (ligne ${i + 1}) : ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 

@@ -168,8 +168,9 @@ export const BackupService = {
 
       console.log('[Backup] Restauration planifiée. Elle sera appliquée au prochain démarrage.');
       return { success: true, needsRestart: true };
-    } catch (e: any) {
-      return { success: false, error: `Erreur lors de la préparation de la restauration : ${e.message}` };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { success: false, error: `Erreur lors de la préparation de la restauration : ${message}` };
     }
   },
 
@@ -186,8 +187,9 @@ export const BackupService = {
         try { fs.unlinkSync(backupPath + ext); } catch { /* ignore */ }
       }
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: e.message };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { success: false, error: message };
     }
   },
 
@@ -221,8 +223,9 @@ export const BackupService = {
         }
       }
       return { valid: true };
-    } catch (e: any) {
-      return { valid: false, error: `Validation échouée : ${e.message}` };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { valid: false, error: `Validation échouée : ${message}` };
     }
   },
 

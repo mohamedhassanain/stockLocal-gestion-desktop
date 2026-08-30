@@ -29,6 +29,13 @@ export interface PurchaseOrder {
   updated_at?: string;
 }
 
+export interface PurchaseOrderInput {
+  supplier_id: string;
+  date: string;
+  notes?: string;
+  items: PurchaseOrderItem[];
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 interface PurchaseState {
@@ -41,7 +48,7 @@ interface PurchaseState {
   setSearchQuery: (q: string) => void;
   loadOrders: () => Promise<void>;
   selectOrder: (order: PurchaseOrder) => Promise<void>;
-  createOrder: (data: any) => Promise<PurchaseOrder>;
+  createOrder: (data: PurchaseOrderInput) => Promise<PurchaseOrder>;
   confirmOrder: (id: string) => Promise<void>;
   receiveOrder: (id: string, receivedItems?: Array<{ item_id: string; received_qty: number }>) => Promise<void>;
   cancelOrder: (id: string) => Promise<void>;
@@ -68,8 +75,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
         ? await window.api.purchases.search(searchQuery)
         : await window.api.purchases.getAll();
       set({ orders: data, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -78,8 +86,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
     try {
       const full = await window.api.purchases.getById(order.id);
       set({ selectedOrder: full, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -91,8 +100,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
       await get().loadOrders();
       set({ isLoading: false });
       return result.data;
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -109,8 +119,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
         set({ selectedOrder: full });
       }
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -126,8 +137,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
         set({ selectedOrder: full });
       }
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -143,8 +155,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
         set({ selectedOrder: full });
       }
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -159,8 +172,9 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
       }
       await get().loadOrders();
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },

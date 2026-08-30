@@ -59,8 +59,9 @@ function validateDbIntegrity(dbPath: string): { valid: boolean; error?: string }
       return { valid: true };
     }
     return { valid: false, error: `Intégrité compromise : ${result[0]?.integrity_check}` };
-  } catch (e: any) {
-    return { valid: false, error: e.message };
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return { valid: false, error: message };
   } finally {
     if (db) try { db.close(); } catch { /* ignore */ }
   }
@@ -153,8 +154,9 @@ export const MigrationService = {
     // 4. Copy old database to current location
     try {
       fs.copyFileSync(sourcePath, currentDbPath);
-    } catch (e: any) {
-      return { migrated: false, message: `Erreur lors de la copie : ${e.message}`, backupPath };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { migrated: false, message: `Erreur lors de la copie : ${message}`, backupPath };
     }
     
     // Copy WAL/SHM if they exist

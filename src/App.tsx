@@ -16,12 +16,13 @@ import { ReceivingsPage } from './pages/ReceivingsPage';
 import { CashRegisterPage } from './pages/CashRegisterPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { ClientCreditsPage } from './pages/ClientCreditsPage';
+import { AiAssistantPage } from './pages/AiAssistantPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './stores/useToastStore';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant';
 
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
@@ -105,7 +106,7 @@ export const App: React.FC = () => {
       'dashboard', 'products', 'stock', 'clients', 'suppliers', 'invoices',
       'devis', 'delivery-notes', 'credit-notes', 'settings', 'pos',
       'purchases', 'inventory', 'reports', 'stock-alerts',
-      'receivings', 'client-credits', 'payments', 'cash-register',
+      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant',
     ]);
 
     const handleNavigate = (e: Event) => {
@@ -198,6 +199,7 @@ export const App: React.FC = () => {
       {currentPage === 'client-credits' && <ClientCreditsPage />}
       {currentPage === 'payments' && <PaymentsPage />}
       {currentPage === 'cash-register' && <CashRegisterPage />}
+      {currentPage === 'ai-assistant' && <AiAssistantPage />}
       <Toaster />
     </div>
   );

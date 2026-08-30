@@ -32,6 +32,12 @@ function loadElectronApp(): ElectronAppLike | undefined {
  * Sous Node pur (Vitest), `app` n'existe pas : on utilise un dossier de test.
  */
 function resolveUserDataDir(): string {
+  // Priorité absolue pour le serveur MCP standalone (Claude Desktop) : on lui
+  // permet de pointer vers le vrai dossier userData de l'application afin de
+  // lire `storage-config.json` et d'ouvrir la MÊME base SQLite.
+  if (process.env.STOCKLOCAL_USER_DATA_DIR) {
+    return process.env.STOCKLOCAL_USER_DATA_DIR;
+  }
   const electronApp = loadElectronApp();
   if (electronApp) {
     try {

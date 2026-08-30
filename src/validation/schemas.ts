@@ -242,6 +242,30 @@ export const GlobalSettingsSchema = z.object({
   product_units: z.array(z.string().max(20)).optional(),
 });
 
+// ─── Système / Stockage / Backup / Migration (electron/ipc/system.ipc.ts) ────
+
+/** Chemin de stockage (dataPath) fourni par le renderer. */
+export const DataPathSchema = z.string().min(1, 'Le chemin de stockage est obligatoire.').max(500);
+
+/** Chemin de dossier à ouvrir via le shell natif. */
+export const FolderPathSchema = z.string().min(1, 'Le chemin du dossier est obligatoire.').max(500);
+
+/** Migration de données : chemins source et destination. */
+export const MigrateDataSchema = z.object({
+  fromPath: z.string().min(1, 'Le chemin source est obligatoire.').max(500),
+  toPath: z.string().min(1, 'Le chemin de destination est obligatoire.').max(500),
+});
+
+/** Chemin d'un backup (restore/delete/validate). Le confinement au dossier
+ *  backups/ est assuré en aval par validatePathWithinSubDir. */
+export const BackupPathSchema = z.string().min(1, 'Le chemin du backup est obligatoire.').max(500);
+
+/** Dossier de destination optionnel pour backup:now. */
+export const BackupDestDirSchema = z.string().min(1, 'Le dossier de sauvegarde est obligatoire.').max(500).optional();
+
+/** Chemin d'une ancienne base à migrer. */
+export const SourcePathSchema = z.string().min(1, 'Le chemin source est obligatoire.').max(500);
+
 // ─── IDs ─────────────────────────────────────────────────────────────────────
 
 export const IdSchema = z.string().min(1).max(64);

@@ -86,8 +86,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     try {
       const sessions = await window.api.inventory.getAll();
       set({ sessions: sessions || [], isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -96,8 +97,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     try {
       const session = await window.api.inventory.getById(id);
       set({ selectedSession: session, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -108,8 +110,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       await get().loadSessions();
       set({ isLoading: false });
       return result;
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -120,8 +123,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       await window.api.inventory.startCounting(id);
       await get().loadSessionById(id);
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -135,8 +139,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         await get().loadSessionById(selected.id);
       }
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -147,8 +152,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       await window.api.inventory.calculateGaps(id);
       await get().loadSessionById(id);
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -160,8 +166,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       await get().loadSessionById(id);
       await get().loadSessions();
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -176,8 +183,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       await get().loadSessionById(id);
       await get().loadSessions();
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -194,8 +202,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
         selectedSession: state.selectedSession?.id === id ? null : state.selectedSession,
         isLoading: false,
       }));
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -211,8 +220,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       if (result && result.success === false) throw new Error(result.error || 'Création de version impossible.');
       await get().getVersions(sessionId);
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -223,8 +233,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       const versions = await window.api.inventory.getVersions(sessionId);
       set({ versions: versions || [], isLoading: false });
       return versions || [];
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -237,8 +248,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       await get().loadSessionById(sessionId);
       await get().getVersions(sessionId);
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -250,8 +262,9 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       if (result && result.success === false) throw new Error(result.error || 'Correction impossible.');
       await get().loadSessionById(sessionId);
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },

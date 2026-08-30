@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, FileText, FileCheck2, Truck, Undo2,
   Package, ArrowLeftRight, ClipboardList, AlertTriangle, ShoppingBag,
   PackageCheck, Factory, Users, CreditCard, Wallet, BarChart3, Settings,
-  Boxes,
+  Boxes, Bot,
 } from 'lucide-react';
 import type { Page } from '../../App';
 
@@ -79,7 +79,10 @@ const NAV_SECTIONS: NavSectionConfig[] = [
   },
   {
     label: 'Système',
-    items: [{ page: 'settings', icon: Settings, label: 'Paramètres', shortcut: 'F7' }],
+    items: [
+      { page: 'settings', icon: Settings, label: 'Paramètres', shortcut: 'F7' },
+      { page: 'ai-assistant', icon: Bot, label: 'Assistant IA' },
+    ],
   },
 ];
 

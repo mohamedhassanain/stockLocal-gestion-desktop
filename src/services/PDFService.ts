@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, type PDFImage } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
@@ -31,7 +31,7 @@ export const PDFService = {
     const nameSize = 20;
     const titleSize = 16;
     const logoW = 72, logoH = 36, logoGap = 14;
-    let logoImage: any = null;
+    let logoImage: PDFImage | null = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
@@ -117,7 +117,7 @@ export const PDFService = {
     const nameSize = 20;
     const titleSize = 16;
     const logoW = 72, logoH = 36, logoGap = 14;
-    let logoImage: any = null;
+    let logoImage: PDFImage | null = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
@@ -396,7 +396,7 @@ export const PDFService = {
     const nameText = settings.name || 'StockLocal';
     const nameW = boldFont.widthOfTextAtSize(nameText, 20);
     const logoW = 72, logoH = 36, gap = 14;
-    let logoImage: any = null;
+    let logoImage: PDFImage | null = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);

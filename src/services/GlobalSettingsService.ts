@@ -16,6 +16,14 @@ export interface GlobalSettings {
   show_inactive_product_alerts: boolean;
   // Unités de mesure définies par l'utilisateur (liste réutilisable produits)
   product_units: string[];
+  // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
+  ai_provider: 'anthropic' | 'openai' | 'custom';
+  ai_base_url: string;
+  ai_api_key: string;
+  ai_model: string;
+  ai_expiry_mode: 'none' | 'date';
+  ai_expiry_date: string;
+  ai_rate_limit_per_min: number;
 }
 
 const DEFAULTS: GlobalSettings = {
@@ -31,6 +39,13 @@ const DEFAULTS: GlobalSettings = {
   inactive_product_days: 30,
   show_inactive_product_alerts: true,
   product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
+  ai_provider: 'anthropic',
+  ai_base_url: '',
+  ai_api_key: '',
+  ai_model: '',
+  ai_expiry_mode: 'none',
+  ai_expiry_date: '',
+  ai_rate_limit_per_min: 30,
 };
 
 const stmtGetAll = db.prepare('SELECT key, value FROM global_settings');
@@ -65,6 +80,13 @@ export const GlobalSettingsService = {
           return DEFAULTS.product_units;
         }
       })(),
+      ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'custom',
+      ai_base_url: map['ai_base_url'] ?? DEFAULTS.ai_base_url,
+      ai_api_key: map['ai_api_key'] ?? DEFAULTS.ai_api_key,
+      ai_model: map['ai_model'] ?? DEFAULTS.ai_model,
+      ai_expiry_mode: (map['ai_expiry_mode'] ?? DEFAULTS.ai_expiry_mode) as 'none' | 'date',
+      ai_expiry_date: map['ai_expiry_date'] ?? DEFAULTS.ai_expiry_date,
+      ai_rate_limit_per_min: parseInt(map['ai_rate_limit_per_min'] ?? String(DEFAULTS.ai_rate_limit_per_min), 10),
     };
   },
 

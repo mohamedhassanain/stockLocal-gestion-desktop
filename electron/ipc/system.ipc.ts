@@ -10,6 +10,7 @@ import { ErrorLogService } from '../../src/services/ErrorLogService';
 import { MigrationService } from '../../src/services/MigrationService';
 import { checkIntegrity } from '../../src/database/config/connection';
 import { checkForUpdatesManually, installUpdate } from '../autoUpdater';
+import { safeParse, DataPathSchema, FolderPathSchema, MigrateDataSchema, BackupPathSchema, BackupDestDirSchema, SourcePathSchema } from '../../src/validation/schemas';
 
 async function run(action: () => unknown): Promise<unknown> {
   try {
@@ -25,13 +26,18 @@ export function registerSystemHandlers(context: IpcContext): void {
   ipcMain.handle('storage:isFirstRun', async () => DataStorageService.isFirstRun());
   ipcMain.handle('storage:getRecommendedPath', async () => DataStorageService.getRecommendedPath());
   ipcMain.handle('storage:validatePath', async (_, dataPath: unknown) => {
-    return DataStorageService.validatePath(typeof dataPath === 'string' ? dataPath : '');
+    try {
+      const safePath = safeParse(DataPathSchema, dataPath, 'Chemin de stockage');
+      return DataStorageService.validatePath(safePath);
+    } catch (error: unknown) {
+      return { valid: false, error: toHumanError(error) };
+    }
   });
 
   ipcMain.handle('storage:setDataPath', async (_, dataPath: unknown) => {
-    if (typeof dataPath !== 'string') return { success: false, error: 'Chemin invalide.' };
     try {
-      DataStorageService.setDataPath(dataPath);
+      const safePath = safeParse(DataPathSchema, dataPath, 'Chemin de stockage');
+      DataStorageService.setDataPath(safePath);
       return { success: true };
     } catch (error: unknown) {
       return { success: false, error: toHumanError(error) };
@@ -50,8 +56,9 @@ export function registerSystemHandlers(context: IpcContext): void {
   ipcMain.handle('storage:openFolder', async (_, folderPath: unknown) => {
     return run(() => {
       // §10 : n'ouvrir que des dossiers situés dans le dossier de données.
+      const safeFolder = safeParse(FolderPathSchema, folderPath, 'Chemin du dossier');
       const safePath = validatePathWithinDataDir(
-        typeof folderPath === 'string' ? folderPath : '',
+        safeFolder,
         DataStorageService.getConfig().dataPath,
         'chemin dossier'
       );
@@ -73,11 +80,13 @@ export function registerSystemHandlers(context: IpcContext): void {
     return { canceled: false, path: result.filePaths[0] };
   });
 
-  ipcMain.handle('storage:migrateData', async (_, { fromPath, toPath }: { fromPath: unknown; toPath: unknown }) => {
-    if (typeof fromPath !== 'string' || typeof toPath !== 'string') {
-      return { success: false, error: 'Chemins invalides.' };
+  ipcMain.handle('storage:migrateData', async (_, payload: unknown) => {
+    try {
+      const { fromPath, toPath } = safeParse(MigrateDataSchema, payload, 'Migration de données');
+      return DataStorageService.migrateData(fromPath, toPath);
+    } catch (error: unknown) {
+      return { success: false, error: toHumanError(error) };
     }
-    return DataStorageService.migrateData(fromPath, toPath);
   });
 
   // ─── Database Integrity ────────────────────────────────────────────────────
@@ -192,9 +201,9 @@ export function registerSystemHandlers(context: IpcContext): void {
   ipcMain.handle('backup:now', async (_, destinationDir?: unknown) => {
     return run(() => {
       const dataPath = DataStorageService.getConfig().dataPath;
-      if (destinationDir !== undefined && destinationDir !== null) {
-        if (typeof destinationDir !== 'string') throw new Error('Chemin de sauvegarde invalide.');
-        const safeDir = validatePathWithinSubDir(destinationDir, dataPath, DataStorageService.BACKUPS_DIR, 'dossier de sauvegarde');
+      const safeDest = safeParse(BackupDestDirSchema, destinationDir, 'Dossier de sauvegarde');
+      if (safeDest !== undefined) {
+        const safeDir = validatePathWithinSubDir(safeDest, dataPath, DataStorageService.BACKUPS_DIR, 'dossier de sauvegarde');
         return BackupService.backup(safeDir);
       }
       return BackupService.backup(DataStorageService.getBackupsPath());
@@ -212,8 +221,8 @@ export function registerSystemHandlers(context: IpcContext): void {
 
   ipcMain.handle('backup:restore', async (_, backupPath: unknown) => {
     return run(() => {
-      if (typeof backupPath !== 'string') throw new Error('Chemin invalide.');
-      const safePath = validatePathWithinSubDir(backupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
+      const safeBackupPath = safeParse(BackupPathSchema, backupPath, 'Chemin du backup');
+      const safePath = validatePathWithinSubDir(safeBackupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
       const result = BackupService.restoreBackup(safePath);
       if (typeof result === 'object' && result && (result as { success?: boolean }).success) {
         AuditService.log('BACKUP_RESTORE', 'system', 'backup', `Restauration depuis : ${safePath}`);
@@ -224,16 +233,16 @@ export function registerSystemHandlers(context: IpcContext): void {
 
   ipcMain.handle('backup:delete', async (_, backupPath: unknown) => {
     return run(() => {
-      if (typeof backupPath !== 'string') throw new Error('Chemin invalide.');
-      const safePath = validatePathWithinSubDir(backupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
+      const safeBackupPath = safeParse(BackupPathSchema, backupPath, 'Chemin du backup');
+      const safePath = validatePathWithinSubDir(safeBackupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
       return BackupService.deleteBackup(safePath);
     });
   });
 
   ipcMain.handle('backup:validate', async (_, backupPath: unknown) => {
-    if (typeof backupPath !== 'string') return { valid: false, error: 'Chemin invalide.' };
     try {
-      const safePath = validatePathWithinSubDir(backupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
+      const safeBackupPath = safeParse(BackupPathSchema, backupPath, 'Chemin du backup');
+      const safePath = validatePathWithinSubDir(safeBackupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
       return await BackupService.validateBackup(safePath);
     } catch (error: unknown) {
       return { valid: false, error: toHumanError(error) };
@@ -245,9 +254,9 @@ export function registerSystemHandlers(context: IpcContext): void {
   ipcMain.handle('migration:autoMigrate', async () => MigrationService.autoMigrate());
 
   ipcMain.handle('migration:migrateFrom', async (_, sourcePath: unknown) => {
-    if (typeof sourcePath !== 'string') return { migrated: false, message: 'Chemin source invalide.' };
     try {
-      return await MigrationService.migrateFromOldDatabase(sourcePath);
+      const safeSourcePath = safeParse(SourcePathSchema, sourcePath, 'Chemin source');
+      return await MigrationService.migrateFromOldDatabase(safeSourcePath);
     } catch (error: unknown) {
       return { migrated: false, message: toHumanError(error) };
     }

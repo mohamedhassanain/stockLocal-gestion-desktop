@@ -38,8 +38,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
       const query = get().searchQuery;
       const data = await window.api.suppliers.search(query);
       set({ suppliers: data, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -48,8 +49,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
     try {
       const history = await window.api.suppliers.getHistory(supplier.id);
       set({ supplierHistory: history, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -59,8 +61,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
       const result = await window.api.suppliers.create(data);
       if (!result.success) throw new Error(result.error);
       await get().loadSuppliers();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -71,8 +74,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
       const result = await window.api.suppliers.update(id, data);
       if (!result.success) throw new Error(result.error);
       await get().loadSuppliers();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -86,8 +90,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
         set({ selectedSupplier: null, supplierHistory: [] });
       }
       await get().loadSuppliers();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -103,8 +108,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
         const history = await window.api.suppliers.getHistory(supplierId);
         set({ supplierHistory: history });
       }
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -120,8 +126,9 @@ export const useSupplierStore = create<SupplierState>((set, get) => ({
         const history = await window.api.suppliers.getHistory(supplierId);
         set({ supplierHistory: history });
       }
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   }

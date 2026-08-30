@@ -218,7 +218,8 @@ export class AppError extends Error {
 
 export class DatabaseError extends AppError {
   constructor(message: string, cause?: unknown) {
-    super('DATABASE_ERROR', `${message}${cause && cause !== message ? ` (cause: ${String((cause as any)?.message ?? cause)})` : ''}`);
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    super('DATABASE_ERROR', `${message}${cause && cause !== message ? ` (cause: ${causeMsg})` : ''}`);
     this.name = 'DatabaseError';
   }
 }
@@ -290,7 +291,7 @@ const HUMAN_ERROR_MAP: Record<string, string> = {
  */
 export function toHumanError(error: unknown): string {
   if (!error) return 'Une erreur inconnue est survenue.';
-  const msg = String((error as any)?.message ?? error);
+  const msg = error instanceof Error ? error.message : String(error);
 
   for (const [pattern, human] of Object.entries(HUMAN_ERROR_MAP)) {
     if (msg.includes(pattern)) return human;

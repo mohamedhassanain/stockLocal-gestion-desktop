@@ -38,8 +38,9 @@ export const useStockStore = create<StockState>((set, get) => ({
       const level = await window.api.stock.getLevel(productId);
 
       set({ movements: history, stockHistory: history, currentProductStock: level, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -50,8 +51,9 @@ export const useStockStore = create<StockState>((set, get) => ({
       if (!result.success) throw new Error(result.error);
 
       await get().loadProductStock(data.product_id);
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -63,8 +65,9 @@ export const useStockStore = create<StockState>((set, get) => ({
       if (!result.success) throw new Error(result.error);
 
       await get().loadProductStock(data.product_id);
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -76,8 +79,9 @@ export const useStockStore = create<StockState>((set, get) => ({
       if (!result.success) throw new Error(result.error);
 
       await get().loadProductStock(data.product_id);
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   }

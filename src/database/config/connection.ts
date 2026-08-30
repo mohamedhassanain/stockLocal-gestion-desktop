@@ -633,10 +633,10 @@ function initDb(): void {
     // Migrations versionnées — après toutes les migrations ad-hoc
     // Les NOUVELLES migrations passent par `runMigrations` (table `schema_migrations`).
     resolveMigrationsDir();
-  } catch (e: any) {
+  } catch (e: unknown) {
     const detail = safetyBackup
       ? `Erreur lors de la migration de la base de données. Une copie de sécurité a été créée ici : ${safetyBackup}. Vous pouvez joindre ce fichier au support pour diagnostiquer le problème.`
-      : `Erreur lors de la migration de la base de données : ${e?.message ?? e}`;
+      : `Erreur lors de la migration de la base de données : ${e instanceof Error ? e.message : String(e)}`;
     console.error(`[DB] ${detail}`);
     throw new Error(detail);
   }
@@ -697,7 +697,7 @@ export function checkIntegrity(): { valid: boolean; message: string } {
       return { valid: true, message: 'Base de données intacte.' };
     }
     return { valid: false, message: `Problème d'intégrité : ${result[0]?.integrity_check}` };
-  } catch (e: any) {
-    return { valid: false, message: `Erreur de vérification : ${e.message}` };
+  } catch (e: unknown) {
+    return { valid: false, message: `Erreur de vérification : ${e instanceof Error ? e.message : String(e)}` };
   }
 }

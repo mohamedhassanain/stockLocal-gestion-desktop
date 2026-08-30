@@ -6,6 +6,7 @@ import { registerReferenceDataHandlers } from './ipc/referenceData.ipc';
 import { registerBusinessDataHandlers } from './ipc/businessData.ipc';
 import { registerOperationsHandlers } from './ipc/operations.ipc';
 import { registerSystemHandlers } from './ipc/system.ipc';
+import { registerAiHandlers } from './ipc/ai.ipc';
 import { initAutoUpdater } from './autoUpdater';
 import { ErrorLogService } from '../src/services/ErrorLogService';
 import { DemoDataService } from '../src/services/DemoDataService';
@@ -149,6 +150,7 @@ app.whenReady().then(() => {
   registerReferenceDataHandlers();
   registerBusinessDataHandlers();
   registerOperationsHandlers();
+  registerAiHandlers();
 
   // ─── Démarrage ────────────────────────────────────────────────────────────
   ErrorLogService.installGlobalHandlers();
