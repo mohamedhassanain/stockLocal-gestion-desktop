@@ -612,7 +612,7 @@ export const DocumentRepository = {
     if (bl.type !== 'DELIVERY_NOTE') throw new Error('Ce document n\'est pas un bon de livraison.');
     if (bl.status === 'CANCELLED') throw new Error('Ce bon de livraison est annulé.');
 
-    return this.create({
+    const invoice = this.create({
       type: 'INVOICE',
       entity_id: bl.entity_id,
       date: new Date().toISOString().split('T')[0],
@@ -625,5 +625,30 @@ export const DocumentRepository = {
       notes: `Converti depuis ${bl.document_number}`,
       manageStock: false, // PAS de double décrémentation
     });
+
+    // Reporter les paiements du BL sur la facture : si le BL était déjà réglé,
+    // la facture convertie doit hériter du même état (Payée / Partielle / Impayée).
+    const blPayments = this.getPayments(bl.id);
+    if (blPayments.length > 0) {
+      runInTransaction(() => {
+        for (const p of blPayments) {
+          stmtInsertPayment.run(
+            randomUUID(), invoice.id, p.amount, p.payment_method,
+            p.date, p.reference ?? null
+          );
+        }
+
+        // Recalculer le statut de la facture à partir des paiements reportés
+        const paidRow = stmtGetPaidTotal.get(invoice.id) as { total: number };
+        const paid = Number(paidRow.total ?? 0);
+        let newStatus: DocumentStatus = 'UNPAID';
+        if (paid >= invoice.total_incl_tax - 0.01) newStatus = 'PAID';
+        else if (paid > 0) newStatus = 'PARTIAL';
+        stmtUpdateStatus.run(newStatus, invoice.id);
+      });
+      return this.getById(invoice.id)!;
+    }
+
+    return invoice;
   }
 };
