@@ -29,9 +29,9 @@ export function registerOperationsHandlers(): void {
     const d = Math.min(Math.max(Number(days) || 30, 1), 365);
     return DashboardRepository.getUpcomingDues(d);
   });
-  ipcMain.handle('dashboard:getMonthlyRevenue', async (_, months: unknown) => {
-    const m = Math.min(Math.max(Number(months) || 6, 1), 36);
-    return DashboardRepository.getMonthlyRevenue(m);
+  ipcMain.handle('dashboard:getRevenue', async (_, period: unknown) => {
+    const p = typeof period === 'string' ? period : '';
+    return DashboardRepository.getRevenue(p);
   });
   ipcMain.handle('dashboard:getAlertSummary', async () => DashboardRepository.getAlertSummary());
 

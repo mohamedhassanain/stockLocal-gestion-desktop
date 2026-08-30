@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, CardBody, CardHeader, PageHeader, StatCard } from '../components/ui';
-import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, MonthlyRevenue, AlertSummary } from '../repositories/DashboardRepository';
+import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, RevenuePoint, AlertSummary } from '../repositories/DashboardRepository';
 
 const EmptyState: React.FC<{ icon: string; text: string; good?: boolean }> = ({ icon, text, good }) => (
   <div className="text-center text-sm font-semibold" style={{ padding: 16, color: good ? 'var(--success)' : 'var(--muted)' }}>
@@ -33,13 +33,14 @@ export const DashboardPage: React.FC = () => {
   const [topClients, setTopClients] = useState<TopClient[]>([]);
   const [lowStock, setLowStock] = useState<LowStockAlert[]>([]);
   const [dues, setDues] = useState<UpcomingDue[]>([]);
-  const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyRevenue[]>([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<RevenuePoint[]>([]);
   const [alertSummary, setAlertSummary] = useState<AlertSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [dueDays, setDueDays] = useState(30);
+  const [revenuePeriod, setRevenuePeriod] = useState('6months');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
     try {
       const [s, tp, tc, ls, d, backups, mr, alerts] = await Promise.all([
@@ -49,7 +50,7 @@ export const DashboardPage: React.FC = () => {
         window.api.dashboard.getLowStock(),
         window.api.dashboard.getUpcomingDues(dueDays),
         window.api.backup.list(),
-        window.api.dashboard.getMonthlyRevenue(6),
+        window.api.dashboard.getRevenue(revenuePeriod),
         window.api.dashboard.getAlertSummary(),
       ]);
       setStats(s);
@@ -65,9 +66,9 @@ export const DashboardPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dueDays, revenuePeriod]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const handleBackupNow = async () => {
     try {
@@ -170,33 +171,52 @@ export const DashboardPage: React.FC = () => {
         )}
 
         {/* Évolution du CA */}
-        {monthlyRevenue.length > 0 && (
-          <Card padding>
-            <h3 className="section-title mb-3">
-              <span>📈</span>Évolution du chiffre d'affaires (6 mois)
+        <Card padding>
+          <div className="flex justify-between items-center" style={{ flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <h3 className="section-title" style={{ margin: 0 }}>
+              <span>📈</span>Évolution du chiffre d'affaires
             </h3>
-            <div className="flex items-center gap-2" style={{ height: 160, padding: '0 8px', alignItems: 'flex-end' }}>
-              {(() => {
-                const maxRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
-                return monthlyRevenue.map((m) => {
-                  const heightPct = (m.revenue / maxRevenue) * 100;
-                  const monthLabel = m.month.slice(5);
-                  return (
-                    <div key={m.month} className="flex flex-1 items-center gap-1" style={{ flexDirection: 'column' }}>
-                      <div className="money text-xs font-semibold">{m.revenue.toFixed(0)}</div>
-                      <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, var(--primary), var(--sidebar-active))', borderRadius: '6px 6px 0 0', minHeight: 4 }} />
-                      <div className="money text-sm text-secondary font-semibold">{monthLabel}</div>
-                    </div>
-                  );
-                });
-              })()}
+            <div className="flex gap-1">
+              {([['week', 'Semaine'], ['month', 'Mois'], ['3months', '3 mois'], ['6months', '6 mois'], ['year', '1 an']] as const).map(([period, label]) => (
+                <button
+                  key={period}
+                  onClick={() => setRevenuePeriod(period)}
+                  className={`btn btn-sm ${revenuePeriod === period ? 'btn-primary' : 'btn-secondary'}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-            <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
-              <span>📊 {monthlyRevenue.reduce((s, m) => s + m.invoice_count, 0)} factures au total</span>
-              <span className="text-success">💹 Marge totale : {monthlyRevenue.reduce((s, m) => s + m.margin, 0).toFixed(2)} MAD</span>
+          </div>
+          {monthlyRevenue.length === 0 ? (
+            <div className="text-center text-sm text-muted" style={{ padding: '20px 0' }}>
+              Aucune donnée pour cette période.
             </div>
-          </Card>
-        )}
+          ) : (
+            <>
+              <div className="flex items-center gap-2" style={{ height: 160, padding: '0 8px', alignItems: 'flex-end' }}>
+                {(() => {
+                  const maxRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
+                  return monthlyRevenue.map((m) => {
+                    const heightPct = (m.revenue / maxRevenue) * 100;
+                    const label = m.label.slice(5);
+                    return (
+                      <div key={m.label} className="flex flex-1 items-center gap-1" style={{ flexDirection: 'column' }}>
+                        <div className="money text-xs font-semibold">{m.revenue.toFixed(0)}</div>
+                        <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, var(--primary), var(--sidebar-active))', borderRadius: '6px 6px 0 0', minHeight: 4 }} />
+                        <div className="money text-sm text-secondary font-semibold">{label}</div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
+                <span>📊 {monthlyRevenue.reduce((s, m) => s + m.invoice_count, 0)} factures au total</span>
+                <span className="text-success">💹 Marge totale : {monthlyRevenue.reduce((s, m) => s + m.margin, 0).toFixed(2)} MAD</span>
+              </div>
+            </>
+          )}
+        </Card>
 
         {/* Top Produits + Top Clients */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
@@ -270,7 +290,7 @@ export const DashboardPage: React.FC = () => {
                 {[7, 30].map(days => (
                   <button
                     key={days}
-                    onClick={() => { setDueDays(days); load(); }}
+                    onClick={() => setDueDays(days)}
                     className={`btn btn-sm ${dueDays === days ? 'btn-primary' : 'btn-secondary'}`}
                   >
                     {days} j

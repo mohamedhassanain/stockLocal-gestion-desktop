@@ -44,8 +44,8 @@ export interface UpcomingDue {
   days_left: number;
 }
 
-export interface MonthlyRevenue {
-  month: string;
+export interface RevenuePoint {
+  label: string;
   revenue: number;
   margin: number;
   invoice_count: number;
@@ -205,10 +205,13 @@ export const DashboardRepository = {
     return stmtUpcomingDue.all(daysAhead) as UpcomingDue[];
   },
 
-  getMonthlyRevenue(months: number = 6): MonthlyRevenue[] {
+  getRevenue(period: string = '6months'): RevenuePoint[] {
+    const p = ['week', 'month', '3months', '6months', 'year'].includes(period) ? period : '6months';
+    const isDaily = p === 'week' || p === 'month';
+    const offset = p === 'week' ? '-7 days' : p === 'month' ? '-30 days' : p === '3months' ? '-3 months' : p === 'year' ? '-12 months' : '-6 months';
+    const group = isDaily ? "date(d.date)" : "strftime('%Y-%m', d.date)";
     return db.prepare(`
-      SELECT 
-        strftime('%Y-%m', d.date) AS month,
+      SELECT ${group} AS label,
         COALESCE(SUM(d.total_incl_tax), 0) AS revenue,
         COALESCE(SUM(
           (SELECT SUM((di.unit_price - p.purchase_price) * di.quantity * (1 - di.discount/100.0))
@@ -218,10 +221,10 @@ export const DashboardRepository = {
         COUNT(*) AS invoice_count
       FROM documents d
       WHERE d.type = 'INVOICE' AND d.status != 'CANCELLED'
-        AND d.date >= date('now', '-' || ? || ' months')
-      GROUP BY strftime('%Y-%m', d.date)
-      ORDER BY month ASC
-    `).all(months) as MonthlyRevenue[];
+        AND d.date >= date('now', ?)
+      GROUP BY ${group}
+      ORDER BY label ASC
+    `).all(offset) as RevenuePoint[];
   },
 
   getAlertSummary(): AlertSummary {
