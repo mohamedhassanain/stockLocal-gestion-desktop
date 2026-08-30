@@ -245,40 +245,44 @@ export const InventorySessionRepository = {
   },
 
   /**
-   * Modifie les métadonnées d'une session (nom / notes) et/ou son statut.
-   * Autorisé à tous les statuts. Le changement de statut permet de rouvrir
-   * une session validée (retour à un état antérieur) sans toucher aux comptages.
-   * `completed_at` : null sauf si le statut demandé est VALIDATION.
+   * Modifie les métadonnées (nom / notes) d'une session.
+   *
+   * ⚠️ P0-3 — Le `status` n'est PAS modifiable librement : il suit une
+   * state machine stricte pilotée par les méthodes dédiées :
+   *   startCounting()  DRAFT → COMPTAGE
+   *   calculateGaps()  COMPTAGE → CALCUL
+   *   validate()       CALCUL → VALIDATION
+   * Fournir `status` ici est refusé (aucun retour arrière possible, aucune
+   * transition incohérente, jamais VALIDATION → DRAFT/COMPTAGE/CALCUL).
    */
   update(id: string, data: { name: string; notes?: string | null; status?: 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION' }): InventorySession {
     const session = stmtGetById.get(id) as InventorySession | undefined;
     if (!session) throw new Error('Session d\'inventaire introuvable.');
-    const status = data.status ?? session.status;
-    const completedAt = status === 'VALIDATION' ? (session.completed_at ?? new Date().toISOString()) : null;
-    stmtUpdateSession.run(data.name.trim(), data.notes ?? null, status, completedAt, id);
+
+    // State machine stricte : le status ne se change pas via update().
+    if (data.status !== undefined && data.status !== session.status) {
+      throw new Error('Le statut d\'une session ne peut pas être modifié directement. Utilisez les actions dédiées (démarrer le comptage, calculer les écarts, valider).');
+    }
+
+    stmtUpdateSession.run(data.name.trim(), data.notes ?? null, session.status, session.completed_at, id);
     return this.getById(id)!;
   },
 
   /**
    * Supprime une session d'inventaire.
    *
-   * Pour une session VALIDÉE, les ajustements de stock qu'elle a générés
-   * (ADJUSTMENT_IN / ADJUSTMENT_OUT liés à `document_id = session.id`) sont
-   * d'abord ANNULÉS : les mouvements sont supprimés et les balances
-   * précalculées reconstruites → le stock revient à son état pré-validation.
-   * La session est ensuite supprimée (items et versions cascadés).
+   * ⚠️ P0 — Une session VALIDÉE est finale : elle est PROTÉGÉE. On ne supprime
+   * jamais ses mouvements (l'historique ne doit pas être détruit) et on refuse
+   * de la supprimer — l'utilisateur doit passer par une CORRECTION.
+   * Seules les sessions non finalisées (DRAFT / COMPTAGE / CALCUL) peuvent
+   * être supprimées ; les items/versions sont cascadés par les FK.
    */
   remove(id: string): void {
     const session = stmtGetById.get(id) as InventorySession | undefined;
     if (!session) throw new Error('Session d\'inventaire introuvable.');
 
-    // Annuler l'impact stock d'une session validée avant suppression.
     if (session.status === 'VALIDATION') {
-      const movements = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE document_id = ?').get(id) as { cnt: number };
-      if (movements.cnt > 0) {
-        db.prepare('DELETE FROM stock_movements WHERE document_id = ?').run(id);
-        StockLedgerService.rebuildBalances();
-      }
+      throw new Error('Impossible de supprimer un inventaire validé : l\'historique de stock doit être conservé. Utilisez une correction si nécessaire.');
     }
 
     stmtDeleteSession.run(id);
