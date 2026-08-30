@@ -259,17 +259,28 @@ export const InventorySessionRepository = {
     return this.getById(id)!;
   },
 
+  /**
+   * Supprime une session d'inventaire.
+   *
+   * Pour une session VALIDÉE, les ajustements de stock qu'elle a générés
+   * (ADJUSTMENT_IN / ADJUSTMENT_OUT liés à `document_id = session.id`) sont
+   * d'abord ANNULÉS : les mouvements sont supprimés et les balances
+   * précalculées reconstruites → le stock revient à son état pré-validation.
+   * La session est ensuite supprimée (items et versions cascadés).
+   */
   remove(id: string): void {
     const session = stmtGetById.get(id) as InventorySession | undefined;
     if (!session) throw new Error('Session d\'inventaire introuvable.');
-    // Une session validée n'est supprimable QUE si elle n'a généré aucun
-    // mouvement de stock (aucun impact sur le stock). Sinon, refus métier.
+
+    // Annuler l'impact stock d'une session validée avant suppression.
     if (session.status === 'VALIDATION') {
       const movements = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE document_id = ?').get(id) as { cnt: number };
       if (movements.cnt > 0) {
-        throw new Error('Impossible de supprimer : cette session validée a généré des mouvements de stock.');
+        db.prepare('DELETE FROM stock_movements WHERE document_id = ?').run(id);
+        StockLedgerService.rebuildBalances();
       }
     }
+
     stmtDeleteSession.run(id);
   },
 
