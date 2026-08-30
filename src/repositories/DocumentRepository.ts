@@ -339,7 +339,7 @@ export const DocumentRepository = {
       : 'Avoir — retour marchandise';
 
     const insertAll = db.transaction(() => {
-      // 1. Vérifier la quantité retournable (anti sur-retour) et créer l'avoir
+      // 1. Vérifier la quantité retournable (anti sur-retour)
       for (const item of data.return_items) {
         const qty = Number(item.quantity);
         if (!Number.isFinite(qty) || qty <= 0) {
@@ -361,12 +361,25 @@ export const DocumentRepository = {
             `(déjà retourné : ${alreadyReturned}, demandé : ${qty}).`
           );
         }
-
-        // 2. Enregistrer la référence pour la traçabilité
-        stmtInsertCreditRef.run(randomUUID(), id, data.original_invoice_id, item.product_id, qty);
       }
 
-      // 3. Réinjecter le stock (RETURN_IN) via le moteur central
+      // 2. Créer le document avoir (lien original_document_id)
+      //    ⚠️ AVANT les références de retour : credit_note_refs a une FK
+      //    credit_note_id → documents(id), donc le document doit exister d'abord.
+      stmtInsertDoc.run(
+        id, 'CREDIT_NOTE', document_number, data.entity_id,
+        data.original_invoice_id,
+        data.date, null,
+        totalExclTax, totalTax, totalInclTax, 0,
+        'PAID', notes
+      );
+
+      // 3. Enregistrer les références de retour (credit_note_id existe désormais)
+      for (const item of data.return_items) {
+        stmtInsertCreditRef.run(randomUUID(), id, data.original_invoice_id, item.product_id, item.quantity);
+      }
+
+      // 4. Réinjecter le stock (RETURN_IN) via le moteur central
       for (let i = 0; i < data.return_items.length; i++) {
         const item = data.return_items[i];
         StockLedgerService.recordMovement({
@@ -379,15 +392,6 @@ export const DocumentRepository = {
           notes: `RETOUR_CLIENT — ${document_number}`,
         });
       }
-
-      // 4. Créer le document avoir (lien original_document_id)
-      stmtInsertDoc.run(
-        id, 'CREDIT_NOTE', document_number, data.entity_id,
-        data.original_invoice_id,
-        data.date, null,
-        totalExclTax, totalTax, totalInclTax, 0,
-        'PAID', notes
-      );
 
       // 5. Créer les lignes (montants négatifs pour refléter le crédit)
       for (let i = 0; i < data.return_items.length; i++) {
