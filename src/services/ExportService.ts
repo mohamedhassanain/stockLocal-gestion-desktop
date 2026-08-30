@@ -279,11 +279,13 @@ export const ExportService = {
       return row;
     };
 
-    // Titre
+    // Titre — sans fond, gras + italique + souligné + centré
     const date = new Date().toISOString().split('T')[0];
-    const titleRow = ws.addRow([`RAPPORT DE GESTION — ${date}`]);
+    const titleRow = ws.addRow([`Rapport de gestion — ${date}`]);
     ws.mergeCells(titleRow.number, 1, titleRow.number, 6);
-    styleRow(titleRow, { bold: true, fill: 'FF1F4E79', color: 'FFFFFFFF', center: true });
+    const titleCell = titleRow.getCell(1);
+    titleCell.font = { bold: true, italic: true, underline: true };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     titleRow.height = 24;
 
     addSpacer();
