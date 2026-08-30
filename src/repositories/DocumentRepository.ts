@@ -363,6 +363,20 @@ export const DocumentRepository = {
         }
       }
 
+      // Déterminer si c'est un retour total et si la facture d'origine était payée.
+      const originalInvoice = stmtGetById.get(data.original_invoice_id) as Document | undefined;
+      const originalItems = originalInvoice ? (stmtGetItems.all(data.original_invoice_id) as DocumentItem[]) : [];
+      const isFullReturn = data.return_items.length > 0 && data.return_items.every(ri => {
+        const orig = originalItems.find(oi => oi.product_id === ri.product_id);
+        return orig && ri.quantity >= orig.quantity;
+      });
+      const paidAmount = Number(originalInvoice?.amount_paid ?? 0);
+      // Un avoir est un VRAI crédit (remboursement) si le retour est partiel OU si la facture
+      // d'origine avait déjà été (au moins partiellement) payée. Sur un retour TOTAL d'une
+      // facture IMPAYÉE, la dette est simplement annulée → pas de crédit client, statut CANCELLED.
+      const shouldCredit = !isFullReturn || paidAmount > 0;
+      const avoirStatus: DocumentStatus = shouldCredit ? 'PAID' : 'CANCELLED';
+
       // 2. Créer le document avoir (lien original_document_id)
       //    ⚠️ AVANT les références de retour : credit_note_refs a une FK
       //    credit_note_id → documents(id), donc le document doit exister d'abord.
@@ -371,7 +385,7 @@ export const DocumentRepository = {
         data.original_invoice_id,
         data.date, null,
         totalExclTax, totalTax, totalInclTax, 0,
-        'PAID', notes
+        avoirStatus, notes
       );
 
       // 3. Enregistrer les références de retour (credit_note_id existe désormais)
@@ -404,25 +418,19 @@ export const DocumentRepository = {
         );
       }
 
-      // 6. Impact crédit client : l'avoir réduit le solde (écriture PAYMENT)
-      stmtInsertClientCredit.run(
-        randomUUID(), data.entity_id, 'PAYMENT', totalInclTax,
-        `Avoir ${document_number} (retour marchandise)`, new Date().toISOString()
-      );
+      // 6. Crédit client (uniquement si un VRAI crédit est dû : retour partiel ou facture payée)
+      if (shouldCredit) {
+        stmtInsertClientCredit.run(
+          randomUUID(), data.entity_id, 'PAYMENT', totalInclTax,
+          `Avoir ${document_number} (${isFullReturn ? 'retour total' : 'retour partiel'})`, new Date().toISOString()
+        );
+      }
 
       // 7. Si retour total → annuler la facture originale (statut CANCELLED, données conservées)
-      const originalInvoice = stmtGetById.get(data.original_invoice_id) as Document | undefined;
-      if (originalInvoice) {
-        const originalItems = stmtGetItems.all(data.original_invoice_id) as DocumentItem[];
-        const allReturned = data.return_items.every(ri => {
-          const orig = originalItems.find(oi => oi.product_id === ri.product_id);
-          return orig && ri.quantity >= orig.quantity;
-        });
-        if (allReturned) {
-          stmtUpdateStatus.run('CANCELLED', data.original_invoice_id);
-        }
-        // Retour partiel : la facture reste active
+      if (isFullReturn && originalInvoice) {
+        stmtUpdateStatus.run('CANCELLED', data.original_invoice_id);
       }
+      // Retour partiel : la facture reste active
     });
 
     insertAll();
