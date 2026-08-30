@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import type { Document, DocumentType, PaymentMethod } from '../repositories/DocumentRepository';
 
+// Types d'entrée IPC (cohérents avec electron/preload.ts).
+interface SaleItemInput { product_id: string; quantity: number; unit_price: number; discount?: number; }
+interface SaleCreateInput { type: 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE'; entity_id: string; date: string; due_date?: string | null; notes?: string | null; items: SaleItemInput[]; }
+interface DocumentUpdateInput { entity_id: string; date: string; due_date?: string | null; notes?: string | null; items: SaleItemInput[]; }
+
 interface DocumentState {
   documents: Document[];
   selectedDocument: Document | null;
@@ -16,12 +21,12 @@ interface DocumentState {
   loadDocuments: () => Promise<void>;
   loadMoreDocuments: () => Promise<void>;
   selectDocument: (doc: Document) => Promise<void>;
-  createDocument: (data: any) => Promise<Document>;
+  createDocument: (data: SaleCreateInput) => Promise<Document>;
   addPayment: (documentId: string, amount: number, method: PaymentMethod, reference?: string) => Promise<void>;
   convertBL: (deliveryNoteId: string) => Promise<Document>;
   deleteDocument: (id: string) => Promise<void>;
   updateNotes: (id: string, notes: string) => Promise<void>;
-  updateDocument: (id: string, data: any) => Promise<Document>;
+  updateDocument: (id: string, data: DocumentUpdateInput) => Promise<Document>;
   clearSelectedDocument: () => void;
 }
 
@@ -58,8 +63,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         ? await window.api.documents.search(activeType, searchQuery, status)
         : await window.api.documents.getAll(activeType, { limit: 100, offset: 0, status });
       set({ documents: data, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -71,8 +77,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const status = statusFilter ? statusFilter : undefined;
       const next = await window.api.documents.getAll(activeType, { limit: 100, offset: documents.length, status });
       set({ documents: [...documents, ...next], isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -81,8 +88,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     try {
       const full = await window.api.documents.getById(doc.id);
       set({ selectedDocument: full, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -94,8 +102,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       await get().loadDocuments();
       set({ isLoading: false });
       return result.data;
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -112,8 +121,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
         set({ selectedDocument: full });
       }
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -127,8 +137,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       await get().loadDocuments();
       set({ isLoading: false });
       return result.data;
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -141,8 +152,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       if (get().selectedDocument?.id === id) set({ selectedDocument: null });
       await get().loadDocuments();
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -158,8 +170,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       }
       await get().loadDocuments();
       set({ isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -176,8 +189,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       await get().loadDocuments();
       set({ isLoading: false });
       return result.data;
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },

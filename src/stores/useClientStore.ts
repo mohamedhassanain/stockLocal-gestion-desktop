@@ -40,8 +40,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
       const query = get().searchQuery;
       const data = await window.api.clients.search(query);
       set({ clients: data, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -50,8 +51,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
     try {
       const history = await window.api.clients.getHistory(client.id);
       set({ clientHistory: history, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -61,8 +63,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
       const result = await window.api.clients.create(data);
       if (!result.success) throw new Error(result.error);
       await get().loadClients();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -73,8 +76,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
       const result = await window.api.clients.update(id, data);
       if (!result.success) throw new Error(result.error);
       await get().loadClients();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -88,8 +92,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
         set({ selectedClient: null, clientHistory: [] });
       }
       await get().loadClients();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -106,8 +111,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
         const history = await window.api.clients.getHistory(customerId);
         set({ clientHistory: history });
       }
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -123,8 +129,9 @@ export const useClientStore = create<ClientState>((set, get) => ({
         const history = await window.api.clients.getHistory(customerId);
         set({ clientHistory: history });
       }
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -133,9 +140,10 @@ export const useClientStore = create<ClientState>((set, get) => ({
     try {
       const result = await window.api.clients.exportStatement(customerId);
       if (!result.success) throw new Error(result.error);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       // Phase 7 : toast plutôt qu'alert() natif.
-      toast.error(`Erreur lors de l'export : ${err.message}`);
+      toast.error(`Erreur lors de l'export : ${message}`);
     }
   }
 }));

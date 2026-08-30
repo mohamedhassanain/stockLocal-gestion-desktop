@@ -37,8 +37,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
       const query = get().searchQuery;
       const data: Product[] = await window.api.products.search(query);
       set({ products: data, isLoading: false });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -50,8 +51,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -64,8 +66,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -78,8 +81,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -92,8 +96,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
       throw err;
     }
   },
@@ -106,8 +111,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message });
       throw err;
     }
   },
@@ -120,8 +126,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message });
       throw err;
     }
   },
@@ -134,8 +141,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message });
       throw err;
     }
   },
@@ -148,8 +156,9 @@ export const useProductStore = create<ProductState>((set, get) => ({
         throw new Error(result.error);
       }
       await get().loadProducts();
-    } catch (err: any) {
-      set({ error: err.message });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message });
       throw err;
     }
   }
