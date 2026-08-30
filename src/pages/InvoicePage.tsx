@@ -4,6 +4,7 @@ import { useDocumentStore } from '../stores/useDocumentStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import type { Document, DocumentType } from '../repositories/DocumentRepository';
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
@@ -376,7 +377,9 @@ const DocumentDetailPanel: React.FC<{
   onConvert?: () => void;
   onPrint: () => void;
   onCreditNote?: () => void;
-}> = ({ doc, onPayment, onConvert, onPrint, onCreditNote }) => {
+  onDelete?: () => void;
+  onEdit?: () => void;
+}> = ({ doc, onPayment, onConvert, onPrint, onCreditNote, onDelete, onEdit }) => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('CASH');
   const remaining = doc.total_incl_tax - (doc.amount_paid ?? 0);
@@ -461,11 +464,23 @@ const DocumentDetailPanel: React.FC<{
       )}
 
       {/* Boutons d'action */}
-      <div style={{ display: 'flex', gap: '12px' }}>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
         <button onClick={onPrint}
           className="btn btn-secondary" style={{ flex: 1 }}>
           🖨️ Imprimer / Export PDF
         </button>
+        {onEdit && (
+          <button onClick={onEdit}
+            className="btn btn-secondary" style={{ flex: 1 }}>
+            ✏️ Modifier
+          </button>
+        )}
+        {onDelete && (
+          <button onClick={onDelete}
+            className="btn btn-danger" style={{ flex: 1 }}>
+            🗑️ Supprimer
+          </button>
+        )}
         {doc.type === 'DELIVERY_NOTE' && onConvert && (
           <button onClick={onConvert}
             className="btn btn-primary" style={{ flex: 1 }}>
@@ -486,9 +501,12 @@ const DocumentDetailPanel: React.FC<{
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
 export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialType }) => {
-  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL } = useDocumentStore();
+  const { documents, selectedDocument, activeType, searchQuery, isLoading, setActiveType, setSearchQuery, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, deleteDocument, updateNotes, clearSelectedDocument } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
+  const [editNotesDoc, setEditNotesDoc] = useState<Document | null>(null);
+  const [editNotesValue, setEditNotesValue] = useState('');
   const documentListRef = useRef<HTMLDivElement>(null);
   const documentVirtualizer = useVirtualizer({ count: documents.length, getScrollElement: () => documentListRef.current, estimateSize: () => 94, overscan: 8 });
 
@@ -556,6 +574,35 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
         await selectDocument(result.data);
         setActiveType('CREDIT_NOTE');
       }
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!pendingDelete) return;
+    try {
+      await deleteDocument(pendingDelete.id);
+      toast.success('Document supprimé avec succès.');
+      setPendingDelete(null);
+      if (selectedDocument?.id === pendingDelete.id) clearSelectedDocument();
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const openEditNotes = () => {
+    if (!selectedDocument) return;
+    setEditNotesDoc(selectedDocument);
+    setEditNotesValue(selectedDocument.notes ?? '');
+  };
+
+  const handleSaveNotes = async () => {
+    if (!editNotesDoc) return;
+    try {
+      await updateNotes(editNotesDoc.id, editNotesValue);
+      toast.success('Notes modifiées.');
+      setEditNotesDoc(null);
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -638,6 +685,8 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
               onConvert={selectedDocument.type === 'DELIVERY_NOTE' ? handleConvert : undefined}
               onPrint={handlePrint}
               onCreditNote={selectedDocument.type === 'INVOICE' ? handleCreditNoteClick : undefined}
+              onDelete={() => setPendingDelete(selectedDocument)}
+              onEdit={openEditNotes}
             />
           )}
         </div>
@@ -653,6 +702,35 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType }> = ({ initialT
           onClose={() => setShowReturnModal(false)}
           onConfirm={handleReturnConfirm}
         />
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          open
+          title="Supprimer ce document ?"
+          message={<>Le document <strong>{pendingDelete.document_number}</strong> sera <strong>définitivement supprimé</strong>.<br />Pour un avoir, le stock et le crédit client seront aussi réinversés. Cette action est <strong>irréversible</strong>.</>}
+          danger
+          confirmLabel="Supprimer définitivement"
+          onConfirm={() => { void handleDeleteDocument(); }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {editNotesDoc && (
+        <div style={{ position: 'fixed', inset: 0, background: 'var(--overlay)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-xl)', width: '520px', boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+              <h2 style={{ margin: 0 }}>✏️ Modifier les notes — {editNotesDoc.document_number}</h2>
+            </div>
+            <div style={{ padding: '20px 24px' }}>
+              <textarea rows={4} value={editNotesValue} onChange={e => setEditNotesValue(e.target.value)} placeholder="Motif / remarques..." style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', fontFamily: 'inherit', fontSize: '14px' }} />
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button className="btn btn-secondary" onClick={() => setEditNotesDoc(null)}>Annuler</button>
+              <button className="btn btn-primary" onClick={handleSaveNotes}>💾 Enregistrer</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

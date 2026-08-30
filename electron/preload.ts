@@ -97,7 +97,7 @@ export interface SaleItemInput {
 }
 
 export interface SaleCreateInput {
-  type: 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE';
+  type: 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE';
   entity_id: string;
   date: string;
   due_date?: string | null;
@@ -332,6 +332,8 @@ export const api = {
     // Registre des paiements (Caisse / Paiements) — SQL paginé.
     getAllPayments: (params?: { limit?: number; offset?: number }) => ipcRenderer.invoke('documents:getAllPayments', params),
     exportPdf: (documentId: string) => ipcRenderer.invoke('documents:exportPdf', documentId),
+    delete: (id: string) => ipcRenderer.invoke('documents:delete', id),
+    updateNotes: (id: string, notes: string) => ipcRenderer.invoke('documents:updateNotes', { id, notes }),
   },
 
   // ─── Dashboard ─────────────────────────────────────────────────────────────

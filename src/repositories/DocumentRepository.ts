@@ -475,6 +475,41 @@ export const DocumentRepository = {
   },
 
   /**
+   * Supprime définitivement un document en inversant tous ses effets :
+   *   - Avoir : réinverse le crédit client + nettoie les références de retour ;
+   *   - Stock : supprime les mouvements liés au document (restaure le niveau) ;
+   *   - Nettoyage : lignes, paiements, puis le document lui-même.
+   */
+  deleteDocument(id: string): void {
+    const doc = stmtGetById.get(id) as Document | undefined;
+    if (!doc) throw new Error('Document introuvable.');
+
+    runInTransaction(() => {
+      if (doc.type === 'CREDIT_NOTE') {
+        // Réinverser le crédit client généré par l'avoir
+        db.prepare(`DELETE FROM client_credits WHERE type = 'PAYMENT' AND description LIKE ?`).run(`Avoir ${doc.document_number}%`);
+        db.prepare(`DELETE FROM credit_note_refs WHERE credit_note_id = ? OR original_document_id = ?`).run(id, id);
+      } else {
+        // Un autre document peut être le document d'origine d'un avoir
+        db.prepare(`DELETE FROM credit_note_refs WHERE original_document_id = ?`).run(id);
+      }
+
+      // Restaurer le stock : retirer les mouvements créés par ce document
+      db.prepare(`DELETE FROM stock_movements WHERE document_id = ?`).run(id);
+
+      // Nettoyer les lignes, paiements et le document
+      db.prepare(`DELETE FROM document_items WHERE document_id = ?`).run(id);
+      db.prepare(`DELETE FROM payments WHERE document_id = ?`).run(id);
+      db.prepare(`DELETE FROM documents WHERE id = ?`).run(id);
+    });
+  },
+
+  /** Met à jour les notes / motif d'un document. */
+  updateDocumentNotes(id: string, notes: string): void {
+    db.prepare(`UPDATE documents SET notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(notes, id);
+  },
+
+  /**
    * Conversion BL → Facture.
    *
    * IMPORTANT : le stock a déjà été décrémenté lors de la création du BL.

@@ -17,6 +17,9 @@ interface DocumentState {
   createDocument: (data: any) => Promise<Document>;
   addPayment: (documentId: string, amount: number, method: PaymentMethod, reference?: string) => Promise<void>;
   convertBL: (deliveryNoteId: string) => Promise<Document>;
+  deleteDocument: (id: string) => Promise<void>;
+  updateNotes: (id: string, notes: string) => Promise<void>;
+  clearSelectedDocument: () => void;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
@@ -117,5 +120,38 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       set({ error: err.message, isLoading: false });
       throw err;
     }
-  }
+  },
+
+  deleteDocument: async (id) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.documents.delete(id);
+      if (!result.success) throw new Error(result.error);
+      if (get().selectedDocument?.id === id) set({ selectedDocument: null });
+      await get().loadDocuments();
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  updateNotes: async (id, notes) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.documents.updateNotes(id, notes);
+      if (!result.success) throw new Error(result.error);
+      if (get().selectedDocument?.id === id) {
+        const full = await window.api.documents.getById(id);
+        set({ selectedDocument: full });
+      }
+      await get().loadDocuments();
+      set({ isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      throw err;
+    }
+  },
+
+  clearSelectedDocument: () => set({ selectedDocument: null })
 }));

@@ -317,4 +317,26 @@ export function registerBusinessDataHandlers(): void {
       return { success: true, filePath };
     });
   });
+
+  ipcMain.handle('documents:delete', async (_, id: unknown) => {
+    return run(() => {
+      const safeId = requireId(id, 'id document');
+      const doc = DocumentService.getDocument(safeId);
+      if (!doc) throw new Error('Document introuvable.');
+      DocumentRepository.deleteDocument(safeId);
+      AuditService.log('DOCUMENT_DELETE', 'document', safeId, `${doc.type} ${doc.document_number} supprimé`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('documents:updateNotes', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { id?: unknown; notes?: unknown };
+      const safeId = requireId(p.id, 'id document');
+      const notes = typeof p.notes === 'string' ? p.notes.trim().slice(0, 1000) : '';
+      DocumentRepository.updateDocumentNotes(safeId, notes);
+      AuditService.log('DOCUMENT_UPDATE', 'document', safeId, 'Notes du document modifiées');
+      return { success: true };
+    });
+  });
 }
