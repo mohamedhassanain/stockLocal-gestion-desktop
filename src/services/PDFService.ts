@@ -27,7 +27,7 @@ export const PDFService = {
 
     // ── En-tête : logo + nom CENTRÉS ensemble, titre à GAUCHE sous le bloc ──
     const nameText = settings.name || 'StockLocal';
-    const titleText = 'Relevé de Compte (نسيئة)';
+    const titleText = 'Relevé de Compte (Client)';
     const nameSize = 20;
     const titleSize = 16;
     const logoW = 72, logoH = 36, logoGap = 14;
