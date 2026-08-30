@@ -13,9 +13,24 @@ interface CartItem {
   unit_price: number;
   discount: number;
   current_stock: number;
+  vat_rate: number;
 }
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
+
+// Réplication EXACTE du calcul TTC du DocumentRepository (arrondis identiques) :
+// ✓ le total affiché/payé au POS correspond au total_incl_tax de la facture.
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function lineTotalTTC(item: CartItem): number {
+  const vatRate = item.vat_rate || 20;
+  const base = item.quantity * item.unit_price * (1 - item.discount / 100);
+  const excl = round2(base);
+  const tax = round2(base * vatRate / 100);
+  return round2(excl + tax);
+}
 
 export const POSPage: React.FC = () => {
   const clients = useClientStore((state) => state.clients);
@@ -94,6 +109,7 @@ export const POSPage: React.FC = () => {
         unit_price: product.selling_price,
         discount: 0,
         current_stock: stock,
+        vat_rate: product.vat_rate ?? 20,
       }];
     });
   }, []);
@@ -128,7 +144,7 @@ export const POSPage: React.FC = () => {
     setCashGiven(0);
   };
 
-  const subtotal = cart.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - it.discount / 100), 0);
+  const subtotal = cart.reduce((sum, it) => sum + lineTotalTTC(it), 0);
   const change = paymentMethod === 'CASH' ? Math.max(0, cashGiven - subtotal) : 0;
   const canValidate = cart.length > 0;
   const filteredProducts = products.filter((product) => product.status === 'ACTIVE');
@@ -286,7 +302,7 @@ export const POSPage: React.FC = () => {
                         />
                       </div>
                       <div className="money text-right font-semibold" style={{ width: 110 }}>
-                        {(item.quantity * item.unit_price * (1 - item.discount / 100)).toFixed(2)} MAD
+                        {lineTotalTTC(item).toFixed(2)} MAD
                       </div>
                       <Button variant="ghost" onClick={() => removeFromCart(item.product_id)} style={{ color: 'var(--danger)', fontSize: 20, padding: 4 }}>×</Button>
                     </div>
@@ -413,7 +429,7 @@ export const POSPage: React.FC = () => {
                 {lastSale.items.map((it, i) => (
                   <div key={i} className="flex justify-between" style={{ padding: '4px 0', borderBottom: '1px dashed var(--border)' }}>
                     <span>{it.quantity}× {it.reference}</span>
-                    <span className="money">{(it.quantity * it.unit_price * (1 - it.discount / 100)).toFixed(2)}</span>
+                    <span className="money">{lineTotalTTC(it).toFixed(2)}</span>
                   </div>
                 ))}
                 <div className="flex justify-between font-semibold money" style={{ marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '2px solid var(--text)' }}>

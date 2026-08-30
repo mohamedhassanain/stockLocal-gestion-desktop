@@ -18,6 +18,8 @@ export interface Product {
   status: 'ACTIVE' | 'ARCHIVED' | 'DISABLED';
   // Calculé dynamiquement (niveau de stock actuel)
   current_stock?: number;
+  // Taux TVA (lu sur la table products)
+  vat_rate?: number;
 }
 
 // Colonnes modifiables d'un produit (sans les champs calculés)
