@@ -66,6 +66,9 @@ export const BackupService = {
     // Checksum SHA-256 : empreinte de référence pour la validation (P1)
     this.writeChecksum(backupPath);
 
+    // P0-2 : marquer comme SUCCÈS seulement si intégrité + checksum OK (métadonnées écrites).
+    await this.markBackupSuccessful(backupPath);
+
     console.log(`[Backup] Sauvegarde créée : ${backupPath}`);
     return backupPath;
   },
@@ -287,6 +290,34 @@ export const BackupService = {
   },
 
   /**
+   * P0-2 — Marque un backup comme RÉUSSI seulement après validation
+   * (integritiy_check + checksum), puis écrit les métadonnées :
+   *   <backup>.meta.json  +  last-successful-backup.json (pour le check au démarrage).
+   */
+  async markBackupSuccessful(backupPath: string): Promise<void> {
+    const validation = await this.validateBackup(backupPath);
+    if (!validation.valid) {
+      console.warn('[Backup] Backup non marqué comme réussi :', validation.error);
+      return;
+    }
+    const stats = fs.statSync(backupPath);
+    const meta = {
+      path: backupPath,
+      created_at: new Date().toISOString(),
+      sizeKB: Math.round(stats.size / 1024),
+      checksum: this.computeChecksum(backupPath),
+    };
+    try {
+      fs.writeFileSync(backupPath + '.meta.json', JSON.stringify(meta, null, 2), 'utf8');
+      const lastPath = path.join(DataStorageService.getBackupsPath(), 'last-successful-backup.json');
+      fs.writeFileSync(lastPath, JSON.stringify({ path: backupPath, created_at: meta.created_at, sizeKB: meta.sizeKB }, null, 2), 'utf8');
+      console.log('[Backup] Sauvegarde marquée comme réussie (intégrité + checksum OK).');
+    } catch (e) {
+      console.warn('[Backup] Impossible d\'écrire les métadonnées :', e);
+    }
+  },
+
+  /**
    * P1 — Vérifie au démarrage si un backup automatique est dû.
    * "Application startup → check last successful backup → if backup expired → create backup."
    * Ne bloque pas le démarrage (fire-and-forget). Respecte l'option auto_backup_enabled.
@@ -304,16 +335,19 @@ export const BackupService = {
     const interval = intervals[settings.auto_backup_frequency];
     if (!interval) return; // on_close : géré à la fermeture
 
-    const backups = this.listBackups();
-    if (backups.length === 0) {
-      // Aucune sauvegarde : on en crée une immédiatement.
-      this.backup().catch(e => console.error('[Backup] Backup démarrage échoué:', e));
-      return;
-    }
+    // P0-2 : lire le DERNIER backup RÉUSSI depuis les métadonnées (pas le simple mtime fichier).
+    let lastMtime = 0;
+    try {
+      const lastPath = path.join(DataStorageService.getBackupsPath(), 'last-successful-backup.json');
+      if (fs.existsSync(lastPath)) {
+        const meta = JSON.parse(fs.readFileSync(lastPath, 'utf8')) as { created_at: string };
+        const t = new Date(meta.created_at).getTime();
+        if (Number.isFinite(t)) lastMtime = t;
+      }
+    } catch { /* métadonnées absentes → backup immédiat */ }
 
-    const lastMtime = Math.max(...backups.map(b => b.mtimeMs));
-    if (Date.now() - lastMtime >= interval) {
-      this.backup().catch(e => console.error('[Backup] Backup démarrage (expiré) échoué:', e));
+    if (lastMtime === 0 || Date.now() - lastMtime >= interval) {
+      this.backup().catch(e => console.error('[Backup] Backup démarrage (expiré/absent) échoué:', e));
     }
   }
 };
