@@ -219,7 +219,7 @@ function migrateStockMovements(): void {
           supplier_id TEXT,
           notes TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
         );
         INSERT INTO stock_movements_new (id, product_id, type, quantity, unit_price, date, reference_doc, supplier_id, notes, created_at)
           SELECT id, product_id, type, quantity, unit_price, date, reference_doc, supplier_id, notes, created_at FROM stock_movements;
@@ -247,7 +247,7 @@ function migrateClientCredits(): void {
           description TEXT,
           date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE
+          FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE RESTRICT
         );
         INSERT INTO client_credits_new (id, customer_id, type, amount, description, date, created_at)
           SELECT id, customer_id, type, amount, description, date, created_at FROM client_credits;
@@ -275,7 +275,7 @@ function migrateSupplierCredits(): void {
           description TEXT,
           date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE CASCADE
+          FOREIGN KEY (supplier_id) REFERENCES suppliers (id) ON DELETE RESTRICT
         );
         INSERT INTO supplier_credits_new (id, supplier_id, type, amount, description, date, created_at)
           SELECT id, supplier_id, type, amount, description, date, created_at FROM supplier_credits;
@@ -499,7 +499,7 @@ function migrateQuantitiesReal(): void {
           supplier_id TEXT,
           notes TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+          FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
         );
         INSERT INTO stock_movements_new (id, product_id, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes, created_at)
           SELECT id, product_id, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes, created_at FROM stock_movements;
