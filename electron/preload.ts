@@ -480,6 +480,7 @@ export const api = {
     confirmAction: (actionId: string, confirmed: boolean) => ipcRenderer.invoke('ai:confirmAction', { actionId, confirmed }),
     listTools: () => ipcRenderer.invoke('ai:listTools'),
     getMcpConfig: () => ipcRenderer.invoke('ai:getMcpConfig'),
+    getMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:getMcpConfigFolder', client),
   },
 };
 

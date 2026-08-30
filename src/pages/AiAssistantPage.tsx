@@ -50,6 +50,7 @@ export const AiAssistantPage: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [showConfigTab, setShowConfigTab] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [mcpClient, setMcpClient] = useState<'claude' | 'cursor'>('claude');
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadConfig = async () => {
@@ -144,8 +145,9 @@ export const AiAssistantPage: React.FC = () => {
   /** Ouvre le dossier contenant le fichier de config du client (Claude/Cursor). */
   const handleOpenConfigFolder = async () => {
     try {
-      // Le dossier userData est recalculé côté main (getMcpConfig → userDataDir).
-      await window.api.storage.openFolder((await window.api.ai.getMcpConfig()).userDataDir);
+      // Ouvre le dossier de configuration du client sélectionné (Claude/Cursor).
+      const folder = await window.api.ai.getMcpConfigFolder(mcpClient);
+      await window.api.storage.openFolder(folder);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     }
@@ -272,7 +274,14 @@ export const AiAssistantPage: React.FC = () => {
           sans passer par l'écran de chat intégré. Copiez le bloc ci-dessous dans le fichier de configuration du client.
         </p>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={labelStyle}>Client</label>
+            <select value={mcpClient} onChange={(e) => setMcpClient(e.target.value as 'claude' | 'cursor')} style={{ ...inputStyle, width: 'auto' }}>
+              <option value="claude">Claude Desktop</option>
+              <option value="cursor">Cursor</option>
+            </select>
+          </div>
           <button onClick={handleCopyMcpConfig} style={primaryBtn}>
             {copied ? '✓ Copié !' : 'Copier la configuration MCP'}
           </button>

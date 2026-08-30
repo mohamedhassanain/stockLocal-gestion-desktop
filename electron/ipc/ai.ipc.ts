@@ -72,4 +72,19 @@ export function registerAiHandlers(): void {
       provider: settings.ai_provider,
     };
   }));
+
+  // Dossier de configuration du client MCP (Claude Desktop / Cursor) pour
+  // « Ouvrir le dossier de configuration ».
+  ipcMain.handle('ai:getMcpConfigFolder', async (_, client: unknown) => run(() => {
+    const c = client === 'cursor' ? 'cursor' : 'claude';
+    const home = os.homedir();
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const base = isWin
+      ? (process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'))
+      : isMac
+        ? path.join(home, 'Library', 'Application Support')
+        : (process.env.XDG_CONFIG_HOME ?? path.join(home, '.config'));
+    return path.join(base, c === 'cursor' ? 'Cursor' : 'Claude');
+  }));
 }
