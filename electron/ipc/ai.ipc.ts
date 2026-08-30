@@ -1,6 +1,9 @@
 import { ipcMain } from 'electron';
+import os from 'node:os';
+import path from 'node:path';
 import { AiAssistantService } from '../../src/ai/AiAssistantService';
-import { executeMcpTool, MCP_TOOLS } from '../../src/ai/McpTools';
+import { MCP_TOOLS } from '../../src/ai/McpTools';
+import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
 
 function run<T>(action: () => T | Promise<T>): Promise<T> {
   return Promise.resolve(action());
@@ -47,4 +50,26 @@ export function registerAiHandlers(): void {
 
   // Liste des outils exposés (pour debug / UI)
   ipcMain.handle('ai:listTools', async () => run(() => Object.keys(MCP_TOOLS)));
+
+  // Chemin absolu du serveur MCP compilé + dossier userData, pour générer
+  // automatiquement le bloc `claude_desktop_config.json` dans l'UI (B.1 simplifié).
+  ipcMain.handle('ai:getMcpConfig', async () => run(() => {
+    const root = process.env.APP_ROOT ?? process.cwd();
+    const mcpServerRel = process.env.APP_ROOT ? 'dist-electron/mcp-server.js' : 'src/ai/mcpServer.ts';
+    const home = os.homedir();
+    const userDataDir =
+      process.env.STOCKLOCAL_USER_DATA_DIR ??
+      (process.platform === 'win32'
+        ? path.join(process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'), 'StockLocal')
+        : process.platform === 'darwin'
+          ? path.join(home, 'Library', 'Application Support', 'StockLocal')
+          : path.join(process.env.XDG_CONFIG_HOME ?? path.join(home, '.config'), 'StockLocal'));
+    const settings = GlobalSettingsService.getAll();
+    return {
+      mcpServerPath: path.join(root, mcpServerRel),
+      userDataDir,
+      rateLimitPerMin: settings.ai_rate_limit_per_min,
+      provider: settings.ai_provider,
+    };
+  }));
 }
