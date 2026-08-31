@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron';
+import { ipcMain, dialog, shell, clipboard } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { IpcContext } from './ipcContext';
@@ -285,5 +285,18 @@ export function registerSystemHandlers(context: IpcContext): void {
   ipcMain.handle('app:installUpdate', async () => {
     installUpdate();
     return { success: true };
+  });
+
+  // ─── Presse-papier (electron.clipboard) ───────────────────────────────────
+  // `navigator.clipboard` échoue silencieusement sous sandbox:true sans
+  // permission 'clipboard-write'. On passe par l'API native Electron via IPC.
+  ipcMain.handle('system:writeClipboard', async (_, text: unknown) => {
+    if (typeof text !== 'string') return { success: false, error: 'Texte invalide.' };
+    try {
+      clipboard.writeText(text);
+      return { success: true };
+    } catch (error: unknown) {
+      return { success: false, error: toHumanError(error) };
+    }
   });
 }

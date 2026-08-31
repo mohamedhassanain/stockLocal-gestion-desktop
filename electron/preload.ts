@@ -215,6 +215,11 @@ export const api = {
     migrateData: (fromPath: string, toPath: string) => ipcRenderer.invoke('storage:migrateData', { fromPath, toPath }),
   },
 
+  // ─── Presse-papier (Electron clipboard via IPC) ───────────────────────────
+  system: {
+    writeClipboard: (text: string) => ipcRenderer.invoke('system:writeClipboard', text),
+  },
+
   // ─── Database Integrity ────────────────────────────────────────────────────
   db: {
     integrityCheck: () => ipcRenderer.invoke('db:integrityCheck'),

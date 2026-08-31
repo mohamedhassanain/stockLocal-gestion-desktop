@@ -74,6 +74,8 @@ export const AiAssistantPage: React.FC = () => {
   const [mcpClient, setMcpClient] = useState<'claude' | 'cursor'>('claude');
   const [mcpSteps, setMcpSteps] = useState<string[]>([]);
   const [showManualConfig, setShowManualConfig] = useState(false);
+  const [mcpJson, setMcpJson] = useState('');
+  const [showMcpJson, setShowMcpJson] = useState(false);
   // Chat — inchangé
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -178,7 +180,7 @@ export const AiAssistantPage: React.FC = () => {
   // ─── Zone 2 : Connecter automatiquement = copier config + ouvrir dossier ──
   const handleConnectMcpClient = async () => {
     try {
-      // Étape 1 : copier la configuration MCP
+      // Étape 1 : générer la configuration MCP
       const info = await window.api.ai.getMcpConfig();
       const json = JSON.stringify({
         mcpServers: {
@@ -189,7 +191,14 @@ export const AiAssistantPage: React.FC = () => {
           },
         },
       }, null, 2);
-      await navigator.clipboard.writeText(json);
+      setMcpJson(json); // toujours conservé pour le filet de sécurité
+      // Copie via Electron clipboard (IPC) — navigator.clipboard échoue sous sandbox:true.
+      const clipRes = await window.api.system.writeClipboard(json);
+      if (!clipRes?.success) {
+        toast.error('Impossible de copier automatiquement. Utilisez le bloc « Voir/copier manuellement le JSON » ci-dessous.');
+        setMcpSteps([]);
+        return;
+      }
       // Étape 2 : ouvrir le dossier de configuration
       const openRes = await window.api.ai.openMcpConfigFolder(mcpClient);
       const clientName = mcpClient === 'cursor' ? 'Cursor' : 'Claude Desktop';
@@ -382,6 +391,23 @@ export const AiAssistantPage: React.FC = () => {
                 {mcpSteps.map((step, i) => (
                   <div key={i} style={{ marginBottom: i === mcpSteps.length - 1 ? 0 : 6 }}>{step}</div>
                 ))}
+              </div>
+            )}
+
+            {/* Filet de sécurité : voir/copier manuellement le JSON (toujours dispo) */}
+            {mcpJson && (
+              <div style={{ marginTop: 16, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
+                <button onClick={() => setShowMcpJson(!showMcpJson)} style={accordionBtnStyle}>
+                  Voir/copier manuellement le JSON {showMcpJson ? '▴' : '▾'}
+                </button>
+                {showMcpJson && (
+                  <textarea
+                    readOnly
+                    value={mcpJson}
+                    onFocus={(e) => e.target.select()}
+                    style={{ ...inputStyle, marginTop: 8, height: 120, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre' }}
+                  />
+                )}
               </div>
             )}
 
