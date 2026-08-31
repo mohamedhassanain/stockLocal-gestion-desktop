@@ -463,7 +463,8 @@ export const api = {
   ai: {
     getConfig: () => ipcRenderer.invoke('ai:getConfig'),
     saveConfig: (input: {
-      provider: 'anthropic' | 'openai' | 'custom';
+      provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
+      providerName?: string;
       baseUrl?: string;
       apiKey?: string;
       model?: string;
@@ -471,7 +472,7 @@ export const api = {
       expiryDate?: string;
       rateLimitPerMin?: number;
     }) => ipcRenderer.invoke('ai:saveConfig', input),
-    testConnection: (input: { provider: 'anthropic' | 'openai' | 'custom'; baseUrl?: string; apiKey: string; model: string }) =>
+    testConnection: (input: { provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom'; baseUrl?: string; apiKey: string; model: string }) =>
       ipcRenderer.invoke('ai:testConnection', input),
     disconnect: () => ipcRenderer.invoke('ai:disconnect'),
     chat: (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>) =>

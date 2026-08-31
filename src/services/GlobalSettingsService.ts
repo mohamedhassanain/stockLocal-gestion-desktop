@@ -17,7 +17,8 @@ export interface GlobalSettings {
   // Unités de mesure définies par l'utilisateur (liste réutilisable produits)
   product_units: string[];
   // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
-  ai_provider: 'anthropic' | 'openai' | 'custom';
+  ai_provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
+  ai_provider_name: string;
   ai_base_url: string;
   ai_api_key: string;
   ai_model: string;
@@ -40,6 +41,7 @@ const DEFAULTS: GlobalSettings = {
   show_inactive_product_alerts: true,
   product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
   ai_provider: 'anthropic',
+  ai_provider_name: '',
   ai_base_url: '',
   ai_api_key: '',
   ai_model: '',
@@ -80,7 +82,8 @@ export const GlobalSettingsService = {
           return DEFAULTS.product_units;
         }
       })(),
-      ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'custom',
+      ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'openai-compatible' | 'custom',
+      ai_provider_name: map['ai_provider_name'] ?? DEFAULTS.ai_provider_name,
       ai_base_url: map['ai_base_url'] ?? DEFAULTS.ai_base_url,
       ai_api_key: map['ai_api_key'] ?? DEFAULTS.ai_api_key,
       ai_model: map['ai_model'] ?? DEFAULTS.ai_model,

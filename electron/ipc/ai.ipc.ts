@@ -15,14 +15,14 @@ export function registerAiHandlers(): void {
 
   ipcMain.handle('ai:saveConfig', async (_, input: unknown) => {
     return run(() => {
-      const config = input as { provider: 'anthropic' | 'openai' | 'custom'; baseUrl?: string; apiKey?: string; model?: string; expiryMode?: 'none' | 'date'; expiryDate?: string; rateLimitPerMin?: number };
+      const config = input as { provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom'; providerName?: string; baseUrl?: string; apiKey?: string; model?: string; expiryMode?: 'none' | 'date'; expiryDate?: string; rateLimitPerMin?: number };
       if (!config.provider) throw new Error('Provider manquant.');
       return AiAssistantService.saveConfig(config);
     });
   });
 
   ipcMain.handle('ai:testConnection', async (_, input: unknown) => {
-    const config = input as { provider: 'anthropic' | 'openai' | 'custom'; baseUrl?: string; apiKey: string; model: string };
+    const config = input as { provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom'; baseUrl?: string; apiKey: string; model: string };
     return AiAssistantService.testConnection(config);
   });
 

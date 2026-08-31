@@ -21,7 +21,7 @@ import { encryptSecret, decryptSecret } from './secureStorage';
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-export type AiProvider = 'anthropic' | 'openai' | 'custom';
+export type AiProvider = 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
 
 export interface AiChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -30,6 +30,7 @@ export interface AiChatMessage {
 
 export interface AiConfigView {
   provider: AiProvider;
+  providerName: string;
   baseUrl: string;
   model: string;
   expiryMode: 'none' | 'date';
@@ -57,6 +58,7 @@ export interface AiChatResult {
 const PROVIDER_DEFAULT_BASE_URL: Record<AiProvider, string> = {
   anthropic: 'https://api.anthropic.com/v1',
   openai: 'https://api.openai.com/v1',
+  'openai-compatible': '',
   custom: '',
 };
 
@@ -215,6 +217,7 @@ export const AiAssistantService = {
     const connected = !!s.ai_api_key && !expired;
     return {
       provider: s.ai_provider,
+      providerName: s.ai_provider_name ?? '',
       baseUrl: resolveBaseUrl(s.ai_provider, s.ai_base_url),
       model: s.ai_model,
       expiryMode: s.ai_expiry_mode,
@@ -226,12 +229,13 @@ export const AiAssistantService = {
     };
   },
 
-  saveConfig(input: { provider: AiProvider; baseUrl?: string; apiKey?: string; model?: string; expiryMode?: 'none' | 'date'; expiryDate?: string; rateLimitPerMin?: number }): AiConfigView {
+  saveConfig(input: { provider: AiProvider; providerName?: string; baseUrl?: string; apiKey?: string; model?: string; expiryMode?: 'none' | 'date'; expiryDate?: string; rateLimitPerMin?: number }): AiConfigView {
     const provider = input.provider;
     const apiKey = input.apiKey ?? '';
     // La clé API est CHIFFRÉE avant stockage en base (safeStorage). Jamais en clair.
     GlobalSettingsService.save({
       ai_provider: provider,
+      ai_provider_name: input.providerName ?? '',
       ai_base_url: input.baseUrl ?? '',
       ai_api_key: encryptSecret(apiKey),
       ai_model: input.model ?? '',

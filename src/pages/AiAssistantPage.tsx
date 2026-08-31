@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from '../stores/useToastStore';
 
-type Provider = 'anthropic' | 'openai' | 'custom';
+type Provider = 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
 
 interface AiConfigView {
   provider: Provider;
+  providerName: string;
   baseUrl: string;
   model: string;
   expiryMode: 'none' | 'date';
@@ -31,12 +32,14 @@ interface PendingAction {
 const PROVIDER_URLS: Record<Provider, string> = {
   anthropic: 'https://api.anthropic.com/v1',
   openai: 'https://api.openai.com/v1',
+  'openai-compatible': '',
   custom: '',
 };
 
 export const AiAssistantPage: React.FC = () => {
   const [config, setConfig] = useState<AiConfigView | null>(null);
   const [provider, setProvider] = useState<Provider>('anthropic');
+  const [providerName, setProviderName] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
@@ -57,6 +60,7 @@ export const AiAssistantPage: React.FC = () => {
     const cfg = await window.api.ai.getConfig();
     setConfig(cfg);
     setProvider(cfg.provider);
+    setProviderName(cfg.providerName ?? '');
     setBaseUrl(cfg.baseUrl);
     setModel(cfg.model);
     setExpiryMode(cfg.expiryMode);
@@ -81,6 +85,7 @@ export const AiAssistantPage: React.FC = () => {
     try {
       await window.api.ai.saveConfig({
         provider,
+        providerName: providerName.trim(),
         baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim() || undefined,
         model: model.trim(),
@@ -96,7 +101,7 @@ export const AiAssistantPage: React.FC = () => {
   };
 
   const handleTest = async () => {
-    setTesting(true);
+        setTesting(true);
     try {
       const res = await window.api.ai.testConnection({
         provider,
@@ -216,16 +221,23 @@ export const AiAssistantPage: React.FC = () => {
             <select value={provider} onChange={(e) => handleProviderChange(e.target.value as Provider)} style={inputStyle}>
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="openai">OpenAI (Codex/GPT)</option>
+              <option value="openai-compatible">OpenAI Compatible (Kimi, DeepSeek, Groq…)</option>
               <option value="custom">Endpoint personnalisé</option>
             </select>
           </div>
+          {provider === 'openai-compatible' && (
+            <div>
+              <label style={labelStyle}>Provider Name</label>
+              <input value={providerName} onChange={(e) => setProviderName(e.target.value)} placeholder="Kimi, DeepSeek, Groq, OpenRouter…" style={inputStyle} />
+            </div>
+          )}
           <div>
             <label style={labelStyle}>URL de base de l'API</label>
             <input
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder={PROVIDER_URLS[provider]}
-              disabled={provider !== 'custom'}
+              placeholder={PROVIDER_URLS[provider] || 'https://api.exemple.com/v1'}
+              disabled={provider !== 'custom' && provider !== 'openai-compatible'}
               style={inputStyle}
             />
           </div>
