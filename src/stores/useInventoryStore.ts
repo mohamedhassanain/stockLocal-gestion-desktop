@@ -93,6 +93,11 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   },
 
   loadSessionById: async (id: string) => {
+    if (!id) {
+      // Garde : ne jamais appeler getById avec un id vide (sinon erreur IPC).
+      set({ selectedSession: null, error: null, isLoading: false });
+      return;
+    }
     set({ isLoading: true, error: null });
     try {
       const session = await window.api.inventory.getById(id);
@@ -107,9 +112,13 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const result = await window.api.inventory.create({ name, notes });
+      if (result && result.success === false) {
+        throw new Error(result.error || 'Création de session impossible.');
+      }
       await get().loadSessions();
       set({ isLoading: false });
-      return result;
+      // Retourne le session objet (result.data), pas l'enveloppe { success, data }.
+      return result.data;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       set({ error: message, isLoading: false });
