@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
+import fs from 'node:fs';
 import { AiAssistantService } from '../../src/ai/AiAssistantService';
 import { MCP_TOOLS } from '../../src/ai/McpTools';
 import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
@@ -74,7 +75,8 @@ export function registerAiHandlers(): void {
   }));
 
   // Dossier de configuration du client MCP (Claude Desktop / Cursor) pour
-  // « Ouvrir le dossier de configuration ».
+  // « Ouvrir le dossier de configuration ». On recrée le dossier s'il manque
+  // pour que `shell.openPath` réussisse toujours.
   ipcMain.handle('ai:getMcpConfigFolder', async (_, client: unknown) => run(() => {
     const c = client === 'cursor' ? 'cursor' : 'claude';
     const home = os.homedir();
@@ -85,6 +87,12 @@ export function registerAiHandlers(): void {
       : isMac
         ? path.join(home, 'Library', 'Application Support')
         : (process.env.XDG_CONFIG_HOME ?? path.join(home, '.config'));
-    return path.join(base, c === 'cursor' ? 'Cursor' : 'Claude');
+    const folder = path.join(base, c === 'cursor' ? 'Cursor' : 'Claude');
+    try {
+      fs.mkdirSync(folder, { recursive: true });
+    } catch {
+      // Dossier déjà présent ou non-créable — on renvoie le chemin, openFolder gère l'erreur.
+    }
+    return folder;
   }));
 }

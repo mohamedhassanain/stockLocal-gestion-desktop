@@ -200,12 +200,15 @@ export const AiAssistantPage: React.FC = () => {
         </div>
       )}
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => setShowConfigTab(true)} style={btnStyle({ active: isConfigTabActive })}>Configuration</button>
+        <button onClick={() => setShowConfigTab(false)} style={btnStyle({ active: !isConfigTabActive })}>Chat</button>
+      </div>
+
+      {isConfigTabActive && (
+        <>
       {/* ─── Configuration (B.1) ─────────────────────────────────────────── */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', marginBottom: 24 }}>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button onClick={() => setShowConfigTab(true)} style={btnStyle({ active: isConfigTabActive })}>Configuration</button>
-          <button onClick={() => setShowConfigTab(false)} style={btnStyle({ active: !isConfigTabActive })}>Chat</button>
-        </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div>
@@ -303,7 +306,11 @@ export const AiAssistantPage: React.FC = () => {
           Les garde-fous (audit, rate-limit, confirmation des actions destructives) s'appliquent identiquement à ce mode externe.
         </div>
       </div>
+        </>
+      )}
 
+      {!isConfigTabActive && (
+        <>
       {/* ─── Chat (B.5) ─────────────────────────────────────────────────── */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb' }}>
         {!config?.connected ? (
@@ -348,6 +355,8 @@ export const AiAssistantPage: React.FC = () => {
           </>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 };
