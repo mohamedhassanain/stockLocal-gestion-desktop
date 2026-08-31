@@ -389,7 +389,7 @@ export const AiAssistantPage: React.FC = () => {
             {/* Note Kimi (CLI / Desktop) — utilisable par tout le monde */}
             {mcpClient === 'kimi' && (
               <div style={{ background: '#eff6ff', border: '1px solid #2563eb', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13, color: '#1e40af' }}>
-                ℹ️ Kimi Code fonctionne en application de bureau <strong>ou</strong> en ligne de commande. Le fichier de configuration MCP est <code>~/.kimi-code/mcp.json</code> (niveau utilisateur) — le bloc JSON copié ci-dessous est directement compatible.
+                ℹ️ Kimi Code fonctionne en application de bureau ou en ligne de commande. Pour ajouter un serveur MCP, utilisez la commande <code>/mcp-config</code> dans Kimi Code, ou éditez son fichier <code>mcp.json</code> (l'emplacement dépend de votre installation). Le bloc JSON copié ci-dessous (structure <code>mcpServers</code>) est compatible avec Kimi.
               </div>
             )}
 
@@ -464,7 +464,7 @@ export const AiAssistantPage: React.FC = () => {
                     <li><strong>Claude Desktop (macOS)</strong> : <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
                     <li><strong>Cursor (Windows)</strong> : <code>%APPDATA%\Cursor\mcp.json</code></li>
                     <li><strong>Cursor (macOS)</strong> : <code>~/Library/Application Support/Cursor/mcp.json</code></li>
-                    <li><strong>Kimi Code (Windows/macOS/Linux)</strong> : <code>~/.kimi-code/mcp.json</code></li>
+                    <li><strong>Kimi Code (Windows/macOS/Linux)</strong> : utilisez la commande <code>/mcp-config</code> dans Kimi Code, ou éditez son fichier <code>mcp.json</code> (emplacement selon l'installation).</li>
                   </ul>
                 )}
               </div>
