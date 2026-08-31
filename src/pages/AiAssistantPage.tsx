@@ -71,8 +71,9 @@ export const AiAssistantPage: React.FC = () => {
   const [connectMessage, setConnectMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Zone 2 — Mode B
-  const [mcpClient, setMcpClient] = useState<'claude' | 'cursor'>('claude');
-  const [mcpSteps, setMcpSteps] = useState<string[]>([]);
+  const [mcpClient, setMcpClient] = useState<'claude' | 'cursor' | 'other'>('claude');
+  const [copyResult, setCopyResult] = useState('');
+  const [openResult, setOpenResult] = useState('');
   const [showManualConfig, setShowManualConfig] = useState(false);
   const [mcpJson, setMcpJson] = useState('');
   const [showMcpJson, setShowMcpJson] = useState(false);
@@ -177,10 +178,9 @@ export const AiAssistantPage: React.FC = () => {
     if (!res.success) toast.error(res.error ?? 'Impossible d\'ouvrir la page.');
   };
 
-  // ─── Zone 2 : Connecter automatiquement = copier config + ouvrir dossier ──
-  const handleConnectMcpClient = async () => {
+  // ─── Zone 2 : bouton « Copier la configuration » ─────────────────────────
+  const handleCopyConfig = async () => {
     try {
-      // Étape 1 : générer la configuration MCP
       const info = await window.api.ai.getMcpConfig();
       const json = JSON.stringify({
         mcpServers: {
@@ -194,28 +194,31 @@ export const AiAssistantPage: React.FC = () => {
       setMcpJson(json); // toujours conservé pour le filet de sécurité
       // Copie via Electron clipboard (IPC) — navigator.clipboard échoue sous sandbox:true.
       const clipRes = await window.api.system.writeClipboard(json);
-      if (!clipRes?.success) {
-        toast.error('Impossible de copier automatiquement. Utilisez le bloc « Voir/copier manuellement le JSON » ci-dessous.');
-        setMcpSteps([]);
-        return;
-      }
-      // Étape 2 : ouvrir le dossier de configuration
-      const openRes = await window.api.ai.openMcpConfigFolder(mcpClient);
-      const clientName = mcpClient === 'cursor' ? 'Cursor' : 'Claude Desktop';
-      setMcpSteps([
-        '✅ Configuration copiée dans le presse-papier',
-        `📁 Dossier ouvert — collez le contenu copié dans le fichier, puis redémarrez ${clientName}`,
-      ]);
-      if (!openRes.success) {
-        toast.error(openRes.error ?? 'Impossible d\'ouvrir le dossier.');
-      }
+      setCopyResult(clipRes?.success
+        ? '✅ Configuration copiée'
+        : '❌ Impossible de copier automatiquement. Utilisez « Voir/copier manuellement le JSON » ci-dessous.');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      setCopyResult('❌ ' + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  // ─── Zone 2 : bouton « Ouvrir le dossier de configuration » ─────────────
+  const handleOpenFolder = async () => {
+    if (mcpClient === 'other') return;
+    try {
+      const client = mcpClient === 'cursor' ? 'cursor' : 'claude';
+      const res = await window.api.ai.openMcpConfigFolder(client);
+      const label = mcpClient === 'cursor' ? 'Cursor' : 'Claude Desktop';
+      setOpenResult(res?.success
+        ? `📁 Dossier ouvert : ${res.path} (${label})`
+        : '❌ ' + (res?.error ?? 'Impossible d\'ouvrir le dossier.'));
+    } catch (e: unknown) {
+      setOpenResult('❌ ' + (e instanceof Error ? e.message : String(e)));
     }
   };
 
   const isConfigTabActive = showConfigTab;
-  const clientName = mcpClient === 'cursor' ? 'Cursor' : 'Claude Desktop';
+  const clientName = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'other' ? 'votre client MCP' : 'Claude Desktop';
   const keyUrl = KEY_URLS[provider];
 
   return (
@@ -373,25 +376,42 @@ export const AiAssistantPage: React.FC = () => {
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div>
                 <label style={labelStyle}>Client</label>
-                <select value={mcpClient} onChange={(e) => setMcpClient(e.target.value as 'claude' | 'cursor')} style={{ ...inputStyle, width: 'auto' }}>
+                <select value={mcpClient} onChange={(e) => setMcpClient(e.target.value as 'claude' | 'cursor' | 'other')} style={{ ...inputStyle, width: 'auto' }}>
                   <option value="claude">Claude Desktop</option>
                   <option value="cursor">Cursor</option>
+                  <option value="other">Autre client MCP</option>
                 </select>
               </div>
             </div>
 
-            {/* Bouton principal : Connecter automatiquement */}
-            <button onClick={handleConnectMcpClient} style={{ ...primaryBtn, fontSize: 16, padding: '12px 24px', width: '100%' }}>
-              Connecter {clientName} automatiquement
-            </button>
+            {/* Boutons séparés : Copier / Ouvrir le dossier */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+              <button onClick={handleCopyConfig} style={{ ...primaryBtn, flex: 1, fontSize: 15, padding: '12px 16px' }}>📋 Copier la configuration</button>
+              {mcpClient !== 'other' && (
+                <button onClick={handleOpenFolder} style={{ ...secondaryBtn, flex: 1, fontSize: 15, padding: '12px 16px' }}>📁 Ouvrir le dossier de configuration</button>
+              )}
+            </div>
 
-            {/* Résultat en 2 étapes */}
-            {mcpSteps.length > 0 && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, marginTop: 16, fontSize: 14, color: '#166534' }}>
-                {mcpSteps.map((step, i) => (
-                  <div key={i} style={{ marginBottom: i === mcpSteps.length - 1 ? 0 : 6 }}>{step}</div>
-                ))}
-              </div>
+            {/* Instruction globale */}
+            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+              Collez le contenu copié dans le fichier, puis redémarrez {mcpClient === 'other' ? 'votre application' : clientName}.
+            </p>
+
+            {/* Résultat copie */}
+            {copyResult && (
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, color: copyResult.startsWith('✅') ? '#166534' : '#dc2626' }}>{copyResult}</div>
+            )}
+
+            {/* Résultat ouverture */}
+            {openResult && (
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, color: openResult.startsWith('📁') ? '#166534' : '#dc2626' }}>{openResult}</div>
+            )}
+
+            {/* Aide générique pour Autre client MCP */}
+            {mcpClient === 'other' && (
+              <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                Ajoutez ce bloc JSON sous la clé <code>mcpServers</code> dans le fichier de configuration MCP de votre application (Kimi, VS Code, ou tout autre client compatible MCP), puis redémarrez-la.
+              </p>
             )}
 
             {/* Filet de sécurité : voir/copier manuellement le JSON (toujours dispo) */}
@@ -411,20 +431,22 @@ export const AiAssistantPage: React.FC = () => {
               </div>
             )}
 
-            {/* Configuration manuelle (accordéon) */}
-            <div style={{ marginTop: 20, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
-              <button onClick={() => setShowManualConfig(!showManualConfig)} style={accordionBtnStyle}>
-                Configuration manuelle {showManualConfig ? '▴' : '▾'}
-              </button>
-              {showManualConfig && (
-                <ul style={{ fontSize: 13, color: '#374151', margin: '12px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
-                  <li><strong>Claude Desktop (Windows)</strong> : <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
-                  <li><strong>Claude Desktop (macOS)</strong> : <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
-                  <li><strong>Cursor (Windows)</strong> : <code>%APPDATA%\Cursor\mcp.json</code></li>
-                  <li><strong>Cursor (macOS)</strong> : <code>~/Library/Application Support/Cursor/mcp.json</code></li>
-                </ul>
-              )}
-            </div>
+            {/* Configuration manuelle (accordéon) — seulement Claude/Cursor */}
+            {mcpClient !== 'other' && (
+              <div style={{ marginTop: 20, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
+                <button onClick={() => setShowManualConfig(!showManualConfig)} style={accordionBtnStyle}>
+                  Configuration manuelle {showManualConfig ? '▴' : '▾'}
+                </button>
+                {showManualConfig && (
+                  <ul style={{ fontSize: 13, color: '#374151', margin: '12px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
+                    <li><strong>Claude Desktop (Windows)</strong> : <code>%APPDATA%\Claude\claude_desktop_config.json</code></li>
+                    <li><strong>Claude Desktop (macOS)</strong> : <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
+                    <li><strong>Cursor (Windows)</strong> : <code>%APPDATA%\Cursor\mcp.json</code></li>
+                    <li><strong>Cursor (macOS)</strong> : <code>~/Library/Application Support/Cursor/mcp.json</code></li>
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         </>
       )}
