@@ -275,6 +275,16 @@ const OrderDetailPanel: React.FC<{
             </Button>
           </>
         )}
+        {order.status === 'RECEIVED' && (
+          <div className="text-sm text-secondary" style={{ width: '100%', padding: '12px 0', lineHeight: 1.6 }}>
+            📦 Commande <strong>réceptionnée</strong> — le stock a déjà été mis à jour. Elle ne peut plus être <strong>modifiée</strong> ni <strong>supprimée</strong>, sinon l'historique de stock deviendrait incohérent.
+          </div>
+        )}
+        {order.status === 'CANCELLED' && (
+          <div className="text-sm text-secondary" style={{ width: '100%', padding: '12px 0', lineHeight: 1.6 }}>
+            ❌ Commande <strong>annulée</strong> — elle ne peut plus être ni modifiée, ni supprimée, ni réceptionnée.
+          </div>
+        )}
       </div>
     </div>
   );
