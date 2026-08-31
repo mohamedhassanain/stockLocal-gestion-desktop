@@ -95,6 +95,10 @@ const stmtUpdateStatus = db.prepare(`
 `);
 
 const stmtDeleteOrder = db.prepare('DELETE FROM purchase_orders WHERE id = ?');
+const stmtUpdateOrderFull = db.prepare(`
+  UPDATE purchase_orders SET supplier_id = ?, date = ?, expected_date = ?, status = ?, total = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`);
+const stmtDeleteItems = db.prepare('DELETE FROM purchase_order_items WHERE purchase_order_id = ?');
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 
@@ -185,6 +189,48 @@ export const PurchaseOrderRepository = {
     });
 
     insertAll();
+    return this.getById(id)!;
+  },
+
+  /**
+   * Met à jour une commande (DRAFT uniquement) : fournisseur, échéance, notes et lignes,
+   * dans une transaction atomique. Le numéro de commande est conservé.
+   */
+  update(id: string, data: {
+    supplier_id: string;
+    date?: string;
+    expected_date?: string | null;
+    notes?: string | null;
+    items: Array<{ product_id: string; quantity: number; unit_price: number }>;
+  }): PurchaseOrder {
+    const order = this.getById(id);
+    if (!order) throw new Error('Commande introuvable.');
+    if (order.status !== 'DRAFT') throw new Error('Seules les commandes en brouillon peuvent être modifiées.');
+
+    let total = 0;
+    for (const item of data.items) {
+      const qty = Number(item.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error('Quantité de commande invalide.');
+      if (Number(item.unit_price) < 0) throw new Error('Prix unitaire invalide.');
+      total += qty * Number(item.unit_price);
+    }
+
+    const date = data.date ? new Date(data.date).toISOString() : order.date;
+
+    const updateAll = db.transaction(() => {
+      stmtUpdateOrderFull.run(
+        data.supplier_id, date, data.expected_date ?? null, 'DRAFT', total, data.notes ?? null, id
+      );
+      stmtDeleteItems.run(id);
+      for (const item of data.items) {
+        const itemTotal = Number(item.quantity) * Number(item.unit_price);
+        stmtInsertItem.run(
+          randomUUID(), id, item.product_id,
+          Number(item.quantity), Number(item.unit_price), 0, itemTotal
+        );
+      }
+    });
+    updateAll();
     return this.getById(id)!;
   },
 

@@ -395,6 +395,7 @@ export const api = {
     getById: (id: string) => ipcRenderer.invoke('purchases:getById', id),
     getReceivings: () => ipcRenderer.invoke('purchases:getReceivings'),
     create: (data: PurchaseCreateInput) => ipcRenderer.invoke('purchases:create', data),
+    update: (id: string, data: PurchaseCreateInput) => ipcRenderer.invoke('purchases:update', { id, data }),
     confirm: (id: string) => ipcRenderer.invoke('purchases:confirm', id),
     receive: (id: string, receivedItems?: Array<{ item_id: string; received_qty: number }>) =>
       ipcRenderer.invoke('purchases:receive', { id, receivedItems }),

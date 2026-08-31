@@ -62,6 +62,22 @@ export function registerOperationsHandlers(): void {
     });
   });
 
+  ipcMain.handle('purchases:update', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { id?: unknown; data?: unknown };
+      const safeId = requireId(p.id, 'id commande');
+      const safe = safeParse(PurchaseSchema, p.data, 'Modification commande');
+      const order = PurchaseOrderRepository.update(safeId, {
+        supplier_id: safe.supplier_id,
+        expected_date: safe.expected_date ?? undefined,
+        notes: safe.notes ?? undefined,
+        items: safe.items.map(i => ({ product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price })),
+      });
+      AuditService.log('PURCHASE_UPDATE', 'purchase', order.id, `Commande modifiée ${order.order_number}`);
+      return { success: true, data: order };
+    });
+  });
+
   ipcMain.handle('purchases:confirm', async (_, id: unknown) => {
     return run(() => {
       const safeId = requireId(id, 'id commande');

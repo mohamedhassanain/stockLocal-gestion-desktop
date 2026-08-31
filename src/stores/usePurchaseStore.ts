@@ -49,6 +49,7 @@ interface PurchaseState {
   loadOrders: () => Promise<void>;
   selectOrder: (order: PurchaseOrder) => Promise<void>;
   createOrder: (data: PurchaseOrderInput) => Promise<PurchaseOrder>;
+  updateOrder: (id: string, data: PurchaseOrderInput) => Promise<void>;
   confirmOrder: (id: string) => Promise<void>;
   receiveOrder: (id: string, receivedItems?: Array<{ item_id: string; received_qty: number }>) => Promise<void>;
   cancelOrder: (id: string) => Promise<void>;
@@ -100,6 +101,24 @@ export const usePurchaseStore = create<PurchaseState>((set, get) => ({
       await get().loadOrders();
       set({ isLoading: false });
       return result.data;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  updateOrder: async (id, data) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = await window.api.purchases.update(id, data);
+      if (!result.success) throw new Error(result.error);
+      await get().loadOrders();
+      if (get().selectedOrder?.id === id) {
+        const full = await window.api.purchases.getById(id);
+        set({ selectedOrder: full });
+      }
+      set({ isLoading: false });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       set({ error: message, isLoading: false });

@@ -27,13 +27,21 @@ const getPurchaseBadge = (status: PurchaseStatus) =>
 const NewOrderModal: React.FC<{
   onClose: () => void;
   onSave: (data: any) => void;
-}> = ({ onClose, onSave }) => {
+  initial?: PurchaseOrder | null;
+}> = ({ onClose, onSave, initial }) => {
   const { suppliers, loadSuppliers } = useSupplierStore();
   const { products, loadProducts } = useProductStore();
-  const [supplierId, setSupplierId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; _name?: string }>>([]);
+  const [supplierId, setSupplierId] = useState(initial?.supplier_id ?? '');
+  const [date, setDate] = useState(initial?.date ? initial.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; _name?: string }>>(
+    (initial?.items ?? []).map(it => ({
+      product_id: it.product_id,
+      quantity: it.quantity,
+      unit_price: it.unit_price ?? 0,
+      _name: it.product_ref ? `${it.product_ref} — ${it.product_name}` : it.product_name ?? it.product_id,
+    }))
+  );
   const [productSearch, setProductSearch] = useState('');
 
   useEffect(() => {
@@ -78,7 +86,7 @@ const NewOrderModal: React.FC<{
 
   return (
     <Modal open onClose={onClose} width={800}>
-      <ModalHeader icon="🛒" title="Nouvelle Commande d'Achat" />
+      <ModalHeader icon="🛒" title={initial ? 'Modifier la Commande d\'Achat' : 'Nouvelle Commande d\'Achat'} />
 
       <ModalBody>
         <div className="form-row">
@@ -171,7 +179,7 @@ const NewOrderModal: React.FC<{
       <ModalFooter>
         <Button variant="secondary" onClick={onClose}>Annuler</Button>
         <Button onClick={handleSave} disabled={!supplierId || items.length === 0}>
-          🛒 Créer la commande
+          {initial ? '💾 Enregistrer les modifications' : '🛒 Créer la commande'}
         </Button>
       </ModalFooter>
     </Modal>
@@ -186,7 +194,8 @@ const OrderDetailPanel: React.FC<{
   onReceive: (id: string) => void;
   onCancel: (id: string) => void;
   onDelete: (id: string) => void;
-}> = ({ order, onConfirm, onReceive, onCancel, onDelete }) => {
+  onEdit: (order: PurchaseOrder) => void;
+}> = ({ order, onConfirm, onReceive, onCancel, onDelete, onEdit }) => {
   const statusInfo = getPurchaseBadge(order.status);
 
   return (
@@ -253,6 +262,7 @@ const OrderDetailPanel: React.FC<{
       <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
         {order.status === 'DRAFT' && (
           <>
+            <Button block onClick={() => onEdit(order)}>✏️ Modifier</Button>
             <Button block onClick={() => onConfirm(order.id)}>✅ Confirmer la commande</Button>
             <Button variant="danger" block onClick={() => onDelete(order.id)}>🗑️ Supprimer</Button>
           </>
@@ -276,10 +286,11 @@ export const PurchasesPage: React.FC = () => {
   const {
     orders, selectedOrder, searchQuery, isLoading,
     setSearchQuery, loadOrders, selectOrder,
-    createOrder, confirmOrder, receiveOrder, cancelOrder, deleteOrder,
+    createOrder, updateOrder, confirmOrder, receiveOrder, cancelOrder, deleteOrder,
   } = usePurchaseStore();
 
   const [showNewForm, setShowNewForm] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null);
 
   useEffect(() => { loadOrders(); }, []);
 
@@ -288,6 +299,21 @@ export const PurchasesPage: React.FC = () => {
       await createOrder(data);
       setShowNewForm(false);
       toast.success('Commande d\'achat créée avec succès.');
+    } catch (e: any) {
+      toast.error(e.message);
+    }
+  };
+
+  const handleEdit = (order: PurchaseOrder) => {
+    setEditingOrder(order);
+  };
+
+  const handleEditSave = async (data: any) => {
+    if (!editingOrder) return;
+    try {
+      await updateOrder(editingOrder.id, data);
+      setEditingOrder(null);
+      toast.success('Commande d\'achat modifiée avec succès.');
     } catch (e: any) {
       toast.error(e.message);
     }
@@ -434,6 +460,7 @@ export const PurchasesPage: React.FC = () => {
               onReceive={handleReceive}
               onCancel={handleCancel}
               onDelete={handleDelete}
+              onEdit={handleEdit}
             />
           )}
         </div>
@@ -441,6 +468,14 @@ export const PurchasesPage: React.FC = () => {
 
       {showNewForm && (
         <NewOrderModal onClose={() => setShowNewForm(false)} onSave={handleCreate} />
+      )}
+
+      {editingOrder && (
+        <NewOrderModal
+          initial={editingOrder}
+          onClose={() => setEditingOrder(null)}
+          onSave={handleEditSave}
+        />
       )}
 
       {pendingConfirm && (
