@@ -105,7 +105,9 @@ export const StockExitSchema = z.object({
   product_id: z.string().min(1).max(64),
   quantity: z.number().positive('La quantité doit être supérieure à 0.'),
   unit_price: z.number().min(0).default(0),
-  exitType: z.enum(['VENTE', 'CASSE', 'PERTE', 'RETOUR']),
+  // Type de sortie libre : défini par l'utilisateur dans Paramètres (Vente, Casse, Perte, Don…).
+  // Restreint à une chaîne courte pour éviter les valeurs aberrantes.
+  exitType: z.string().min(1, 'Le type de sortie est obligatoire.').max(50),
   notes: z.string().max(500).optional().nullable(),
 });
 
@@ -240,6 +242,7 @@ export const GlobalSettingsSchema = z.object({
   inactive_product_days: z.number().min(0).optional(),
   show_inactive_product_alerts: z.boolean().optional(),
   product_units: z.array(z.string().max(20)).optional(),
+  stock_exit_types: z.array(z.string().min(1).max(50)).optional(),
 });
 
 // ─── Système / Stockage / Backup / Migration (electron/ipc/system.ipc.ts) ────

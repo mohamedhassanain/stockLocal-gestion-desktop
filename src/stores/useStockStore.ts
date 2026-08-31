@@ -16,10 +16,11 @@ interface StockState {
     document_id?: string;
   }) => Promise<void>;
   addExit: (data: Omit<StockMovement, 'id' | 'type' | 'movement_type'> & {
-    exitType?: 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+    // Type de sortie libre (défini dans Paramètres) : VENTE, CASSE, PERTE, RETOUR, DON…
+    exitType?: string;
     reference_doc?: string;
     document_id?: string;
-    movement_type?: 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT' | 'TRANSFER_OUT' | 'ADJUSTMENT_OUT';
+    movement_type?: 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT' | 'TRANSFER_OUT' | 'ADJUSTMENT_OUT' | (string & {});
   }) => Promise<void>;
   addInventory: (data: Omit<StockMovement, 'id' | 'type' | 'quantity' | 'movement_type'>, actualCount: number) => Promise<void>;
 }

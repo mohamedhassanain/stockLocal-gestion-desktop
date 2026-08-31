@@ -7,7 +7,12 @@ import { toast } from '../stores/useToastStore';
 import { Button, Card, CardHeader, Badge, Select, PageHeader } from '../components/ui';
 import { stockLevelClass } from '../components/ui/statusMaps';
 
-export type ExitType = 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+// Type de sortie : défini par l'utilisateur dans Paramètres (Vente, Casse, Perte, Don…).
+export type ExitType = string;
+
+/** Formate un type de sortie pour l'affichage : VENTE → « Vente », DON → « Don ». */
+export const formatExitTypeLabel = (type: string): string =>
+  type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
 
 interface GlobalMovement {
   id: string;
@@ -154,6 +159,20 @@ export const StockPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [exitType, setExitType] = useState<ExitType>('VENTE');
   const [blRef, setBlRef] = useState('');
+  // Types de sortie définis par l'utilisateur dans Paramètres (Vente, Casse, Perte, Don…).
+  const [exitTypes, setExitTypes] = useState<string[]>(['VENTE', 'CASSE', 'PERTE', 'RETOUR']);
+
+  useEffect(() => {
+    window.api.globalSettings.get()
+      .then((gs: any) => {
+        if (Array.isArray(gs?.stock_exit_types) && gs.stock_exit_types.length > 0) {
+          setExitTypes(gs.stock_exit_types);
+          // Conserve la sélection si elle existe encore, sinon retombe sur le premier type.
+          setExitType(prev => gs.stock_exit_types.includes(prev) ? prev : gs.stock_exit_types[0]);
+        }
+      })
+      .catch(() => { /* silencieux : on garde les types par défaut */ });
+  }, []);
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -326,10 +345,9 @@ export const StockPage: React.FC = () => {
                     placeholder="Réf BL (entrée achat, optionnel)"
                   />
                   <Select value={exitType} onChange={e => setExitType(e.target.value as ExitType)}>
-                    <option value="VENTE">Sortie : Vente</option>
-                    <option value="CASSE">Sortie : Casse</option>
-                    <option value="PERTE">Sortie : Perte</option>
-                    <option value="RETOUR">Sortie : Retour</option>
+                    {exitTypes.map(t => (
+                      <option key={t} value={t}>Sortie : {formatExitTypeLabel(t)}</option>
+                    ))}
                   </Select>
                   <input
                     type="text"
@@ -344,7 +362,7 @@ export const StockPage: React.FC = () => {
                       + ENTREE (Achat)
                     </Button>
                     <Button variant="danger" size="lg" block onClick={handleAddExit}>
-                      - SORTIE ({exitType})
+                      - SORTIE ({formatExitTypeLabel(exitType)})
                     </Button>
                   </div>
 

@@ -16,6 +16,8 @@ export interface GlobalSettings {
   show_inactive_product_alerts: boolean;
   // Unités de mesure définies par l'utilisateur (liste réutilisable produits)
   product_units: string[];
+  // Types de sortie de stock définis par l'utilisateur (Vente, Casse, Perte, Don…)
+  stock_exit_types: string[];
   // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
   ai_provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
   ai_provider_name: string;
@@ -40,6 +42,7 @@ const DEFAULTS: GlobalSettings = {
   inactive_product_days: 30,
   show_inactive_product_alerts: true,
   product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
+  stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
   ai_provider: 'anthropic',
   ai_provider_name: '',
   ai_base_url: '',
@@ -79,7 +82,21 @@ export const GlobalSettingsService = {
           const parsed = JSON.parse(raw);
           return Array.isArray(parsed) && parsed.length > 0 ? parsed.map(String) : DEFAULTS.product_units;
         } catch {
-          return DEFAULTS.product_units;
+          // Héritage : valeur stockée en "PIÈCE,KG" avant le fix JSON → split par virgule.
+          const legacy = raw.split(',').map(s => s.trim()).filter(Boolean);
+          return legacy.length > 0 ? legacy : DEFAULTS.product_units;
+        }
+      })(),
+      stock_exit_types: (() => {
+        const raw = map['stock_exit_types'];
+        if (!raw) return DEFAULTS.stock_exit_types;
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) && parsed.length > 0 ? parsed.map(String) : DEFAULTS.stock_exit_types;
+        } catch {
+          // Héritage : valeur stockée en "VENTE,CASSE" avant le fix JSON → split par virgule.
+          const legacy = raw.split(',').map(s => s.trim()).filter(Boolean);
+          return legacy.length > 0 ? legacy : DEFAULTS.stock_exit_types;
         }
       })(),
       ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'openai-compatible' | 'custom',
@@ -102,7 +119,11 @@ export const GlobalSettingsService = {
     const txn = db.transaction(() => {
       for (const [key, value] of Object.entries(settings)) {
         if (value !== undefined && value !== null) {
-          stmtSet.run(key, String(value));
+          // Les tableaux (product_units, stock_exit_types) doivent être stockés
+          // en JSON : String(array) produirait "VENTE,CASSE" que JSON.parse ne
+          // sait pas relire (on perdrait les types personnalisés).
+          const stored = Array.isArray(value) ? JSON.stringify(value) : String(value);
+          stmtSet.run(key, stored);
         }
       }
     });

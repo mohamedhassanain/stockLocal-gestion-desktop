@@ -1,7 +1,15 @@
 import type { StockMovement } from '../repositories/StockMovementRepository';
 import { StockLedgerService } from './StockLedgerService';
 
-export type StockExitType = 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+/**
+ * Type de sortie de stock.
+ *
+ * Les types « standards » (VENTE, CASSE, PERTE, RETOUR) sont mappés vers des
+ * types de mouvement officiels (SALE_OUT, DAMAGE_OUT, LOSS_OUT, RETURN_OUT).
+ * Tout autre type (ex : DON, CADEau) est défini par l'utilisateur dans les
+ * Paramètres → il est stocké tel quel et reste une sortie (direction OUT).
+ */
+export type StockExitType = string;
 
 /**
  * Service métier de stock — FAÇADE d'usage courant.
@@ -42,15 +50,17 @@ export class StockService {
     exitType?: StockExitType;
     reference_doc?: string;
     document_id?: string;
-    movement_type?: 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT' | 'TRANSFER_OUT' | 'ADJUSTMENT_OUT';
+    movement_type?: 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT' | 'TRANSFER_OUT' | 'ADJUSTMENT_OUT' | (string & {});
   }): StockMovement {
     const exitType = data.exitType ?? 'VENTE';
-    const movementType = data.movement_type ?? {
+    // Types standards → types de mouvement officiels. Type personnalisé → stocké tel quel.
+    const EXIT_TO_MOVEMENT: Record<string, string> = {
       VENTE: 'SALE_OUT',
       CASSE: 'DAMAGE_OUT',
       PERTE: 'LOSS_OUT',
       RETOUR: 'RETURN_OUT',
-    }[exitType] as 'SALE_OUT' | 'DAMAGE_OUT' | 'LOSS_OUT' | 'RETURN_OUT';
+    };
+    const movementType = data.movement_type ?? EXIT_TO_MOVEMENT[exitType] ?? exitType;
 
     return StockLedgerService.recordMovement({
       product_id: data.product_id,

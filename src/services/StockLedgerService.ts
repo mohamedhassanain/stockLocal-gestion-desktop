@@ -48,7 +48,10 @@ export type MovementType =
   | 'TRANSFER_OUT'
   | 'DAMAGE_OUT'
   | 'LOSS_OUT'
-  | 'OPENING_BALANCE';
+  | 'OPENING_BALANCE'
+  // Types personnalisés définis par l'utilisateur (ex : DON, CADEau…).
+  // La direction physique (IN/OUT) est fournie explicitement par l'appelant.
+  | (string & {});
 
 export type MovementDirection = 'IN' | 'OUT';
 
@@ -206,7 +209,10 @@ export const StockLedgerService = {
       throw new Error('Quantité invalide : le mouvement doit avoir une quantité supérieure à 0.');
     }
 
-    const direction = MOVEMENT_DIRECTION[input.movement_type];
+    // Direction physique : dérivée du type « officiel » (MOVEMENT_DIRECTION),
+    // ou, pour un type personnalisé défini par l'utilisateur (ex : DON), de la
+    // direction explicitement fournie par l'appelant (input.direction).
+    const direction = MOVEMENT_DIRECTION[input.movement_type] ?? input.direction;
     if (!direction) {
       throw new Error(`Type de mouvement inconnu : ${input.movement_type}`);
     }

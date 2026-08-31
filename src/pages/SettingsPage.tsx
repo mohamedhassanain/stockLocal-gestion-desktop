@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button, Card, Input, Select, PageHeader, DeleteButton, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
-
 // ─── Onglets ────────────────────────────────────────────────────────────────
 type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
 
@@ -56,6 +55,7 @@ interface GlobalSettings {
   inactive_product_days: number;
   show_inactive_product_alerts: boolean;
   product_units: string[];
+  stock_exit_types: string[];
 }
 
 const SectionTitle: React.FC<{ icon: string; title: string }> = ({ icon, title }) => (
@@ -107,8 +107,10 @@ export const SettingsPage: React.FC = () => {
     inactive_product_days: 30,
     show_inactive_product_alerts: true,
     product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
+    stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
   });
   const [newUnit, setNewUnit] = useState('');
+  const [newExitType, setNewExitType] = useState('');
   const [productsList, setProductsList] = useState<Array<{ id: string; designation: string; reference: string; min_stock: number }>>([]);
   const [minStockSearch, setMinStockSearch] = useState('');
 
@@ -561,6 +563,33 @@ export const SettingsPage: React.FC = () => {
     notify(`🗑️ Unité « ${unit} » supprimée`);
   };
 
+  // ─── Types de sortie de stock (Vente, Casse, Perte, Don…) ─────────────────
+  const persistExitTypes = async (types: string[]) => {
+    setGlobalSettings(prev => ({ ...prev, stock_exit_types: types }));
+    try {
+      await window.api.globalSettings.save({ stock_exit_types: types });
+    } catch (e: any) {
+      notify(`❌ ${e.message}`);
+    }
+  };
+
+  const addExitType = async () => {
+    const type = newExitType.trim().toUpperCase();
+    if (!type) return;
+    if (globalSettings.stock_exit_types.includes(type)) {
+      notify('⚠️ Ce type de sortie existe déjà');
+      return;
+    }
+    await persistExitTypes([...globalSettings.stock_exit_types, type]);
+    setNewExitType('');
+    notify('✅ Type de sortie ajouté');
+  };
+
+  const removeExitType = async (type: string) => {
+    await persistExitTypes(globalSettings.stock_exit_types.filter(t => t !== type));
+    notify(`🗑️ Type de sortie « ${type} » supprimé`);
+  };
+
   const [updateResult, setUpdateResult] = useState<string | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 
@@ -792,6 +821,28 @@ export const SettingsPage: React.FC = () => {
                   <span key={unit} className="badge badge-primary">
                     {unit}
                     <DeleteButton size="xs" onClick={() => removeUnit(unit)} title={`Supprimer ${unit}`} />
+                  </span>
+                ))}
+              </div>
+            )}
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+            <SectionTitle icon="📤" title="Types de sortie de stock" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Définissez les types de sortie proposés dans la gestion des mouvements de stock
+              (ex : VENTE, CASSE, PERTE, RETOUR, DON…). Ils apparaîtront dans le menu « Sortie ».
+            </p>
+            <div className="flex gap-2 mb-4">
+              <Input placeholder="Nouveau type (ex : DON, Cadeau…)" value={newExitType} onChange={e => setNewExitType(e.target.value)} className="flex-1" inputSize="sm" />
+              <Button onClick={addExitType}>+ Ajouter</Button>
+            </div>
+            {globalSettings.stock_exit_types.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>Aucun type de sortie défini.</div>
+            ) : (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {globalSettings.stock_exit_types.map(type => (
+                  <span key={type} className="badge badge-danger">
+                    {type}
+                    <DeleteButton size="xs" onClick={() => removeExitType(type)} title={`Supprimer ${type}`} />
                   </span>
                 ))}
               </div>
@@ -1083,7 +1134,7 @@ export const SettingsPage: React.FC = () => {
         {tab === 'updates' && (
           <div style={{ maxWidth: 820, display: 'flex', flexDirection: 'column', gap: 20 }}>
             <Card padding>
-              <SectionTitle icon="🔄" title="Mises à jour de l'application" />
+              <SectionTitle icon="�" title="Mises à jour de l'application" />
               <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
                 StockLocal vérifie automatiquement les mises à jour au démarrage (en arrière-plan, sans interruption).
                 Vous pouvez aussi vérifier manuellement à tout moment.

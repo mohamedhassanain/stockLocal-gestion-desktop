@@ -57,7 +57,8 @@ export interface StockExitInput {
   product_id: string;
   quantity: number;
   unit_price?: number;
-  exitType?: 'VENTE' | 'CASSE' | 'PERTE' | 'RETOUR';
+  // Type de sortie libre (défini dans Paramètres) : VENTE, CASSE, PERTE, RETOUR, DON…
+  exitType?: string;
   notes?: string | null;
 }
 
@@ -185,6 +186,7 @@ export interface GlobalSettingsInput {
   inactive_product_days?: number;
   show_inactive_product_alerts?: boolean;
   product_units?: string[];
+  stock_exit_types?: string[];
 }
 
 // ── Rapport CSV ──
