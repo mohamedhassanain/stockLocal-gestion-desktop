@@ -400,7 +400,7 @@ export const AiAssistantPage: React.FC = () => {
               </button>
               {showChatGptInfo && (
                 <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8, lineHeight: 1.5 }}>
-                  ChatGPT fonctionne différemment : il ne lit pas de fichier de configuration sur votre ordinateur comme Claude Desktop ou Cursor. Pour le connecter à StockLocal, il faudrait héberger StockLocal sur un serveur accessible depuis Internet, et avoir un abonnement ChatGPT Plus, Pro ou Business avec le mode développeur activé. Cette option n'est pas disponible pour le moment dans StockLocal.
+                  L'application de bureau ChatGPT prend bien en charge les connecteurs MCP : vous pouvez y ajouter un serveur MCP par son URL. Mais ChatGPT ne se connecte qu'à des serveurs MCP hébergés (HTTPS public) — il ne peut pas lancer un serveur local sur votre ordinateur, contrairement à Claude Desktop ou Cursor. Le serveur MCP de StockLocal tourne en local (processus sur votre machine), donc il faudrait l'héberger sur Internet (serveur ou tunnel) pour que ChatGPT puisse l'atteindre. Cela nécessite aussi un abonnement ChatGPT Plus/Pro/Business avec le mode développeur activé. Cette option n'est pas disponible pour le moment dans StockLocal.
                 </p>
               )}
             </div>
