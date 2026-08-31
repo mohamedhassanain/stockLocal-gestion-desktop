@@ -237,8 +237,8 @@ export const PDFService = {
     page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y: nameBaseline, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 50; // retour à la ligne avant le titre
 
-    // ── Titre du document (aligné à gauche) ──
-    page.drawText(title, { x: 50, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    // ── Titre du document (aligné à gauche, noir, taille réduite) ──
+    page.drawText(title, { x: 50, y, size: 14, font: boldFont, color: rgb(0, 0, 0) });
     y -= 18;
 
     // ── Mentions entreprise + n° document + date (alignées à gauche) ──
@@ -252,7 +252,7 @@ export const PDFService = {
     }
     page.drawText(settings.tagline || 'Gestion commerciale - Grossiste', { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
     y -= 12;
-    page.drawText(doc.document_number, { x: 50, y, size: 12, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText(doc.document_number, { x: 50, y, size: 12, font: boldFont, color: rgb(0, 0, 0) });
     y -= 12;
     page.drawText(`ICE : ${settings.ice}  ·  RC : ${settings.rc}  ·  IF : ${settings.if_}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 12;
@@ -296,7 +296,7 @@ export const PDFService = {
     y -= 10;
     page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 1, color: rgb(0.6, 0.6, 0.6) });
     y -= 20;
-    page.drawText(`TOTAL HT : ${doc.total_excl_tax.toFixed(2)} MAD`, { x: width - 250, y, size: 13, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    page.drawText(`TOTAL HT : ${doc.total_excl_tax.toFixed(2)} MAD`, { x: width - 250, y, size: 13, font: boldFont, color: rgb(0, 0, 0) });
     y -= 18;
     page.drawText(`TOTAL TTC : ${doc.total_incl_tax.toFixed(2)} MAD`, { x: width - 250, y, size: 13, font: boldFont });
     y -= 40;

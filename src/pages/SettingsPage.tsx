@@ -165,13 +165,15 @@ export const SettingsPage: React.FC = () => {
   const pickCompanyLogo = async () => {
     const result = await window.api.company.pickLogo();
     if (result?.success && result.path) {
-      setCompany(prev => ({ ...prev, logo_path: result.path }));
+      setCompany(prev => ({ ...prev, logo_path: result.path, show_logo_on_documents: true }));
       // Auto-persistance : le logo apparaît immédiatement dans les PDF, sans cliquer sur « Enregistrer ».
+      // On active aussi l'affichage (show_logo_on_documents) pour que le logo soit visible
+      // dans tous les PDF/factures sans dépendre de l'état précédent de la case.
       try {
-        const saved = await window.api.company.save({ logo_path: result.path });
+        const saved = await window.api.company.save({ logo_path: result.path, show_logo_on_documents: true });
         if (saved && saved.success) setCompany(saved.data);
       } catch { /* silencieux */ }
-      notify('✅ Logo sélectionné');
+      notify('✅ Logo sélectionné (affiché sur les documents)');
     } else if (result && !result.canceled) {
       notify(`❌ ${result.error ?? 'Erreur lors de la sélection du logo.'}`);
     }
