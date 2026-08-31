@@ -150,9 +150,12 @@ export const AiAssistantPage: React.FC = () => {
   /** Ouvre le dossier contenant le fichier de config du client (Claude/Cursor). */
   const handleOpenConfigFolder = async () => {
     try {
-      // Ouvre le dossier de configuration du client sélectionné (Claude/Cursor).
-      const folder = await window.api.ai.getMcpConfigFolder(mcpClient);
-      await window.api.storage.openFolder(folder);
+      const res = await window.api.ai.openMcpConfigFolder(mcpClient);
+      if (res.success) {
+        toast.success(`Dossier ouvert : ${res.path}`);
+      } else {
+        toast.error(res.error ?? 'Impossible d\'ouvrir le dossier.');
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     }

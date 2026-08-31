@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -8,6 +8,20 @@ import { GlobalSettingsService } from '../../src/services/GlobalSettingsService'
 
 function run<T>(action: () => T | Promise<T>): Promise<T> {
   return Promise.resolve(action());
+}
+
+/** Calcule le dossier de config du client MCP (Claude Desktop / Cursor) selon l'OS. */
+function computeMcpConfigFolder(client: unknown): string {
+  const c = client === 'cursor' ? 'cursor' : 'claude';
+  const home = os.homedir();
+  const isWin = process.platform === 'win32';
+  const isMac = process.platform === 'darwin';
+  const base = isWin
+    ? (process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'))
+    : isMac
+      ? path.join(home, 'Library', 'Application Support')
+      : (process.env.XDG_CONFIG_HOME ?? path.join(home, '.config'));
+  return path.join(base, c === 'cursor' ? 'Cursor' : 'Claude');
 }
 
 export function registerAiHandlers(): void {
@@ -78,21 +92,26 @@ export function registerAiHandlers(): void {
   // « Ouvrir le dossier de configuration ». On recrée le dossier s'il manque
   // pour que `shell.openPath` réussisse toujours.
   ipcMain.handle('ai:getMcpConfigFolder', async (_, client: unknown) => run(() => {
-    const c = client === 'cursor' ? 'cursor' : 'claude';
-    const home = os.homedir();
-    const isWin = process.platform === 'win32';
-    const isMac = process.platform === 'darwin';
-    const base = isWin
-      ? (process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'))
-      : isMac
-        ? path.join(home, 'Library', 'Application Support')
-        : (process.env.XDG_CONFIG_HOME ?? path.join(home, '.config'));
-    const folder = path.join(base, c === 'cursor' ? 'Cursor' : 'Claude');
+    const folder = computeMcpConfigFolder(client);
     try {
       fs.mkdirSync(folder, { recursive: true });
     } catch {
-      // Dossier déjà présent ou non-créable — on renvoie le chemin, openFolder gère l'erreur.
+      // Dossier déjà présent ou non-créable — on renvoie le chemin.
     }
     return folder;
   }));
+
+  // Ouvre directement le dossier de config du client (Claude/Cursor) via shell.openPath,
+  // en le créant au besoin. Renvoie { success, error?, path } pour un feedback UI.
+  ipcMain.handle('ai:openMcpConfigFolder', async (_, client: unknown) => {
+    const folder = computeMcpConfigFolder(client);
+    try {
+      fs.mkdirSync(folder, { recursive: true });
+      const error = await shell.openPath(folder);
+      return { success: !error, error: error || null, path: folder };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, error: msg, path: folder };
+    }
+  });
 }

@@ -482,6 +482,7 @@ export const api = {
     listTools: () => ipcRenderer.invoke('ai:listTools'),
     getMcpConfig: () => ipcRenderer.invoke('ai:getMcpConfig'),
     getMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:getMcpConfigFolder', client),
+    openMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:openMcpConfigFolder', client),
   },
 };
 
