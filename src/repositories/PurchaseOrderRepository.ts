@@ -99,6 +99,13 @@ const stmtUpdateOrderFull = db.prepare(`
   UPDATE purchase_orders SET supplier_id = ?, date = ?, expected_date = ?, status = ?, total = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 `);
 const stmtDeleteItems = db.prepare('DELETE FROM purchase_order_items WHERE purchase_order_id = ?');
+const stmtProductStock = db.prepare(`
+  SELECT COALESCE(SUM(
+    CASE WHEN movement_type IN ('PURCHASE_IN','ADJUSTMENT_IN','RETURN_IN','OPENING_BALANCE','TRANSFER_IN') THEN quantity
+         ELSE -quantity END
+  ), 0) AS stock
+  FROM stock_movements WHERE product_id = ?
+`);
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 
@@ -335,11 +342,39 @@ export const PurchaseOrderRepository = {
   remove(id: string): void {
     const order = this.getById(id);
     if (!order) throw new Error('Commande introuvable.');
-    if (order.status !== 'DRAFT') throw new Error('Seules les commandes en brouillon peuvent être supprimées.');
-    const movements = db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements WHERE document_id = ?').get(id) as { cnt: number };
-    if (movements.cnt > 0) {
-      throw new Error('Impossible de supprimer : la commande possède un historique de réception de stock.');
-    }
-    stmtDeleteOrder.run(id);
+
+    // Réceptions liées à cette commande (PURCHASE_IN) — à inverser avant suppression.
+    const movements = db.prepare(`
+      SELECT product_id, quantity FROM stock_movements
+      WHERE document_id = ? AND movement_type = 'PURCHASE_IN'
+    `).all(id) as Array<{ product_id: string; quantity: number }>;
+
+    const removeAll = db.transaction(() => {
+      // Inverser chaque réception (ADJUSTMENT_OUT) pour remettre le stock
+      // dans son état d'avant réception, sans casser le journal.
+      for (const m of movements) {
+        const qty = Number(m.quantity);
+        if (qty <= 0) continue;
+        const stock = (stmtProductStock.get(m.product_id) as { stock: number })?.stock ?? 0;
+        if (stock < qty) {
+          throw new Error(
+            `Impossible de supprimer : le stock de ce produit (${stock}) est inférieur à la quantité reçue (${qty}) — il a été vendu ou consommé.`
+          );
+        }
+        StockLedgerService.recordMovement({
+          product_id: m.product_id,
+          movement_type: 'ADJUSTMENT_OUT',
+          quantity: qty,
+          unit_price: 0,
+          reference_doc: order.order_number,
+          document_id: order.id,
+          supplier_id: order.supplier_id,
+          notes: `Annulation commande ${order.order_number} (inversion réception)`,
+        });
+      }
+      stmtDeleteItems.run(id);
+      stmtDeleteOrder.run(id);
+    });
+    removeAll();
   }
 };

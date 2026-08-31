@@ -273,17 +273,24 @@ const OrderDetailPanel: React.FC<{
             <Button variant="secondary" block onClick={() => onCancel(order.id)} style={{ background: 'var(--warning)', color: 'var(--on-primary)', borderColor: 'transparent' }}>
               ❌ Annuler
             </Button>
+            <Button variant="danger" block onClick={() => onDelete(order.id)}>🗑️ Supprimer</Button>
           </>
         )}
         {order.status === 'RECEIVED' && (
-          <div className="text-sm text-secondary" style={{ width: '100%', padding: '12px 0', lineHeight: 1.6 }}>
-            📦 Commande <strong>réceptionnée</strong> — le stock a déjà été mis à jour. Elle ne peut plus être <strong>modifiée</strong> ni <strong>supprimée</strong>, sinon l'historique de stock deviendrait incohérent.
-          </div>
+          <>
+            <Button variant="danger" block onClick={() => onDelete(order.id)}>🗑️ Supprimer</Button>
+            <div className="text-sm text-secondary" style={{ width: '100%', padding: '12px 0', lineHeight: 1.6 }}>
+              📦 Commande <strong>réceptionnée</strong> — « Supprimer » <strong>inversera le stock reçu</strong> (retour à l'état d'avant réception). La <strong>modification</strong> n'est pas possible après réception.
+            </div>
+          </>
         )}
         {order.status === 'CANCELLED' && (
-          <div className="text-sm text-secondary" style={{ width: '100%', padding: '12px 0', lineHeight: 1.6 }}>
-            ❌ Commande <strong>annulée</strong> — elle ne peut plus être ni modifiée, ni supprimée, ni réceptionnée.
-          </div>
+          <>
+            <Button variant="danger" block onClick={() => onDelete(order.id)}>🗑️ Supprimer</Button>
+            <div className="text-sm text-secondary" style={{ width: '100%', padding: '12px 0', lineHeight: 1.6 }}>
+              ❌ Commande <strong>annulée</strong> — elle peut être supprimée définitivement.
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -382,6 +389,11 @@ export const PurchasesPage: React.FC = () => {
       message: (
         <>
           La commande sera <strong>définitivement supprimée</strong>. Cette action est irréversible.
+          {selectedOrder?.status === 'RECEIVED' && (
+            <>
+              <br /><span className="text-danger font-semibold">Le stock reçu sera inversé (retour à l'état d'avant réception).</span>
+            </>
+          )}
         </>
       ),
       danger: true,
