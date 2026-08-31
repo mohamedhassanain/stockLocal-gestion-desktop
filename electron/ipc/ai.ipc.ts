@@ -114,4 +114,23 @@ export function registerAiHandlers(): void {
       return { success: false, error: msg, path: folder };
     }
   });
+
+  // Ouvre un lien externe (page d'obtention de clé) via shell.openExternal.
+  // Allowlist stricte : uniquement les 2 pages de clés connues, jamais une URL arbitraire.
+  const ALLOWED_KEY_URLS = new Set([
+    'https://console.anthropic.com/settings/keys',
+    'https://platform.openai.com/api-keys',
+  ]);
+  ipcMain.handle('ai:openExternal', async (_, url: unknown) => {
+    if (typeof url !== 'string' || !ALLOWED_KEY_URLS.has(url)) {
+      return { success: false, error: 'URL non autorisée.' };
+    }
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, error: msg };
+    }
+  });
 }

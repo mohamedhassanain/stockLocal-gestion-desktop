@@ -483,6 +483,7 @@ export const api = {
     getMcpConfig: () => ipcRenderer.invoke('ai:getMcpConfig'),
     getMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:getMcpConfigFolder', client),
     openMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:openMcpConfigFolder', client),
+    openExternal: (url: string) => ipcRenderer.invoke('ai:openExternal', url),
   },
 };
 
