@@ -210,7 +210,8 @@ export const AiAssistantPage: React.FC = () => {
   const keyUrl = KEY_URLS[provider];
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1000, margin: '0 auto' }}>
+    <div style={{ flex: 1, height: '100vh', overflowY: 'auto', background: '#f4f6f3' }}>
+      <div style={{ padding: '24px', maxWidth: 1000, margin: '0 auto' }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20, color: '#1f2937' }}>Assistant IA</h1>
 
       {config?.expired && (
@@ -449,6 +450,7 @@ export const AiAssistantPage: React.FC = () => {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 
