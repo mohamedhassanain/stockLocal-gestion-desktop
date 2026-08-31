@@ -486,8 +486,8 @@ export const api = {
     confirmAction: (actionId: string, confirmed: boolean) => ipcRenderer.invoke('ai:confirmAction', { actionId, confirmed }),
     listTools: () => ipcRenderer.invoke('ai:listTools'),
     getMcpConfig: () => ipcRenderer.invoke('ai:getMcpConfig'),
-    getMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:getMcpConfigFolder', client),
-    openMcpConfigFolder: (client: 'claude' | 'cursor') => ipcRenderer.invoke('ai:openMcpConfigFolder', client),
+    getMcpConfigFolder: (client: 'claude' | 'cursor' | 'kimi') => ipcRenderer.invoke('ai:getMcpConfigFolder', client),
+    openMcpConfigFolder: (client: 'claude' | 'cursor' | 'kimi') => ipcRenderer.invoke('ai:openMcpConfigFolder', client),
     openExternal: (url: string) => ipcRenderer.invoke('ai:openExternal', url),
   },
 };

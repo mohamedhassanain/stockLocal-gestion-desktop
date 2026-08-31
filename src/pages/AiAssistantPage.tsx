@@ -71,12 +71,13 @@ export const AiAssistantPage: React.FC = () => {
   const [connectMessage, setConnectMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   // Zone 2 — Mode B
-  const [mcpClient, setMcpClient] = useState<'claude' | 'cursor' | 'other'>('claude');
+  const [mcpClient, setMcpClient] = useState<'claude' | 'cursor' | 'kimi' | 'other'>('claude');
   const [copyResult, setCopyResult] = useState('');
   const [openResult, setOpenResult] = useState('');
   const [showManualConfig, setShowManualConfig] = useState(false);
   const [mcpJson, setMcpJson] = useState('');
   const [showMcpJson, setShowMcpJson] = useState(false);
+  const [showChatGptInfo, setShowChatGptInfo] = useState(false);
   // Chat — inchangé
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
@@ -206,9 +207,9 @@ export const AiAssistantPage: React.FC = () => {
   const handleOpenFolder = async () => {
     if (mcpClient === 'other') return;
     try {
-      const client = mcpClient === 'cursor' ? 'cursor' : 'claude';
+      const client = mcpClient === 'cursor' ? 'cursor' : mcpClient === 'kimi' ? 'kimi' : 'claude';
       const res = await window.api.ai.openMcpConfigFolder(client);
-      const label = mcpClient === 'cursor' ? 'Cursor' : 'Claude Desktop';
+      const label = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'kimi' ? 'Kimi (CLI)' : 'Claude Desktop';
       setOpenResult(res?.success
         ? `📁 Dossier ouvert : ${res.path} (${label})`
         : '❌ ' + (res?.error ?? 'Impossible d\'ouvrir le dossier.'));
@@ -218,7 +219,7 @@ export const AiAssistantPage: React.FC = () => {
   };
 
   const isConfigTabActive = showConfigTab;
-  const clientName = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'other' ? 'votre client MCP' : 'Claude Desktop';
+  const clientName = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'kimi' ? 'Kimi (CLI)' : mcpClient === 'other' ? 'votre client MCP' : 'Claude Desktop';
   const keyUrl = KEY_URLS[provider];
 
   return (
@@ -376,12 +377,32 @@ export const AiAssistantPage: React.FC = () => {
             <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div>
                 <label style={labelStyle}>Client</label>
-                <select value={mcpClient} onChange={(e) => setMcpClient(e.target.value as 'claude' | 'cursor' | 'other')} style={{ ...inputStyle, width: 'auto' }}>
+                <select value={mcpClient} onChange={(e) => setMcpClient(e.target.value as 'claude' | 'cursor' | 'kimi' | 'other')} style={{ ...inputStyle, width: 'auto' }}>
                   <option value="claude">Claude Desktop</option>
                   <option value="cursor">Cursor</option>
+                  <option value="kimi">Kimi (CLI)</option>
                   <option value="other">Autre client MCP</option>
                 </select>
               </div>
+            </div>
+
+            {/* Avertissement Kimi (CLI) — destiné aux développeurs */}
+            {mcpClient === 'kimi' && (
+              <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13, color: '#78350f' }}>
+                ⚠️ Kimi Code CLI est un outil en ligne de commande destiné aux développeurs, pas une application graphique classique. Si vous n'êtes pas à l'aise avec la ligne de commande, utilisez plutôt Claude Desktop ou Cursor.
+              </div>
+            )}
+
+            {/* Information ChatGPT (non-cliquable, pas une option) */}
+            <div style={{ marginBottom: 12 }}>
+              <button onClick={() => setShowChatGptInfo(!showChatGptInfo)} style={linkBtnStyle}>
+                ChatGPT n'est pas dans la liste ? En savoir plus
+              </button>
+              {showChatGptInfo && (
+                <p style={{ fontSize: 13, color: '#6b7280', marginTop: 8, lineHeight: 1.5 }}>
+                  ChatGPT fonctionne différemment : il ne lit pas de fichier de configuration sur votre ordinateur comme Claude Desktop ou Cursor. Pour le connecter à StockLocal, il faudrait héberger StockLocal sur un serveur accessible depuis Internet, et avoir un abonnement ChatGPT Plus, Pro ou Business avec le mode développeur activé. Cette option n'est pas disponible pour le moment dans StockLocal.
+                </p>
+              )}
             </div>
 
             {/* Boutons séparés : Copier / Ouvrir le dossier */}
@@ -443,6 +464,7 @@ export const AiAssistantPage: React.FC = () => {
                     <li><strong>Claude Desktop (macOS)</strong> : <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
                     <li><strong>Cursor (Windows)</strong> : <code>%APPDATA%\Cursor\mcp.json</code></li>
                     <li><strong>Cursor (macOS)</strong> : <code>~/Library/Application Support/Cursor/mcp.json</code></li>
+                    <li><strong>Kimi (CLI) (Windows/macOS/Linux)</strong> : <code>~/.kimi/mcp.json</code></li>
                   </ul>
                 )}
               </div>

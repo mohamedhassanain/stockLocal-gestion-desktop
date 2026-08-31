@@ -10,10 +10,14 @@ function run<T>(action: () => T | Promise<T>): Promise<T> {
   return Promise.resolve(action());
 }
 
-/** Calcule le dossier de config du client MCP (Claude Desktop / Cursor) selon l'OS. */
+/** Calcule le dossier de config du client MCP (Claude Desktop / Cursor / Kimi CLI) selon l'OS. */
 function computeMcpConfigFolder(client: unknown): string {
-  const c = client === 'cursor' ? 'cursor' : 'claude';
+  const c = client === 'cursor' ? 'cursor' : client === 'kimi' ? 'kimi' : 'claude';
   const home = os.homedir();
+  // Kimi (CLI) : fichier ~/.kimi/mcp.json — même chemin sur tous les OS.
+  if (c === 'kimi') {
+    return path.join(home, '.kimi');
+  }
   const isWin = process.platform === 'win32';
   const isMac = process.platform === 'darwin';
   const base = isWin
