@@ -209,7 +209,7 @@ export const AiAssistantPage: React.FC = () => {
     try {
       const client = mcpClient === 'cursor' ? 'cursor' : mcpClient === 'kimi' ? 'kimi' : 'claude';
       const res = await window.api.ai.openMcpConfigFolder(client);
-      const label = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'kimi' ? 'Kimi (CLI)' : 'Claude Desktop';
+      const label = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'kimi' ? 'Kimi' : 'Claude Desktop';
       setOpenResult(res?.success
         ? `📁 Dossier ouvert : ${res.path} (${label})`
         : '❌ ' + (res?.error ?? 'Impossible d\'ouvrir le dossier.'));
@@ -219,7 +219,7 @@ export const AiAssistantPage: React.FC = () => {
   };
 
   const isConfigTabActive = showConfigTab;
-  const clientName = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'kimi' ? 'Kimi (CLI)' : mcpClient === 'other' ? 'votre client MCP' : 'Claude Desktop';
+  const clientName = mcpClient === 'cursor' ? 'Cursor' : mcpClient === 'kimi' ? 'Kimi' : mcpClient === 'other' ? 'votre client MCP' : 'Claude Desktop';
   const keyUrl = KEY_URLS[provider];
 
   return (
@@ -380,16 +380,16 @@ export const AiAssistantPage: React.FC = () => {
                 <select value={mcpClient} onChange={(e) => setMcpClient(e.target.value as 'claude' | 'cursor' | 'kimi' | 'other')} style={{ ...inputStyle, width: 'auto' }}>
                   <option value="claude">Claude Desktop</option>
                   <option value="cursor">Cursor</option>
-                  <option value="kimi">Kimi (CLI)</option>
+                  <option value="kimi">Kimi</option>
                   <option value="other">Autre client MCP</option>
                 </select>
               </div>
             </div>
 
-            {/* Avertissement Kimi (CLI) — destiné aux développeurs */}
+            {/* Note Kimi (CLI / Desktop) — utilisable par tout le monde */}
             {mcpClient === 'kimi' && (
-              <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13, color: '#78350f' }}>
-                ⚠️ Kimi Code CLI est un outil en ligne de commande destiné aux développeurs, pas une application graphique classique. Si vous n'êtes pas à l'aise avec la ligne de commande, utilisez plutôt Claude Desktop ou Cursor.
+              <div style={{ background: '#eff6ff', border: '1px solid #2563eb', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13, color: '#1e40af' }}>
+                ℹ️ Kimi Code fonctionne en application de bureau <strong>ou</strong> en ligne de commande. Le fichier de configuration MCP est <code>~/.kimi-code/mcp.json</code> (niveau utilisateur) — le bloc JSON copié ci-dessous est directement compatible.
               </div>
             )}
 
@@ -452,7 +452,7 @@ export const AiAssistantPage: React.FC = () => {
               </div>
             )}
 
-            {/* Configuration manuelle (accordéon) — seulement Claude/Cursor */}
+            {/* Configuration manuelle (accordéon) — seulement Claude/Cursor/Kimi */}
             {mcpClient !== 'other' && (
               <div style={{ marginTop: 20, borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
                 <button onClick={() => setShowManualConfig(!showManualConfig)} style={accordionBtnStyle}>
@@ -464,7 +464,7 @@ export const AiAssistantPage: React.FC = () => {
                     <li><strong>Claude Desktop (macOS)</strong> : <code>~/Library/Application Support/Claude/claude_desktop_config.json</code></li>
                     <li><strong>Cursor (Windows)</strong> : <code>%APPDATA%\Cursor\mcp.json</code></li>
                     <li><strong>Cursor (macOS)</strong> : <code>~/Library/Application Support/Cursor/mcp.json</code></li>
-                    <li><strong>Kimi (CLI) (Windows/macOS/Linux)</strong> : <code>~/.kimi/mcp.json</code></li>
+                    <li><strong>Kimi Code (Windows/macOS/Linux)</strong> : <code>~/.kimi-code/mcp.json</code></li>
                   </ul>
                 )}
               </div>

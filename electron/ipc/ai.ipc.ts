@@ -14,9 +14,9 @@ function run<T>(action: () => T | Promise<T>): Promise<T> {
 function computeMcpConfigFolder(client: unknown): string {
   const c = client === 'cursor' ? 'cursor' : client === 'kimi' ? 'kimi' : 'claude';
   const home = os.homedir();
-  // Kimi (CLI) : fichier ~/.kimi/mcp.json — même chemin sur tous les OS.
+  // Kimi Code (CLI / Desktop) : fichier ~/.kimi-code/mcp.json — même chemin sur tous les OS.
   if (c === 'kimi') {
-    return path.join(home, '.kimi');
+    return path.join(home, '.kimi-code');
   }
   const isWin = process.platform === 'win32';
   const isMac = process.platform === 'darwin';
