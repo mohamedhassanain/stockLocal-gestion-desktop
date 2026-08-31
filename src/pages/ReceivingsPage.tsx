@@ -95,6 +95,7 @@ const ReceivingRow: React.FC<{ receiving: Receiving }> = ({ receiving }) => {
 export const ReceivingsPage: React.FC = () => {
   const [receivings, setReceivings] = useState<Receiving[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const load = async () => {
     setIsLoading(true);
@@ -131,6 +132,18 @@ export const ReceivingsPage: React.FC = () => {
 
   const pendingCount = receivings.filter(r => r.status === 'CONFIRMED').length;
 
+  const q = searchQuery.trim().toLowerCase();
+  const filteredReceivings = q
+    ? receivings.filter(r =>
+        r.order_number.toLowerCase().includes(q) ||
+        (r.supplier_name ?? '').toLowerCase().includes(q) ||
+        r.lines.some(l =>
+          (l.product_ref ?? '').toLowerCase().includes(q) ||
+          (l.product_name ?? '').toLowerCase().includes(q)
+        )
+      )
+    : receivings;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)', height: '100vh', overflow: 'hidden' }}>
       <div className="page-header">
@@ -146,6 +159,16 @@ export const ReceivingsPage: React.FC = () => {
         </div>
       </div>
 
+      <div style={{ padding: '12px 28px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <input
+          type="text"
+          className="input input-lg"
+          placeholder="Rechercher par numéro, fournisseur, produit..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+      </div>
+
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
         {isLoading ? (
           <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -157,8 +180,14 @@ export const ReceivingsPage: React.FC = () => {
             <div className="state-title">Aucune réception</div>
             <div className="state-text">Les commandes confirmées puis réceptionnées apparaîtront ici.</div>
           </div>
+        ) : filteredReceivings.length === 0 ? (
+          <div className="card state-box">
+            <div className="state-icon">🔍</div>
+            <div className="state-title">Aucun résultat</div>
+            <div className="state-text">Aucune réception ne correspond à « {searchQuery} ».</div>
+          </div>
         ) : (
-          receivings.map(r => <ReceivingRow key={r.order_number} receiving={r} />)
+          filteredReceivings.map(r => <ReceivingRow key={r.order_number} receiving={r} />)
         )}
       </div>
     </div>
