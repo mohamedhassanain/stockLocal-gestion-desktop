@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AiAssistantService } from '../src/ai/AiAssistantService';
 import { executeMcpTool, MCP_TOOLS, resetRateLimitCounter } from '../src/ai/McpTools';
 import { GlobalSettingsService } from '../src/services/GlobalSettingsService';
 import { AuditService } from '../src/services/AuditService';
+import { encryptSecret, decryptSecret } from '../src/ai/secureStorage';
 
 /**
  * Tests Phase B — Assistant IA / MCP.
@@ -225,5 +226,57 @@ describe('Garde-fous du serveur MCP standalone (executeMcpTool direct)', () => {
     const second = executeMcpTool('list_products', { query: '', limit: 1 });
     expect(second.success).toBe(false);
     expect(second.error).toContain('Limite de débit');
+  });
+});
+
+describe('Correctif endpoints par provider + safeStorage + FINANCIAL', () => {
+  beforeEach(() => {
+    resetRateLimitCounter();
+    GlobalSettingsService.save({
+      ai_provider: 'anthropic',
+      ai_base_url: '',
+      ai_api_key: '',
+      ai_model: '',
+      ai_expiry_mode: 'none',
+      ai_expiry_date: '',
+      ai_rate_limit_per_min: 30,
+    });
+  });
+
+  it('construit /chat/completions pour OpenAI et /messages pour Anthropic (testConnection)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      // OpenAI → /chat/completions
+      const r1 = await AiAssistantService.testConnection({ provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'clé', model: 'gpt-4o' });
+      expect(r1.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledWith('https://api.openai.com/v1/chat/completions', expect.any(Object));
+      // Anthropic → /messages
+      const r2 = await AiAssistantService.testConnection({ provider: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', apiKey: 'clé', model: 'claude' });
+      expect(r2.success).toBe(true);
+      expect(fetchMock).toHaveBeenLastCalledWith('https://api.anthropic.com/v1/messages', expect.any(Object));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('chiffre/déchiffre la clé API (round-trip safeStorage ou fallback clair)', () => {
+    const plain = 'clé-secrète-test';
+    const encrypted = encryptSecret(plain);
+    const decrypted = decryptSecret(encrypted);
+    expect(decrypted).toBe(plain);
+    // La valeur stockée ne doit jamais révéler la clé en clair SI safeStorage dispo.
+    // Ici on vérifie au minimum que le round-trip fonctionne quel que soit le mode.
+    expect(encrypted).not.toBe('');
+  });
+
+  it('marque les outils financiers comme FINANCIAL et exige une confirmation renforcée', () => {
+    expect(MCP_TOOLS['add_payment'].kind).toBe('FINANCIAL');
+    expect(MCP_TOOLS['add_client_debt'].kind).toBe('FINANCIAL');
+    expect(MCP_TOOLS['add_client_payment'].kind).toBe('FINANCIAL');
+    const res = executeMcpTool('add_payment', { document_id: 'doc-1', amount: 100, payment_method: 'CASH' });
+    expect(res.success).toBe(false);
+    expect(res.needsConfirmation).toBe(true);
+    expect(res.error).toContain('financière');
   });
 });

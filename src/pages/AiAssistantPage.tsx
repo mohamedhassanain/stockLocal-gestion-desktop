@@ -331,7 +331,7 @@ export const AiAssistantPage: React.FC = () => {
             {pendingAction && (
               <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, padding: 14, marginBottom: 16 }}>
                 <div style={{ fontWeight: 600, color: '#92400e', marginBottom: 8 }}>
-                  ⚠️ L'assistant propose une action {pendingAction.toolKind === 'DESTRUCTIVE' ? 'destructive' : 'd\'écriture'} :
+                  {pendingAction.toolKind === 'DESTRUCTIVE' ? '⚠️ Action destructive proposée :' : pendingAction.toolKind === 'FINANCIAL' ? '💰 Action financière — vérifiez le montant avant de confirmer :' : '⚠️ Action d\'écriture proposée :'}
                 </div>
                 <div style={{ color: '#78350f', marginBottom: 10, fontSize: 14 }}>{pendingAction.summary}</div>
                 <div style={{ display: 'flex', gap: 8 }}>

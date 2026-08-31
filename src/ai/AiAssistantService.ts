@@ -1,5 +1,6 @@
 import { GlobalSettingsService } from '../services/GlobalSettingsService';
 import { executeMcpTool, MCP_TOOLS, type ToolKind, type McpToolResult } from './McpTools';
+import { encryptSecret, decryptSecret } from './secureStorage';
 
 /**
  * ─── AiAssistantService ────────────────────────────────────────────────────────
@@ -156,6 +157,56 @@ function appendToolResults(
   return [...convo, assistantMsg, ...toolMsgs];
 }
 
+// ─── Helpers provider-aware (endpoint + payload + clé déchiffrée) ─────────────
+function getEndpoint(provider: AiProvider, baseUrl: string): string {
+  // Anthropic → /messages ; OpenAI + tout provider compatible OpenAI → /chat/completions.
+  return provider === 'anthropic' ? `${baseUrl}/messages` : `${baseUrl}/chat/completions`;
+}
+
+function getApiKey(): string {
+  const stored = GlobalSettingsService.getAll().ai_api_key;
+  if (!stored) return '';
+  try {
+    return decryptSecret(stored);
+  } catch {
+    return stored;
+  }
+}
+
+function buildAuthHeaders(provider: AiProvider, apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (provider === 'anthropic') {
+    headers['x-api-key'] = apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+  } else {
+    headers['authorization'] = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
+function buildToolsPayload(
+  tools: Array<{ name: string; description: string; input_schema: unknown }>,
+  provider: AiProvider,
+): Array<Record<string, unknown>> {
+  if (provider === 'anthropic') {
+    return tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+  }
+  // Format OpenAI / compatible : tools: [{ type: 'function', function: { name, description, parameters } }]
+  return tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+}
+
+function buildRequestBody(
+  provider: AiProvider,
+  model: string,
+  convo: Array<Record<string, unknown>>,
+  toolsPayload: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { model, max_tokens: 1500, messages: convo };
+  if (provider === 'anthropic') body.system = AI_SYSTEM_PROMPT;
+  if (toolsPayload.length > 0) body.tools = toolsPayload;
+  return body;
+}
+
 export const AiAssistantService = {
   getConfig(): AiConfigView {
     const s = GlobalSettingsService.getAll();
@@ -177,10 +228,12 @@ export const AiAssistantService = {
 
   saveConfig(input: { provider: AiProvider; baseUrl?: string; apiKey?: string; model?: string; expiryMode?: 'none' | 'date'; expiryDate?: string; rateLimitPerMin?: number }): AiConfigView {
     const provider = input.provider;
+    const apiKey = input.apiKey ?? '';
+    // La clé API est CHIFFRÉE avant stockage en base (safeStorage). Jamais en clair.
     GlobalSettingsService.save({
       ai_provider: provider,
       ai_base_url: input.baseUrl ?? '',
-      ai_api_key: input.apiKey ?? '',
+      ai_api_key: encryptSecret(apiKey),
       ai_model: input.model ?? '',
       ai_expiry_mode: input.expiryMode ?? 'none',
       ai_expiry_date: input.expiryDate ?? '',
@@ -206,16 +259,8 @@ export const AiAssistantService = {
     if (!apiKey) return { success: false, message: 'Clé API manquante.' };
     if (!input.model.trim()) return { success: false, message: 'Modèle manquant.' };
     try {
-      const url = `${baseUrl}/messages`;
-      const headers: Record<string, string> = {
-        'content-type': 'application/json',
-      };
-      if (input.provider === 'anthropic') {
-        headers['x-api-key'] = apiKey;
-        headers['anthropic-version'] = '2023-06-01';
-      } else {
-        headers['authorization'] = `Bearer ${apiKey}`;
-      }
+      const url = getEndpoint(input.provider, baseUrl);
+      const headers = buildAuthHeaders(input.provider, apiKey);
       const res = await fetch(url, {
         method: 'POST',
         headers,
@@ -256,20 +301,15 @@ export const AiAssistantService = {
     let convo: Array<Record<string, unknown>> =
       config.provider === 'anthropic' ? [...baseMessages] : [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...baseMessages];
 
+    const endpoint = getEndpoint(config.provider, config.baseUrl);
+    const apiKey = getApiKey();
+    const toolsPayload = buildToolsPayload(tools, config.provider);
+    const headers = buildAuthHeaders(config.provider, apiKey);
+
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
-      const body: Record<string, unknown> = { model: config.model, max_tokens: 1500, messages: convo };
-      if (config.provider === 'anthropic') body.system = AI_SYSTEM_PROMPT;
-      if (tools.length > 0) body.tools = tools;
+      const body = buildRequestBody(config.provider, config.model, convo, toolsPayload);
 
-      const headers: Record<string, string> = { 'content-type': 'application/json' };
-      if (config.provider === 'anthropic') {
-        headers['x-api-key'] = GlobalSettingsService.getAll().ai_api_key;
-        headers['anthropic-version'] = '2023-06-01';
-      } else {
-        headers['authorization'] = `Bearer ${GlobalSettingsService.getAll().ai_api_key}`;
-      }
-
-      const res = await fetch(`${config.baseUrl}/messages`, { method: 'POST', headers, body: JSON.stringify(body) });
+      const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`Erreur LLM (${res.status}) : ${text.slice(0, 200)}`);

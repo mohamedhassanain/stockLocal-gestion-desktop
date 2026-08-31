@@ -27,7 +27,7 @@ import { GlobalSettingsService } from '../services/GlobalSettingsService';
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-export type ToolKind = 'READ' | 'WRITE' | 'DESTRUCTIVE';
+export type ToolKind = 'READ' | 'WRITE' | 'FINANCIAL' | 'DESTRUCTIVE';
 
 export interface McpToolDef {
   name: string;
@@ -394,8 +394,8 @@ export const MCP_TOOLS: Record<string, McpToolDef> = {
 
   add_payment: {
     name: 'add_payment',
-    description: 'Ajoute un paiement à un document. Nécessite confirmation.',
-    kind: 'WRITE',
+    description: 'Ajoute un paiement à un document. Action financière — vérifiez le montant avant de confirmer.',
+    kind: 'FINANCIAL',
     inputSchema: PaymentToolSchema,
     execute: (params) => {
       const p = params as z.infer<typeof PaymentToolSchema>;
@@ -411,8 +411,8 @@ export const MCP_TOOLS: Record<string, McpToolDef> = {
 
   add_client_debt: {
     name: 'add_client_debt',
-    description: 'Ajoute une dette (vente à crédit) à un client. Nécessite confirmation.',
-    kind: 'WRITE',
+    description: 'Ajoute une dette (vente à crédit) à un client. Action financière — vérifiez le montant avant de confirmer.',
+    kind: 'FINANCIAL',
     inputSchema: ClientDebtToolSchema,
     execute: (params) => {
       const p = params as z.infer<typeof ClientDebtToolSchema>;
@@ -422,8 +422,8 @@ export const MCP_TOOLS: Record<string, McpToolDef> = {
 
   add_client_payment: {
     name: 'add_client_payment',
-    description: 'Enregistre un paiement client. Nécessite confirmation.',
-    kind: 'WRITE',
+    description: 'Enregistre un paiement client. Action financière — vérifiez le montant avant de confirmer.',
+    kind: 'FINANCIAL',
     inputSchema: ClientPaymentToolSchema,
     execute: (params) => {
       const p = params as z.infer<typeof ClientPaymentToolSchema>;
@@ -505,16 +505,19 @@ export function executeMcpTool(
       return { success: true, data, kind: tool.kind };
     }
 
-    // WRITE / DESTRUCTIVE : confirmation explicite requise.
+    // WRITE / FINANCIAL / DESTRUCTIVE : confirmation explicite requise.
     // `confirmed` est lu depuis les paramètres bruts (le schéma Zod le strippe).
     const raw = (params ?? {}) as Record<string, unknown>;
     const confirmed = raw['confirmed'] === true;
     if (!confirmed) {
+      const riskLabel = tool.kind === 'DESTRUCTIVE' ? 'destructive'
+        : tool.kind === 'FINANCIAL' ? 'financière — vérifiez le montant avant de confirmer'
+        : "d'écriture";
       return {
         success: false,
         needsConfirmation: true,
         kind: tool.kind,
-        error: `Action ${tool.kind === 'DESTRUCTIVE' ? 'destructive' : "d'écriture"} : confirmation requise. Ré-invoquez avec confirmed:true.`,
+        error: `Action ${riskLabel} : confirmation requise. Ré-invoquez avec confirmed:true.`,
         data: { confirmationRequired: true, toolName: name, params: parsed },
       };
     }
