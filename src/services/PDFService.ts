@@ -237,34 +237,29 @@ export const PDFService = {
     page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y: nameBaseline, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 50; // retour à la ligne avant le titre
 
-    // ── Titre du document CENTRÉ ──
-    const titleW = boldFont.widthOfTextAtSize(title, 18);
-    page.drawText(title, { x: (width - titleW) / 2, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    // ── Titre du document (aligné à gauche) ──
+    page.drawText(title, { x: 50, y, size: 18, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 18;
 
-    // ── Mentions entreprise + n° document + date (centrées sous le bloc) ──
-    const centerLine = (text: string, size: number, f = font, color = rgb(0.4, 0.4, 0.4)) => {
-      const w = f.widthOfTextAtSize(text, size);
-      page.drawText(text, { x: (width - w) / 2, y, size, font: f, color });
-    };
+    // ── Mentions entreprise + n° document + date (alignées à gauche) ──
     if (settings.address) {
-      centerLine(settings.address, 9);
+      page.drawText(settings.address, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
       y -= 12;
     }
     if (settings.phone || settings.email) {
-      centerLine([settings.phone, settings.email].filter(Boolean).join(' · '), 9);
+      page.drawText([settings.phone, settings.email].filter(Boolean).join(' · '), { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
       y -= 12;
     }
-    centerLine(settings.tagline || 'Gestion commerciale - Grossiste', 10, font, rgb(0.1, 0.1, 0.1));
+    page.drawText(settings.tagline || 'Gestion commerciale - Grossiste', { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
     y -= 12;
-    centerLine(doc.document_number, 12, boldFont, rgb(0.1, 0.2, 0.4));
+    page.drawText(doc.document_number, { x: 50, y, size: 12, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
     y -= 12;
-    centerLine(`ICE : ${settings.ice}  ·  RC : ${settings.rc}  ·  IF : ${settings.if_}`, 9);
+    page.drawText(`ICE : ${settings.ice}  ·  RC : ${settings.rc}  ·  IF : ${settings.if_}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 12;
-    centerLine(`Date : ${new Date(doc.date).toLocaleDateString('fr-MA')}`, 10, font, rgb(0.1, 0.1, 0.1));
+    page.drawText(`Date : ${new Date(doc.date).toLocaleDateString('fr-MA')}`, { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
     y -= 12;
     if (doc.due_date) {
-      centerLine(`Échéance : ${new Date(doc.due_date).toLocaleDateString('fr-MA')}`, 10, font, rgb(0.1, 0.1, 0.1));
+      page.drawText(`Échéance : ${new Date(doc.due_date).toLocaleDateString('fr-MA')}`, { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
       y -= 12;
     }
     y -= 25;
