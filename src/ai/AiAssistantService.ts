@@ -209,6 +209,43 @@ function buildRequestBody(
   return body;
 }
 
+// ─── Garde-fou max_tokens / max_completion_tokens (OpenAI & compatibles) ──────
+// Certains modèles de raisonnement récents (gpt-5.x) exigent `max_completion_tokens`
+// au lieu de `max_tokens` ; d'autres exigent l'inverse. Envoyer les DEUX à la fois
+// est risqué (certaines routes strictes rejettent le champ legacy `max_tokens`). On
+// ne renvoie donc JAMAIS les deux simultanément : en cas d'erreur explicite
+// mentionnant l'un de ces deux paramètres, on retente UNE seule fois avec l'autre.
+function isTokenParamError(text: string): boolean {
+  return /max_completion_tokens|max_tokens/i.test(text);
+}
+
+function toUserFacingError(message: string): string {
+  // Message clair et actionnable pour un commerçant non technique.
+  return `Ce modèle n'est pas compatible avec la configuration actuelle. Essayez un autre modèle (ex. gpt-4o) ou vérifiez le nom du modèle dans les Paramètres avancés. (Détail technique : ${message})`;
+}
+
+async function fetchWithTokenFallback(
+  endpoint: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+  provider: AiProvider,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (res.ok) return await res.json() as Record<string, unknown>;
+  const text = await res.text().catch(() => '');
+  if (provider !== 'anthropic' && isTokenParamError(text)) {
+    // Bascule vers l'autre paramètre (l'undefined est ignoré par JSON.stringify).
+    const fallbackBody = body.max_tokens !== undefined
+      ? { ...body, max_completion_tokens: body.max_tokens, max_tokens: undefined }
+      : { ...body, max_tokens: body.max_completion_tokens, max_completion_tokens: undefined };
+    const res2 = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(fallbackBody) });
+    if (res2.ok) return await res2.json() as Record<string, unknown>;
+    const text2 = await res2.text().catch(() => '');
+    throw new Error(toUserFacingError(`Erreur LLM (${res2.status}) : ${text2.slice(0, 200)}`));
+  }
+  throw new Error(toUserFacingError(`Erreur LLM (${res.status}) : ${text.slice(0, 200)}`));
+}
+
 export const AiAssistantService = {
   getConfig(): AiConfigView {
     const s = GlobalSettingsService.getAll();
@@ -313,12 +350,7 @@ export const AiAssistantService = {
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
       const body = buildRequestBody(config.provider, config.model, convo, toolsPayload);
 
-      const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`Erreur LLM (${res.status}) : ${text.slice(0, 200)}`);
-      }
-      const data = await res.json() as Record<string, unknown>;
+      const data = await fetchWithTokenFallback(endpoint, headers, body, config.provider);
 
       // 1) Pas de tool_use → réponse finale.
       const toolUses = extractToolUses(data, config.provider);

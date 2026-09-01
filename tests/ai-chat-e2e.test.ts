@@ -182,4 +182,57 @@ describe('A.1 — Chat intégré (Mode A) bout-en-bout via fetch simulé', () =>
     expect(before.success).toBe(true);
     expect(MCP_TOOLS['list_products'].kind).toBe('READ');
   });
+
+  it('7. OpenAI : erreur max_tokens → retry automatique avec max_completion_tokens (le repli réussit)', async () => {
+    GlobalSettingsService.save({
+      ai_provider: 'openai',
+      ai_base_url: 'https://api.openai.com/v1',
+      ai_api_key: '',
+      ai_model: '',
+      ai_expiry_mode: 'none',
+      ai_expiry_date: '',
+      ai_rate_limit_per_min: 30,
+    });
+    AiAssistantService.saveConfig({ provider: 'openai', apiKey: 'sk-openai', model: 'gpt-5' });
+    // 1er appel → 400 « Unsupported parameter: max_tokens » ; 2e appel (repli) → 200 texte.
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "Unsupported parameter: 'max_tokens'" } }), { status: 400, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(resp(openaiText('Réponse après repli max_completion_tokens.')));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const result = await AiAssistantService.chat([{ role: 'user', content: 'Bonjour' }]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // Le 2e appel a basculé sur max_completion_tokens et retiré max_tokens (undefined).
+      const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+      expect(secondBody.max_tokens).toBeUndefined();
+      expect(secondBody.max_completion_tokens).toBe(1500);
+      expect(result.reply).toContain('Réponse après repli');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('8. OpenAI : erreur max_tokens persistante → message clair et actionnable (pas d\'erreur technique brute)', async () => {
+    GlobalSettingsService.save({
+      ai_provider: 'openai',
+      ai_base_url: 'https://api.openai.com/v1',
+      ai_api_key: '',
+      ai_model: '',
+      ai_expiry_mode: 'none',
+      ai_expiry_date: '',
+      ai_rate_limit_per_min: 30,
+    });
+    AiAssistantService.saveConfig({ provider: 'openai', apiKey: 'sk-openai', model: 'gpt-5' });
+    // 1er et 2e appel → 400 max_tokens (le repli échoue aussi) → erreur utilisateur claire.
+    const fetchMock = vi.fn()
+      .mockResolvedValue(new Response(JSON.stringify({ error: { message: "Unsupported parameter: 'max_tokens'" } }), { status: 400, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(AiAssistantService.chat([{ role: 'user', content: 'Bonjour' }])).rejects.toThrow(
+        /Ce modèle n'est pas compatible avec la configuration actuelle/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

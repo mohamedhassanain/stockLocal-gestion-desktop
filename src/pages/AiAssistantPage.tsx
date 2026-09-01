@@ -342,7 +342,10 @@ export const AiAssistantPage: React.FC = () => {
                   )}
                   <div>
                     <label style={labelStyle}>Modèle</label>
-                    <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-3-7-sonnet-latest, gpt-4o, etc." style={inputStyle} />
+                    {/* Placeholder vérifié le 2026-09-01 : modèles actuels Anthropic
+                        (claude-fable-5, claude-opus-5, claude-sonnet-5, claude-haiku-4-5-20251001)
+                        et OpenAI (gpt-5, gpt-4o). Ré-vérifier si le placeholder redevient obsolète. */}
+                    <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="claude-opus-5, claude-sonnet-5, gpt-5, gpt-4o, etc." style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Expiration de session</label>

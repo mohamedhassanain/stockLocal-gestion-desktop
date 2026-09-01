@@ -243,3 +243,20 @@ ARCHIVE_WITHOUT_CONFIRM_REFUSED = true
 ### Gates (pass 3)
 `npx tsc --noEmit` ✅ · `npm test` ✅ (**147 tests / 12 fichiers**) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
 **Fichiers modifiés (pass 3) :** `vite.config.mcp.ts` (nouveau), `src/ai/mcpServer.ts`, `src/ai/McpTools.ts`, `package.json`, `scripts/verify-mcp.cjs`.
+
+---
+
+## Pass 4 — Chat intégré (Mode A) : 2 améliorations de robustesse
+
+### 1. Placeholder « Modèle » mis à jour (`src/pages/AiAssistantPage.tsx`)
+L'ancien placeholder « claude-3-7-sonnet-latest, gpt-4o, etc. » pointait vers des identifiants de modèles datés. Placeholder mis à jour avec les identifiants vérifiés le **2026-09-01** : `claude-opus-5, claude-sonnet-5, gpt-5, gpt-4o, etc.` — sources vérifiées : `platform.claude.com/docs/en/models/overview` (claude-fable-5, claude-opus-5, claude-sonnet-5, claude-haiku-4-5-20251001) et `developers.openai.com/api/docs/models` (gpt-5.x, gpt-4o). Un commentaire JSX documente la date de vérification.
+
+### 2. Gestion des modèles OpenAI exigeant `max_completion_tokens` (`src/ai/AiAssistantService.ts`)
+**Recherche :** envoyer `max_tokens` ET `max_completion_tokens` simultanément est **risqué** sur les routes GPT-5 strictes (le champ legacy `max_tokens` peut être rejeté). La doc recommande de préférer `max_completion_tokens`.
+**Stratégie retenue :** **détection d'erreur + retry automatique unique** (on n'envoie jamais les deux à la fois) : `isTokenParamError()` détecte une erreur mentionnant `max_tokens`/`max_completion_tokens` ; `fetchWithTokenFallback()` retente une seule fois avec l'autre paramètre ; `toUserFacingError()` affiche un message clair/actionnable si l'échec persiste.
+
+**Tests ajoutés (`tests/ai-chat-e2e.test.ts`)** — mock `fetch` : test 7 (retry réussit, le 2e appel envoie `max_completion_tokens: 1500` et retire `max_tokens`) ; test 8 (échec persistant → message clair `/Ce modèle n'est pas compatible avec la configuration actuelle/`).
+
+### Gates (pass 4)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**149 tests / 12 fichiers** — 147 + 2 nouveaux) · `npx vite build` ✅.
+**Fichiers modifiés (pass 4) :** `src/pages/AiAssistantPage.tsx`, `src/ai/AiAssistantService.ts`, `tests/ai-chat-e2e.test.ts`, `FINAL_HARDENING_REPORT.md`.
