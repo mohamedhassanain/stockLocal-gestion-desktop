@@ -10,13 +10,13 @@ const dataDir = path.join(tmpRoot, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 fs.writeFileSync(path.join(tmpRoot, 'storage-config.json'), JSON.stringify({ dataPath: dataDir }));
 
-// Sur Windows, `npx` n'est pas résolu par spawn → utiliser le binaire local tsx.
-const tsxBin = path.join(process.cwd(), 'node_modules', '.bin', 'tsx.cmd');
-const child = spawn(tsxBin, ['src/ai/mcpServer.ts'], {
+// On lance le binaire COMPILÉ dist-electron/mcp-server.js via le node en cours.
+// (process.execPath = chemin vers node ; pas de .cmd ni de shell:true → la
+// cause de l'échec précédent est éliminée.)
+const child = spawn(process.execPath, [path.join(process.cwd(), 'dist-electron', 'mcp-server.js')], {
   cwd: process.cwd(),
   env: { ...process.env, STOCKLOCAL_USER_DATA_DIR: tmpRoot },
   stdio: ['pipe', 'pipe', 'pipe'],
-  shell: true,
 });
 
 const rl = readline.createInterface({ input: child.stdout });
@@ -50,10 +50,12 @@ async function main() {
   console.log('TOOLS_LIST: count=' + names.length + ', has_list_products=' + names.includes('list_products'));
 
   const created = await send('tools/call', { name: 'create_product', arguments: { reference: 'MCP-REF-1', designation: 'Produit MCP', purchase_price: 10, selling_price: 20, confirmed: true } });
+  console.log('CREATE_PRODUCT_RAW =', JSON.stringify(created));
   const createdText = (created.result && created.result.content && created.result.content[0] && created.result.content[0].text) || '';
   console.log('CREATE_PRODUCT_SUCCESS =', createdText.includes('"id"'));
 
   const listprod = await send('tools/call', { name: 'list_products', arguments: { query: 'MCP-REF-1' } });
+  console.log('LIST_PRODUCTS_RAW =', JSON.stringify(listprod));
   const listText = (listprod.result && listprod.result.content && listprod.result.content[0] && listprod.result.content[0].text) || '';
   console.log('LIST_PRODUCTS_CONTAINS_REAL_DATA =', listText.includes('MCP-REF-1'));
   console.log('LIST_PRODUCTS_SAMPLE =', listText.slice(0, 140));

@@ -82,6 +82,7 @@ const ProductCreateToolSchema = z.object({
   wholesale_price: z.number().min(0).optional(),
   min_stock: z.number().min(0).optional(),
   vat_rate: z.number().min(0).max(100).optional(),
+  confirmed: z.boolean().optional(),
 });
 
 const ProductUpdateToolSchema = z.object({
@@ -93,7 +94,8 @@ const ProductUpdateToolSchema = z.object({
   selling_price: z.number().min(0).optional(),
   wholesale_price: z.number().min(0).optional(),
   min_stock: z.number().min(0).optional(),
-  vat_rate: z.number().min(0).max(100).optional(),
+  vat_rate: z.number().min(0).optional(),
+  confirmed: z.boolean().optional(),
 });
 
 const StockMovementToolSchema = z.object({
@@ -105,6 +107,7 @@ const StockMovementToolSchema = z.object({
   document_id: z.string().optional().nullable(),
   supplier_id: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+  confirmed: z.boolean().optional(),
 });
 
 const DocumentCreateToolSchema = z.object({
@@ -119,6 +122,7 @@ const DocumentCreateToolSchema = z.object({
     unit_price: z.number().min(0),
     discount: z.number().min(0).max(100).optional(),
   })).min(1),
+  confirmed: z.boolean().optional(),
 });
 
 const PaymentToolSchema = z.object({
@@ -126,21 +130,24 @@ const PaymentToolSchema = z.object({
   amount: z.number().positive(),
   payment_method: z.enum(['CASH', 'CHECK', 'TRANSFER']),
   reference: z.string().optional().nullable(),
+  confirmed: z.boolean().optional(),
 });
 
 const ClientDebtToolSchema = z.object({
   customer_id: z.string().min(1),
   amount: z.number().positive(),
   description: z.string().optional().nullable(),
+  confirmed: z.boolean().optional(),
 });
 
 const ClientPaymentToolSchema = z.object({
   customer_id: z.string().min(1),
   amount: z.number().positive(),
   description: z.string().optional().nullable(),
+  confirmed: z.boolean().optional(),
 });
 
-const IdOnlyToolSchema = z.object({ id: z.string().min(1) });
+const IdOnlyToolSchema = z.object({ id: z.string().min(1), confirmed: z.boolean().optional() });
 
 // ─── Outils ────────────────────────────────────────────────────────────────────
 

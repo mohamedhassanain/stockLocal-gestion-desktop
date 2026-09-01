@@ -211,3 +211,35 @@ Suivi exactement du pattern `show_logo_on_documents` :
 **Fichiers modifiés (pass 2) :** `src/services/CompanySettingsService.ts`, `src/pages/SettingsPage.tsx`, `src/services/PDFService.ts`, `electron/preload.ts`, `src/validation/schemas.ts`, `tests/ai-chat-e2e.test.ts`, `tests/pdf-company-name.test.ts`, `scripts/verify-mcp.cjs`.
 
 **Limite honnête (A.2) :** la vérification du serveur MCP **externe** lancé en processus séparé n'a pas pu être exécutée de bout en bout dans ce sandbox Windows (stdio handshake). Les comportements du serveur sont néanmoins exercés via le code partagé `executeMcpTool` couvert par les tests unitaires.
+
+---
+
+## Pass 3 — Bug de production : réparer le VRAI build du serveur MCP (Mode B)
+
+### Bug réel découvert
+`package.json` référençait `dist-electron/mcp-server.js` comme chemin de production (config générée pour Claude Desktop/Cursor dans `electron/ipc/ai.ipc.ts`), mais `build:mcp` exécutait `npx tsx src/ai/mcpServer.ts` — **aucune compilation**. Le fichier n'existait donc jamais après `npm run build`, cassant le Mode B (MCP externe) pour tout utilisateur packagé.
+
+### Correctif (résout la cause racine)
+1. **`vite.config.mcp.ts`** (nouveau) : build dédié `lib` en **CommonJS** → `dist-electron/mcp-server.js`, avec `better-sqlite3` et les **builtins Node** en `external` (module natif résolu depuis node_modules au runtime, comme `dist-electron/main.js`), `emptyOutDir:false` pour ne pas écraser `main.js`/`preload.js`. **Preuve `external` :** `external: ['better-sqlite3', ...builtinModules, ...builtinModules.map((m) => 'node:' + m)]`.
+2. **`src/ai/mcpServer.ts`** : suppression du `await` top-level (`server.connect(transport).catch(...)`) — CJS ne supporte pas le top-level await.
+3. **`package.json`** : `build:mcp` → `vite build --config vite.config.mcp.ts` ; `mcp` idem ; `build` → `tsc && vite build && vite build --config vite.config.mcp.ts && electron-builder` (le fichier est donc produit automatiquement dans `npm run build`).
+4. **`src/ai/McpTools.ts`** : bug réel — le SDK MCP **stripait** `confirmed` (absent des `inputSchema`, Zod strip les clés inconnues), donc l'outil WRITE appelé avec `confirmed:true` via MCP renvoyait `CONFIRMATION_REQUIRED`. Ajout de `confirmed: z.boolean().optional()` aux schémas de tous les outils WRITE / FINANCIAL / DESTRUCTIVE (`ProductCreate`, `ProductUpdate`, `StockMovement`, `DocumentCreate`, `Payment`, `ClientDebt`, `ClientPayment`, `IdOnly`).
+5. **`scripts/verify-mcp.cjs`** : spawn du **binaire compilé** `dist-electron/mcp-server.js` via `process.execPath` (suppression du `shell:true` + `.cmd`, qui était la cause de l'échec précédent).
+
+### Vérification RÉELLE (sortie console)
+- `npm run build:mcp` → `dist-electron/mcp-server.js` **403 944 octets** (403,67 kB, 358 modules transformés), `built in 2.41s`.
+- `node scripts/verify-mcp.cjs` — assertion réelle (binaire compilé, données réelles en base) :
+```
+SERVER_STDERR: [MCP] Serveur StockLocal connecté sur stdio — 22 outils exposés. Rate-limit: 30/min (provider: anthropic).
+INITIALIZE_OK = true
+TOOLS_LIST: count=22, has_list_products=true
+CREATE_PRODUCT_SUCCESS = true        (JSON contient "id": "71736b3e-e9a9-4a1b-940e-13172e8d688d")
+LIST_PRODUCTS_CONTAINS_REAL_DATA = true
+ARCHIVE_WITHOUT_CONFIRM_REFUSED = true
+```
+- **better-sqlite3 externe :** `external: ['better-sqlite3', ...builtinModules, ...]` (non bundlé, résolu au runtime via `require('better-sqlite3')`, comme `main.js`).
+- **Électron-builder :** `build.files` contient déjà `"dist-electron/**/*"` → `mcp-server.js` est inclus dans le paquet (produit juste avant `electron-builder` dans `npm run build`). **Non vérifiable de bout en bout ici** (le `EPERM` sur le chemin Desktop réapparaît) — mais la configuration garantit l'inclusion.
+
+### Gates (pass 3)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**147 tests / 12 fichiers**) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+**Fichiers modifiés (pass 3) :** `vite.config.mcp.ts` (nouveau), `src/ai/mcpServer.ts`, `src/ai/McpTools.ts`, `package.json`, `scripts/verify-mcp.cjs`.

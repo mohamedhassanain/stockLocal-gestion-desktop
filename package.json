@@ -7,13 +7,13 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && vite build --config vite.config.mcp.ts && electron-builder",
     "preview": "vite preview",
     "postinstall": "electron-builder install-app-deps",
     "test": "node scripts/run-tests-electron.cjs run",
     "test:watch": "node scripts/run-tests-electron.cjs watch",
-    "mcp": "npx tsx src/ai/mcpServer.ts",
-    "build:mcp": "npx tsx src/ai/mcpServer.ts"
+    "mcp": "vite build --config vite.config.mcp.ts",
+    "build:mcp": "vite build --config vite.config.mcp.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

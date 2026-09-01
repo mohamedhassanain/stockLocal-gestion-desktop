@@ -78,4 +78,11 @@ const cfg = GlobalSettingsService.getAll();
 console.error(`[MCP] Serveur StockLocal connecté sur stdio — ${Object.keys(MCP_TOOLS).length} outils exposés. Rate-limit: ${cfg.ai_rate_limit_per_min}/min (provider: ${cfg.ai_provider}).`);
 
 const transport = new StdioServerTransport();
-await server.connect(transport);
+// Pas de `await` top-level : le build CJS (dist-electron/mcp-server.js) ne le
+// supporte pas. La connexion est asynchrone et le serveur reste en vie via le
+// transport stdio. Une erreur de connexion est journalisée et le process quitte.
+server.connect(transport).catch((e) => {
+  // eslint-disable-next-line no-console
+  console.error('[MCP] Erreur de connexion serveur :', e);
+  process.exit(1);
+});
