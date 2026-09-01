@@ -20,8 +20,7 @@ const RankBadge: React.FC<{ rank: number; variant?: 'primary' | 'accent' }> = ({
   </span>
 );
 
-// Palette pour le graphique à barres (produits) & le donut (modes de paiement).
-// Cohérente avec le design system, mais contrastée pour distinguer chaque part.
+// Palette du donut (modes de paiement) — cohérente avec le design system.
 const CHART_COLORS = ['var(--primary)', 'var(--accent)', 'var(--info)', 'var(--success)', 'var(--warning)', 'var(--danger)'];
 
 // Libellés lisibles pour payment_method (vérifié : CASH, CHECK, TRANSFER dans database.sql).
@@ -85,95 +84,86 @@ export const ReportsPage: React.FC = () => {
 
   const month = new Date().toISOString().slice(0, 7);
 
-  // ─── Graphique à barres colorées (Top produits) ───────────────────────────
-  const barChart = (() => {
-    if (topProducts.length === 0) return <EmptyState icon="🏆" text="Aucune vente ce mois-ci." />;
-    const maxRevenue = Math.max(...topProducts.map(p => p.total_revenue), 1);
-    const W = 520, H = 200, PAD_L = 56, PAD_B = 30, PAD_T = 18;
-    const plotW = W - PAD_L - 10, plotH = H - PAD_T - PAD_B;
-    const barGap = 14;
-    const barW = Math.max(16, (plotW - barGap * (topProducts.length - 1)) / topProducts.length);
-    return (
-      <div style={{ overflowX: 'auto' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', minWidth: 320 }} role="img" aria-label="Top produits du mois">
-          {/* Grille horizontale légère + labels */}
-          {[0, 0.25, 0.5, 0.75, 1].map(f => {
-            const y = H - PAD_B - f * plotH;
-            const val = f * maxRevenue;
-            return (
-              <g key={f}>
-                <line x1={PAD_L} y1={y} x2={W - 10} y2={y} style={{ stroke: 'var(--border)' }} strokeDasharray="3 3" strokeWidth="1" />
-                <text x={PAD_L - 8} y={y + 4} textAnchor="end" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                  {val >= 1000 ? `${(val / 1000).toFixed(val >= 10000 ? 0 : 1)}k` : val.toFixed(0)}
-                </text>
-              </g>
-            );
-          })}
-          {/* Axe X */}
-          <line x1={PAD_L} y1={H - PAD_B} x2={W - 10} y2={H - PAD_B} style={{ stroke: 'var(--border-strong)' }} strokeWidth="1" />
-          {topProducts.map((p, i) => {
-            const barH = (p.total_revenue / maxRevenue) * plotH;
-            const x = PAD_L + i * (barW + barGap);
-            const y = H - PAD_B - barH;
-            const color = CHART_COLORS[i % CHART_COLORS.length];
-            return (
-              <g key={p.product_id}>
-                <title>{`${p.designation} : ${p.total_revenue.toFixed(2)} MAD`}</title>
-                <rect x={x} y={y} width={barW} height={Math.max(barH, 2)} style={{ fill: color }} rx="4" />
-                <text x={x + barW / 2} y={y - 6} textAnchor="middle" fontSize="10" fontWeight="600" style={{ fill: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{p.total_revenue.toFixed(0)}</text>
-                <text x={x + barW / 2} y={H - PAD_B + 14} textAnchor="middle" fontSize="10" style={{ fill: 'var(--muted)' }}>{p.designation.length > 14 ? p.designation.slice(0, 13) + '…' : p.designation}</text>
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-    );
-  })();
-
   // ─── Donut (Répartition des encaissements par mode de paiement) ────────────
   const donutChart = (() => {
     if (paymentsByMethod.length === 0) return <EmptyState icon="💳" text="Aucun encaissement ce mois-ci." />;
-    const W = 300, H = 260, cx = 150, cy = 110, r = 90;
     const total = paymentsByMethod.reduce((s, p) => s + p.total, 0);
     if (total <= 0) return <EmptyState icon="💳" text="Aucun encaissement ce mois-ci." />;
+    const label = (v: string) => PAYMENT_LABELS[v] ?? v;
+
+    // Anneau creux → le centre reste propre, le total est lisible, les % ne
+    // chevauchent jamais le texte central.
+    const W = 320, H = 280;
+    const cx = 130, cy = 130, r = 104, ir = 64;
+    const midR = (r + ir) / 2;
+    const ringW = r - ir;
+
+    // ── Cas : un seul mode → anneau plein d'une couleur (100%) ──
+    if (paymentsByMethod.length === 1) {
+      const pm = paymentsByMethod[0];
+      const color = CHART_COLORS[0];
+      return (
+        <div style={{ display: 'flex', gap: 28, alignItems: 'center', flexWrap: 'wrap' }}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 320, height: 'auto', display: 'block' }} role="img" aria-label="Répartition des encaissements">
+            <circle cx={cx} cy={cy} r={midR} fill="none" stroke={color} strokeWidth={ringW} />
+            <text x={cx} y={cy - 6} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)' }}>Total encaissé</text>
+            <text x={cx} y={cy + 18} textAnchor="middle" fontSize="20" fontWeight="800" style={{ fill: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{total.toFixed(0)} MAD</text>
+          </svg>
+          <div className="flex items-center gap-3">
+            <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{label(pm.payment_method)}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{pm.total.toFixed(2)} MAD · 100%</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Cas : plusieurs modes → anneaux segmentés ──
     let acc = 0;
     const segments = paymentsByMethod.map((pm, i) => {
       const frac = pm.total / total;
       const start = acc;
       acc += frac;
       const color = CHART_COLORS[i % CHART_COLORS.length];
-      // Angles en degrés, convertis en radians pour les arcs SVG (path).
       const a0 = (start * 360) - 90, a1 = (acc * 360) - 90;
-      const x0 = cx + r * Math.cos((a0 * Math.PI) / 180), y0 = cy + r * Math.sin((a0 * Math.PI) / 180);
-      const x1 = cx + r * Math.cos((a1 * Math.PI) / 180), y1 = cy + r * Math.sin((a1 * Math.PI) / 180);
       const largeArc = a1 - a0 <= 180 ? 0 : 1;
-      const path = `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 1 ${x1} ${y1} Z`;
+      const ox0 = cx + r * Math.cos((a0 * Math.PI) / 180), oy0 = cy + r * Math.sin((a0 * Math.PI) / 180);
+      const ox1 = cx + r * Math.cos((a1 * Math.PI) / 180), oy1 = cy + r * Math.sin((a1 * Math.PI) / 180);
+      const ix1 = cx + ir * Math.cos((a1 * Math.PI) / 180), iy1 = cy + ir * Math.sin((a1 * Math.PI) / 180);
+      const ix0 = cx + ir * Math.cos((a0 * Math.PI) / 180), iy0 = cy + ir * Math.sin((a0 * Math.PI) / 180);
+      const path = `M ${ox0} ${oy0} A ${r} ${r} 0 ${largeArc} 1 ${ox1} ${oy1} L ${ix1} ${iy1} A ${ir} ${ir} 0 ${largeArc} 0 ${ix0} ${iy0} Z`;
       const pct = Math.round(frac * 100);
-      // Texte du pourcentage au milieu du segment (à ~60% du rayon).
-      const midA = ((start + acc / 2) * 360 - 90) * Math.PI / 180;
-      const tx = cx + r * 0.62 * Math.cos(midA), ty = cy + r * 0.62 * Math.sin(midA);
+      const midFrac = start + frac / 2;
+      const midA = (midFrac * 360 - 90) * Math.PI / 180;
+      const tx = cx + midR * Math.cos(midA), ty = cy + midR * Math.sin(midA);
       return { pm, color, path, pct, tx, ty };
     });
-    const label = (v: string) => PAYMENT_LABELS[v] ?? v;
+
     return (
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 300, height: 'auto', display: 'block' }} role="img" aria-label="Répartition des encaissements par mode de paiement">
+      <div style={{ display: 'flex', gap: 28, alignItems: 'center', flexWrap: 'wrap' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: 320, height: 'auto', display: 'block' }} role="img" aria-label="Répartition des encaissements par mode de paiement">
           {segments.map(seg => (
             <g key={seg.pm.payment_method}>
-              <path d={seg.path} style={{ fill: seg.color, stroke: 'var(--surface)', strokeWidth: 2 }} />
-              {seg.pct >= 5 && <text x={seg.tx} y={seg.ty} textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--surface)" style={{ fontFamily: 'var(--font-mono)' }}>{seg.pct}%</text>}
+              <path d={seg.path} style={{ fill: seg.color }} />
+              {seg.pct >= 6 && (
+                <text x={seg.tx} y={seg.ty} textAnchor="middle" fontSize="12" fontWeight="800" fill="var(--surface)" style={{ fontFamily: 'var(--font-mono)', pointerEvents: 'none' }}>{seg.pct}%</text>
+              )}
               <title>{`${label(seg.pm.payment_method)} : ${seg.pm.total.toFixed(2)} MAD (${seg.pct}%)`}</title>
             </g>
           ))}
-          <text x={cx} y={cy - 4} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)' }}>Total encaissé</text>
-          <text x={cx} y={cy + 16} textAnchor="middle" fontSize="16" fontWeight="800" style={{ fill: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{total.toFixed(0)} MAD</text>
+          <text x={cx} y={cy - 6} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)' }}>Total encaissé</text>
+          <text x={cx} y={cy + 18} textAnchor="middle" fontSize="20" fontWeight="800" style={{ fill: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{total.toFixed(0)} MAD</text>
         </svg>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {paymentsByMethod.map((pm, i) => (
-            <div key={pm.payment_method} className="flex items-center gap-2 text-sm">
-              <span style={{ width: 12, height: 12, borderRadius: 3, background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
-              <span style={{ flex: 1 }}>{label(pm.payment_method)}</span>
-              <span className="money text-xs" style={{ color: 'var(--text-secondary)' }}>{pm.total.toFixed(2)} MAD</span>
+            <div key={pm.payment_method} className="flex items-center gap-3">
+              <span style={{ width: 12, height: 12, borderRadius: '50%', background: CHART_COLORS[i % CHART_COLORS.length], flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{label(pm.payment_method)}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{pm.total.toFixed(2)} MAD · {Math.round((pm.total / total) * 100)}%</div>
+              </div>
             </div>
           ))}
         </div>
@@ -214,24 +204,21 @@ export const ReportsPage: React.FC = () => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              {/* Top produits du mois — liste épurée (pas de graphique à barres) */}
               <Card padding>
-                <h3 className="mb-3" style={{ margin: '0 0 14px' }}>Top produits du mois</h3>
-                {barChart}
-                {/* Liste textuelle complémentaire (pour les détails qty/référence) */}
-                {topProducts.length > 0 && (
-                  <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                    {topProducts.map((p, i) => (
-                      <div key={p.product_id} className="flex items-center gap-3" style={{ padding: '7px 0' }}>
-                        <RankBadge rank={i + 1} />
-                        <div className="flex-1" style={{ minWidth: 0 }}>
-                          <div className="text-sm font-semibold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
-                          <div className="text-xs text-muted">{p.reference} · {p.total_qty} u.</div>
-                        </div>
-                        <div className="money text-xs text-success">{p.total_revenue.toFixed(2)} MAD</div>
-                      </div>
-                    ))}
+                <h3 style={{ margin: '0 0 14px' }}>Top produits du mois</h3>
+                {topProducts.length === 0 ? (
+                  <div className="state-box"><div className="state-text">Aucune vente ce mois-ci.</div></div>
+                ) : topProducts.map((p, i) => (
+                  <div key={p.product_id} className="flex items-center gap-3" style={{ padding: '9px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <RankBadge rank={i + 1} />
+                    <div className="flex-1" style={{ minWidth: 0 }}>
+                      <div className="text-sm font-semibold" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
+                      <div className="text-xs text-muted">{p.reference} · {p.total_qty} u.</div>
+                    </div>
+                    <div className="money text-xs" style={{ color: 'var(--success)', whiteSpace: 'nowrap' }}>{p.total_revenue.toFixed(2)} MAD</div>
                   </div>
-                )}
+                ))}
               </Card>
 
               <Card padding>
@@ -245,7 +232,7 @@ export const ReportsPage: React.FC = () => {
                       <div className="text-sm font-semibold">{c.name}</div>
                       <div className="text-xs text-muted">{c.invoice_count} facture(s)</div>
                     </div>
-                    <div className="money text-sm font-semibold" style={{ color: 'var(--primary)' }}>{c.total_revenue.toFixed(2)} MAD</div>
+                    <div className="money text-sm font-semibold" style={{ color: 'var(--primary)', whiteSpace: 'nowrap' }}>{c.total_revenue.toFixed(2)} MAD</div>
                   </div>
                 ))}
               </Card>

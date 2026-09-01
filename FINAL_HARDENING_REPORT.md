@@ -372,3 +372,30 @@ Interaction au survol ajoutée au graphique en ligne (`src/pages/DashboardPage.t
 **Note honnête :** la vérification visuelle réelle (souris) n'a pas pu être exécutée dans ce sandbox (app desktop). Le comportement est garanti par `tsc` + le build ; les cas « bord gauche/droit » et « point le plus proche » sont couverts par la logique de bornage/calcul ci-dessus.
 
 **Fichiers modifiés (pass 8) :** `src/pages/DashboardPage.tsx`, `FINAL_HARDENING_REPORT.md`.
+
+---
+
+## Pass 9 — Rapports : refonte UX (retirer le graphique à barres + améliorer le donut)
+
+Feedback utilisateur : « retire le graphique à colonnes » + « améliore le design/UX du cercle ». Modifications dans `src/pages/ReportsPage.tsx` (aucune dépendance ajoutée).
+
+### 1. Graphique à barres retiré — « Top produits du mois »
+- Le SVG de barres colorées a été **entièrement supprimé** (l'utilisateur ne le souhaitait pas).
+- La carte affiche désormais **uniquement la liste textuelle épurée** : badge de rang, désignation + référence + quantité, montant à droite (vert, `white-space: nowrap`).
+- Rendu identique à « Meilleurs clients » pour une grille cohérente des deux cartes.
+
+### 2. Donut repensé — « Répartition des encaissements par mode de paiement »
+Passage d'un **camembert plein** (les % chevauchaient le texte central « Total encaissé ») à un **donut à anneau creux** :
+- **Anneau creux** (`r=104`, `ir=64` → épaisseur 40) : le **centre reste propre**, le total est lisible sans chevauchement.
+- **Centre** : « Total encaissé » (petit, gris) + montant en gros (`20px`, `font-mono`) — toujours net.
+- **Pourcentages** placés **au milieu de l'anneau** (`midR`), en blanc gras, uniquement si `pct >= 6` (sinon illisible) — plus jamais sur le centre.
+- **Cas 1 seul mode** : anneau plein d'une couleur (`<circle>` au lieu d'un segment dégénéré) + légende « 100% ».
+- **Légende améliorée** : pastille ronde + **nom** (gras) + `montant · %` (gris) en dessous — plus lisible que l'« inline » d'avant.
+- Layout donut à gauche / légende à droite, `flex-wrap` (responsive).
+
+### Gates (pass 9)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**155 tests / 14 fichiers** — inchangé) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+
+**Note honnête :** la vérification **visuelle** en app Electron n'a pas pu être exécutée ici (app desktop). Le nouveau donut est garanti par `tsc` + le build ; le calcul des arcs (sweep flags, points intérieur/extérieur) et le centrage du total sont vérifiés par construction.
+
+**Fichiers modifiés (pass 9) :** `src/pages/ReportsPage.tsx`, `FINAL_HARDENING_REPORT.md`.
