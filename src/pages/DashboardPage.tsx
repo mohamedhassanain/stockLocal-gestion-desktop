@@ -219,23 +219,90 @@ export const DashboardPage: React.FC = () => {
               const found = monthlyRevenue.find(m => m.label === label);
               return { label, revenue: found?.revenue ?? 0, margin: found?.margin ?? 0, invoice_count: found?.invoice_count ?? 0 };
             });
-            const maxRevenue = Math.max(...points.map(p => p.revenue), 1);
             const totalInvoices = points.reduce((s, p) => s + p.invoice_count, 0);
             const totalMargin = points.reduce((s, p) => s + p.margin, 0);
+
+            // ─── Graphique en LIGNE (SVG fait main — aucune dépendance) ──────
+            const CHART_W = 640;
+            const CHART_H = 220;
+            const PAD_LEFT = 56;
+            const PAD_RIGHT = 18;
+            const PAD_TOP = 16;
+            const PAD_BOTTOM = 30;
+            const PLOT_INSET_BOTTOM = 8; // évite qu'une ligne à 0 soit « écrasée » contre l'axe
+            const plotLeft = PAD_LEFT;
+            const plotRight = CHART_W - PAD_RIGHT;
+            const plotTop = PAD_TOP;
+            const plotBottom = CHART_H - PAD_BOTTOM - PLOT_INSET_BOTTOM;
+            const plotW = plotRight - plotLeft;
+            const plotH = plotBottom - plotTop;
+
+            const dataMax = Math.max(...points.map(p => p.revenue), 0);
+            const scaleMax = dataMax > 0 ? dataMax : 1; // évite div/0 et reste lisible si tout à 0
+
+            const xFor = (i: number) => points.length === 1 ? plotLeft + plotW / 2 : plotLeft + (i / (points.length - 1)) * plotW;
+            const yFor = (v: number) => plotBottom - (v / scaleMax) * plotH;
+
+            const ySteps = [0, 0.25, 0.5, 0.75, 1];
+            const fmtAxis = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : v.toFixed(0);
+
+            const maxXLabels = 7;
+            const xLabelStep = Math.max(1, Math.ceil(points.length / maxXLabels));
+            const showXLabel = (i: number) => i % xLabelStep === 0 || i === points.length - 1;
+            const showValueLabels = points.length <= 12;
+
+            const linePoints = points.map((p, i) => `${xFor(i)},${yFor(p.revenue)}`).join(' ');
+
             return (
               <>
-                <div className="flex items-center gap-2" style={{ height: 160, padding: '0 8px', alignItems: 'flex-end' }}>
-                  {points.map((m) => {
-                    const heightPct = (m.revenue / maxRevenue) * 100;
-                    const label = m.label.slice(5);
-                    return (
-                      <div key={m.label} className="flex flex-1 items-center gap-1" style={{ flexDirection: 'column' }}>
-                        <div className="money text-xs font-semibold">{m.revenue.toFixed(0)}</div>
-                        <div style={{ width: '100%', height: `${Math.max(heightPct, 4)}%`, background: 'linear-gradient(to top, var(--primary), var(--sidebar-active))', borderRadius: '6px 6px 0 0', minHeight: 4 }} />
-                        <div className="money text-sm text-secondary font-semibold">{label}</div>
-                      </div>
-                    );
-                  })}
+                <div style={{ overflowX: 'auto' }}>
+                  <svg
+                    viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+                    style={{ width: '100%', height: 'auto', display: 'block', minWidth: 320 }}
+                    role="img"
+                    aria-label="Évolution du chiffre d'affaires"
+                  >
+                    {/* Grille horizontale + valeurs axe Y */}
+                    {ySteps.map((f) => {
+                      const y = plotBottom - f * plotH;
+                      const val = f * scaleMax;
+                      return (
+                        <g key={f}>
+                          <line x1={plotLeft} y1={y} x2={plotRight} y2={y} style={{ stroke: 'var(--border)' }} strokeDasharray="3 3" strokeWidth="1" />
+                          <text x={plotLeft - 8} y={y + 4} textAnchor="end" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{fmtAxis(val)}</text>
+                        </g>
+                      );
+                    })}
+                    {/* Grille verticale */}
+                    {points.map((_, i) => (
+                      <line key={i} x1={xFor(i)} y1={plotTop} x2={xFor(i)} y2={plotBottom} style={{ stroke: 'var(--border)' }} strokeDasharray="3 3" strokeWidth="1" />
+                    ))}
+                    {/* Axe X (bas) */}
+                    <line x1={plotLeft} y1={CHART_H - PAD_BOTTOM} x2={plotRight} y2={CHART_H - PAD_BOTTOM} style={{ stroke: 'var(--border-strong)' }} strokeWidth="1" />
+
+                    {/* Ligne continue reliant les points */}
+                    {points.length > 1 && (
+                      <polyline points={linePoints} fill="none" style={{ stroke: 'var(--primary)' }} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                    )}
+
+                    {/* Marqueurs carrés + tooltip, et valeur affichée si peu de points */}
+                    {points.map((p, i) => (
+                      <g key={p.label}>
+                        <title>{`${p.label} : ${p.revenue.toFixed(0)} MAD`}</title>
+                        <rect x={xFor(i) - 4} y={yFor(p.revenue) - 4} width="8" height="8" style={{ fill: 'var(--primary)' }} />
+                        {showValueLabels && (
+                          <text x={xFor(i)} y={yFor(p.revenue) - 10} textAnchor="middle" fontSize="11" fontWeight="600" style={{ fill: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{p.revenue.toFixed(0)}</text>
+                        )}
+                      </g>
+                    ))}
+
+                    {/* Labels axe X (sous-ensemble pour éviter le chevauchement) */}
+                    {points.map((p, i) => (
+                      showXLabel(i) && (
+                        <text key={`x-${p.label}`} x={xFor(i)} y={CHART_H - 8} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{p.label.slice(5)}</text>
+                      )
+                    ))}
+                  </svg>
                 </div>
                 <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
                   <span>📊 {totalInvoices} factures au total</span>

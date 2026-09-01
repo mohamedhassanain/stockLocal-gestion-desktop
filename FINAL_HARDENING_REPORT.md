@@ -260,3 +260,31 @@ L'ancien placeholder « claude-3-7-sonnet-latest, gpt-4o, etc. » pointait vers 
 ### Gates (pass 4)
 `npx tsc --noEmit` ✅ · `npm test` ✅ (**149 tests / 12 fichiers** — 147 + 2 nouveaux) · `npx vite build` ✅.
 **Fichiers modifiés (pass 4) :** `src/pages/AiAssistantPage.tsx`, `src/ai/AiAssistantService.ts`, `tests/ai-chat-e2e.test.ts`, `FINAL_HARDENING_REPORT.md`.
+
+---
+
+## Pass 5 — Remplacement du graphique à barres du Dashboard par un graphique en LIGNE
+
+**Option retenue : Option A — SVG fait main.** Aucune bibliothèque de graphiques n'est présente dans `package.json` (requête vérifiée) ; ajouter une dépendance juste pour ce graphique unique serait incohérent avec l'approche pragmatique du projet. Le SVG reste simple à maintenir pour une seule série.
+
+**Implémentation (`src/pages/DashboardPage.tsx`) :**
+- `<polyline>` (ligne continue) reliant les points dans l'ordre chronologique, couleur `var(--primary)`.
+- Marqueurs **carrés pleins** (`<rect>`) à chaque point, `var(--primary)`.
+- Grille de fond **pointillée** (horizontale + verticale), `var(--border)`.
+- **Axe Y** : valeurs à gauche, formatées en `k` si ≥ 1000, sur 5 paliers.
+- **Axe X** : labels de période (sous-ensemble pour éviter le chevauchement — max 7 affichés), basés sur `buildPeriodLabels` (inchangé).
+- Couleurs issues du design system (`var(--primary)`, `var(--border)`, `var(--muted)`, `var(--text-secondary)`, `var(--font-mono)`) — aucune couleur codée en dur hors thème.
+
+**Cas limites gérés :**
+- **Une seule valeur** : le point est centré (`x = plotLeft + plotW/2`) et le `polyline` est ignoré (`points.length > 1`) → pas de crash.
+- **Toutes les valeurs à 0** : `scaleMax = 1` (évite div/0) + un `PLOT_INSET_BOTTOM = 8` px → la ligne reste visible ~8px au-dessus de l'axe (pas « écrasée » contre le bas).
+- **Responsive** : `viewBox` + `width: 100%` + `minWidth: 320` + conteneur `overflow-x: auto` → pas de débordement sur petit écran.
+- **Infobulle** : ` <title>` sur chaque marqueur (hover) ; les valeurs sont aussi affichées à côté des points quand `points.length <= 12`.
+
+**Conservés inchangés :** boutons de période (Semaine/Mois/3 mois/6 mois/1 an) et le texte sous le graphique « 📊 X factures au total » / « 💹 Marge totale : Y MAD ».
+
+**Note honnête :** la vérification **visuelle** en application Electron n'a pas pu être effectuée dans ce sandbox (app desktop). La correction est garantie par le typage (`tsc`) + le build, et les cas limites sont couverts par construction (logique de positionnement ci-dessus).
+
+### Gates (pass 5)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**149 tests / 12 fichiers** — inchangé) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+**Fichiers modifiés (pass 5) :** `src/pages/DashboardPage.tsx`, `FINAL_HARDENING_REPORT.md`.
