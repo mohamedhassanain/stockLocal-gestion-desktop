@@ -227,6 +227,7 @@ export const CompanySettingsSchema = z.object({
   email: z.string().max(200).optional(),
   logo_path: z.string().max(500).optional(),
   show_logo_on_documents: z.boolean().optional(),
+  show_company_name_on_documents: z.boolean().optional(),
 });
 
 export const GlobalSettingsSchema = z.object({

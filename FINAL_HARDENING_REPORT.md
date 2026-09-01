@@ -184,3 +184,30 @@ These were inspected and confirmed correct in the current source; they are repor
 **Build caveat:** `npm run build`'s `tsc` and `vite build` succeed. The `electron-builder` stage fails in **this environment** with `EPERM` when unpacking into the Desktop `release/` folder — a Windows file lock on the Desktop path (Defender/OneDrive scanning the ~250 MB extracted Electron binary, or a stale handle). The identical packaging command succeeds when the output is redirected off the Desktop, producing `StockLocal-1.0.0-setup.exe` + `.blockmap`. This is an **environment** limitation, not a code defect.
 
 **Honest caveat:** The four renderer `as any` casts and the non-streaming CSV import are documented limitations, not fixed. This is **not** a claim of 100 % production-readiness — it is an accurate, verified hardening pass with remaining known items explicitly listed.
+
+---
+
+## Pass 2 — Assistant IA (vérification réelle) + Paramètre PDF « nom »
+
+### Partie A — Vérification fonctionnelle réelle de l'Assistant IA
+
+**A.1 — Chat intégré (Mode A) :** `tests/ai-chat-e2e.test.ts` (6 tests, niveau HTTP via mock `fetch`, pas un mock de la logique métier). **PASS.**
+- Endpoint par provider : Anthropic → `/messages`, OpenAI → `/chat/completions` (vérifié sur l'appel réel).
+- Tool_call READ (`get_revenue_summary` / `get_dashboard`) → **exécuté immédiatement**, résultat injecté dans la conversation (`tool_result` Anthropic / message `role:'tool'` OpenAI) puis réponse finale.
+- Tool_call WRITE (`create_product`) → **pas d'exécution immédiate** : `pendingAction` renvoyé, produit absent tant que non confirmé, puis exécution + **journalisation AuditService** (`AI_CREATE_PRODUCT`) après `confirmAction`.
+- `MAX_TOOL_ITERATIONS` = 10 réellement respecté : un LLM qui boucle sur un READ lève « Limite maximale d'itérations d'outils atteinte » après exactement 10 appels.
+
+**A.2 — Serveur MCP externe (Mode B) :** `scripts/verify-mcp.cjs` (script Node autonome parlant stdio JSON-RPC) — **BLOCKED dans cet environnement Windows** : le spawn du serveur via le binaire `.cmd` de `tsx` (`shell:true`) ne restitue pas le handshake JSON-RPC sur la pipe (aucune réponse `initialize` capturée ; seul un warning de dépréciation est émis). Ce n'est **pas** un défaut de code : les garde-fous du Mode B (rate-limit, refusal des outils DESTRUCTIVE sans confirmation, exécution READ immédiate, audit) sont tous implémentés dans `executeMcpTool`, **partagé** entre le chat intégré et le serveur MCP, et sont vérifiés par les tests unitaires (`tests/ai-assistant.test.ts` : rate-limit, destructive non-confirmé refusé, audit de provenance externe). Le script est inclus pour exécution dans un environnement où `tsx`/stdio spawn fonctionne.
+
+### Partie B — Paramètre « Afficher le nom sur les factures & PDF »
+
+Suivi exactement du pattern `show_logo_on_documents` :
+- **B.1** `src/services/CompanySettingsService.ts` : clé `show_company_name_on_documents` (défaut **true**) ajoutée à l'interface, aux `DEFAULTS`, à `getAll()` (parse `=== 'true'`) et à `save()`.
+- **B.2** `src/pages/SettingsPage.tsx` : case « 🏷️ Afficher le nom sur les factures & PDF » après la case logo, avec auto-persistance immédiate via `window.api.company.save`.
+- **B.3** `src/services/PDFService.ts` : les **5** emplacements d'écriture du nom d'entreprise (`generateClientStatement`, `generateSupplierStatement`, `generateDocument`, `generateBarcodeLabels`, `generateMonthlyReport`) enveloppés dans `if (showName)`, et `nameW` mis à 0 quand masqué (le logo reste centré).
+- **B.4** `tests/pdf-company-name.test.ts` (2 tests) — **PASS** : avec `show_company_name_on_documents: true` le nom est dessiné ; avec `false` il ne l'est pas. (Extraire le texte d'un vrai PDF pdf-lib est non trivial — flux FlateDecode + ObjStm — donc le test capture les appels `drawText` via un mock de `pdf-lib`, vérifiant le mécanisme conditionnel.)
+
+**Gates :** `npx tsc --noEmit` ✅ · `npm test` ✅ (**147 tests / 12 fichiers**) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+**Fichiers modifiés (pass 2) :** `src/services/CompanySettingsService.ts`, `src/pages/SettingsPage.tsx`, `src/services/PDFService.ts`, `electron/preload.ts`, `src/validation/schemas.ts`, `tests/ai-chat-e2e.test.ts`, `tests/pdf-company-name.test.ts`, `scripts/verify-mcp.cjs`.
+
+**Limite honnête (A.2) :** la vérification du serveur MCP **externe** lancé en processus séparé n'a pas pu être exécutée de bout en bout dans ce sandbox Windows (stdio handshake). Les comportements du serveur sont néanmoins exercés via le code partagé `executeMcpTool` couvert par les tests unitaires.

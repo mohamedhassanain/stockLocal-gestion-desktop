@@ -170,6 +170,7 @@ export interface CompanySettingsInput {
   email?: string;
   logo_path?: string;
   show_logo_on_documents?: boolean;
+  show_company_name_on_documents?: boolean;
 }
 
 // ── Paramètres globaux ──

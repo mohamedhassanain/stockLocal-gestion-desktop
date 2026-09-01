@@ -39,14 +39,17 @@ export const PDFService = {
         logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
       } catch { logoImage = null; }
     }
-    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
+    const showName = settings.show_company_name_on_documents;
+    const nameW = showName ? boldFont.widthOfTextAtSize(nameText, nameSize) : 0;
     const headerTotalW = (logoImage ? logoW + logoGap : 0) + nameW;
     const headerStartX = (width - headerTotalW) / 2;
     // Logo + nom CENTRÉS ensemble (même ligne) — logo à gauche du nom
     if (logoImage) {
       page.drawImage(logoImage, { x: headerStartX, y: y - 12, width: logoW, height: logoH });
     }
-    page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    if (showName) {
+      page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    }
     y -= 40; // saut de ligne avant le titre
     // Titre à GAUCHE
     page.drawText(titleText, { x: 50, y, size: titleSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
@@ -125,14 +128,17 @@ export const PDFService = {
         logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
       } catch { logoImage = null; }
     }
-    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
+    const showName = settings.show_company_name_on_documents;
+    const nameW = showName ? boldFont.widthOfTextAtSize(nameText, nameSize) : 0;
     const headerTotalW = (logoImage ? logoW + logoGap : 0) + nameW;
     const headerStartX = (width - headerTotalW) / 2;
     // Logo + nom CENTRÉS ensemble (même ligne) — logo à gauche du nom
     if (logoImage) {
       page.drawImage(logoImage, { x: headerStartX, y: y - 12, width: logoW, height: logoH });
     }
-    page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    if (showName) {
+      page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    }
     y -= 40; // saut de ligne avant le titre
     // Titre à GAUCHE
     page.drawText(titleText, { x: 50, y, size: titleSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
@@ -227,14 +233,17 @@ export const PDFService = {
         logoImage = null;
       }
     }
-    const nameW = boldFont.widthOfTextAtSize(nameText, nameSize);
+    const showName = settings.show_company_name_on_documents;
+    const nameW = showName ? boldFont.widthOfTextAtSize(nameText, nameSize) : 0;
     const headerStartX = (width - (logoImage ? logoW + logoGap : 0) - nameW) / 2;
     const nameBaseline = y - 14;
     if (logoImage) {
       // Logo verticalement aligné sur le nom, à gauche de celui-ci
       page.drawImage(logoImage, { x: headerStartX, y: nameBaseline - 12, width: logoW, height: logoH });
     }
-    page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y: nameBaseline, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    if (showName) {
+      page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y: nameBaseline, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    }
     y -= 50; // retour à la ligne avant le titre
 
     // ── Titre du document (aligné à gauche, noir, taille réduite) ──
@@ -358,7 +367,9 @@ export const PDFService = {
       const x0 = col * labelW + 10;
       const yTop = height - row * labelH - 10;
 
-      page.drawText(settings.name || 'StockLocal', { x: x0, y: yTop, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+      if (settings.show_company_name_on_documents) {
+        page.drawText(settings.name || 'StockLocal', { x: x0, y: yTop, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+      }
       page.drawText(truncate(product.designation, 28), { x: x0, y: yTop - 16, size: 11, font: boldFont });
       page.drawText(`Réf : ${product.reference}`, { x: x0, y: yTop - 32, size: 9, font });
       page.drawText(`${product.selling_price.toFixed(2)} MAD`, { x: x0, y: yTop - 48, size: 13, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
@@ -404,7 +415,8 @@ export const PDFService = {
 
     // ── Bloc (logo à GAUCHE du nom) CENTRÉ sur la page, logo aligné au nom ──
     const nameText = settings.name || 'StockLocal';
-    const nameW = boldFont.widthOfTextAtSize(nameText, 20);
+    const showName = settings.show_company_name_on_documents;
+    const nameW = showName ? boldFont.widthOfTextAtSize(nameText, 20) : 0;
     const logoW = 72, logoH = 36, gap = 14;
     let logoImage: PDFImage | null = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
@@ -423,7 +435,9 @@ export const PDFService = {
       const logoY = nameBaseline - 12;
       page.drawImage(logoImage, { x: startX, y: logoY, width: logoW, height: logoH });
     }
-    page.drawText(nameText, { x: startX + (logoImage ? logoW + gap : 0), y: nameBaseline, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    if (showName) {
+      page.drawText(nameText, { x: startX + (logoImage ? logoW + gap : 0), y: nameBaseline, size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+    }
     y -= 62; // saute quelques lignes avant le titre
 
     // Titre et date alignés à gauche (début de page)

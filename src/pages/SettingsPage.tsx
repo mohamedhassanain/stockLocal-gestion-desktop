@@ -75,7 +75,7 @@ export const SettingsPage: React.FC = () => {
     action: () => void;
   } | null>(null);
 
-  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '', show_logo_on_documents: true });
+  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '', show_logo_on_documents: true, show_company_name_on_documents: true });
   const [logoPreview, setLogoPreview] = useState('');
   const [wipeOpen, setWipeOpen] = useState(false);
   const [wipeConfirmText, setWipeConfirmText] = useState('');
@@ -696,6 +696,18 @@ export const SettingsPage: React.FC = () => {
                   .catch(() => {});
               }} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
               🖼️ Afficher le logo sur les factures & PDF
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary mb-4">
+              <input type="checkbox" checked={company.show_company_name_on_documents} onChange={e => {
+                const checked = e.target.checked;
+                setCompany(prev => ({ ...prev, show_company_name_on_documents: checked }));
+                // Auto-persistance : le réglage s'applique immédiatement aux PDF.
+                window.api.company.save({ show_company_name_on_documents: checked })
+                  .then(r => { if (r && r.success) setCompany(r.data); })
+                  .catch(() => {});
+              }} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
+              🏷️ Afficher le nom sur les factures & PDF
             </label>
 
             <Button onClick={saveCompany} className="mt-4">💾 Enregistrer</Button>

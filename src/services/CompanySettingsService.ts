@@ -12,6 +12,7 @@ export interface CompanySettings {
   email: string;
   logo_path: string;
   show_logo_on_documents: boolean;
+  show_company_name_on_documents: boolean;
 }
 
 const DEFAULTS: CompanySettings = {
@@ -26,6 +27,7 @@ const DEFAULTS: CompanySettings = {
   email: '',
   logo_path: '',
   show_logo_on_documents: true,
+  show_company_name_on_documents: true,
 };
 
 const stmtGet = db.prepare('SELECT key, value FROM company_settings');
@@ -50,6 +52,7 @@ export const CompanySettingsService = {
       email: map['email'] ?? DEFAULTS.email,
       logo_path: map['logo_path'] ?? DEFAULTS.logo_path,
       show_logo_on_documents: (map['show_logo_on_documents'] ?? 'true') === 'true',
+      show_company_name_on_documents: (map['show_company_name_on_documents'] ?? 'true') === 'true',
     };
   },
 
@@ -67,6 +70,7 @@ export const CompanySettingsService = {
       ['email', settings.email],
       ['logo_path', settings.logo_path],
       ['show_logo_on_documents', settings.show_logo_on_documents === undefined ? undefined : String(settings.show_logo_on_documents)],
+      ['show_company_name_on_documents', settings.show_company_name_on_documents === undefined ? undefined : String(settings.show_company_name_on_documents)],
     ];
     const txn = db.transaction(() => {
       for (const [key, value] of entries) {
