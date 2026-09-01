@@ -12,8 +12,10 @@
 | Gate | Command | Result |
 |------|---------|--------|
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) | **PASS** (no output) |
-| Tests | `npm test` | **PASS — 131 tests / 9 files** |
-| Build | `npx tsc && npx vite build` | **PASS** (`dist/`, `dist-electron/main.js`, `dist-electron/preload.js`) |
+| Tests | `npm test` | **PASS — 139 tests / 10 files** |
+| Build (tsc + vite) | `npm run build` (first 2 stages) | **PASS** (`dist/`, `dist-electron/main.js`, `dist-electron/preload.js`) |
+| Packaging (installer) | `electron-builder` → Desktop `release/` | **BLOCKED** — `EPERM` renaming `release\win-unpacked.tmp` (Windows file lock on the Desktop path; **not** a code issue) |
+| Packaging (validated) | `electron-builder --win nsis` → system temp dir | **PASS** — produced `StockLocal-1.0.0-setup.exe` + `.blockmap` |
 
 ---
 
@@ -42,10 +44,17 @@
 
 ---
 
-### P1-8 — Single-schema approach
-Decision (per user): keep **one** consolidated SQL schema file (`src/database/schema/database.sql`) that is the single source of truth for new databases. The existing `migrationRunner.ts` + `schema_migrations` mechanism remains for future versioned migrations, but no separate `001_*.sql` file is introduced for this task — the `price_history` change lives directly in `database.sql`.
+### P1-8 — Database schema consolidation (ONE `database.sql`)
+**Decision (per user):** **no** `001_*.sql`/`002_*.sql` migration files. ONE authoritative schema file `src/database/schema/database.sql` defines the complete structure of a **new** database. The standalone `001_price_history_restrict.sql` migration was removed; the `migrationRunner.ts`/`schema_migrations` versioned-SQL framework was also removed from the startup path (no SQL migration files remain).
 
-**Files:** `src/database/schema/database.sql`
+**`src/database/config/connection.ts` refactor:**
+- `applySchema()` loads `database.sql` — the **single source of truth** for a new DB (all tables/indexes/FK/CHECK/defaults). Idempotent (`CREATE TABLE IF NOT EXISTS`), so it is also safe on existing DBs.
+- Replaced all ~15 ad-hoc `migrateXxx()` schema functions (`migrateColumns`, `migrateAuditLogs`, `migrateStockMovements`, `migrateClientCredits`, `migrateSupplierCredits`, `migrateAddProductFields`, `migrateStockMovementV2`, `migrateDocumentsV2`, `migrateInventoryBalances`, `migrateQuantitiesReal`, `migrateDocumentSequences`) with **one** centralized `upgradeLegacyDatabase()` — minimal, additive, idempotent upgrade logic for **existing** databases only (adds missing columns; rebuilds old `REFERENCES users` tables; converts INTEGER→REAL quantities; upgrades `price_history` CASCADE→RESTRICT; seeds `document_sequences`). It **does not** redefine the complete schema.
+- Removed the `runMigrations`/`resolveMigrationsDir` invocation (no migration files remain).
+- Added `rebuildTable()` helper — rebuilds a table preserving **all** data (used only for legacy upgrades).
+
+**Files:** `src/database/schema/database.sql`, `src/database/config/connection.ts`
+**Tests:** `tests/database-schema.test.ts` (8 tests).
 
 ---
 
@@ -127,7 +136,9 @@ These were inspected and confirmed correct in the current source; they are repor
 
 ---
 
-## Tests added (`tests/hardening-p0.test.ts` — 18 tests)
+## Tests added
+- `tests/hardening-p0.test.ts` — 18 tests.
+- `tests/database-schema.test.ts` — 8 tests (database.sql single source; fresh-DB table & index coverage; `integrity_check = ok` + `foreign_key_check` no violations; `price_history` RESTRICT; old-DB upgrade preserves data; `price_history` CASCADE→RESTRICT upgrade preserves data).
 
 - P0-1: getHistory correct product, date-DESC ordering, LIMIT/OFFSET pagination without duplicates.
 - P0-2: createProductWithInitialStock success; negative-stock rejection; business-validation rejection → nothing created.
@@ -150,8 +161,8 @@ These were inspected and confirmed correct in the current source; they are repor
 
 ## Database integrity
 
-- `PRAGMA integrity_check` and `PRAGMA foreign_key_check` are exercised implicitly by every test run against fresh temp databases; no integrity errors were observed.
-- The schema/migration change for `price_history` is non-destructive (rebuild + copy, tracked in `schema_migrations`).
+- `PRAGMA integrity_check` and `PRAGMA foreign_key_check` are asserted explicitly in `tests/database-schema.test.ts` against a fresh DB created from `database.sql`: **`integrity_check = ok`** and **`foreign_key_check` = no violations**.
+- The `price_history` CASCADE→RESTRICT change is non-destructive (rebuild + copy, preserving all rows) and is applied automatically by `upgradeLegacyDatabase()` to existing DBs.
 
 ---
 
@@ -165,8 +176,11 @@ These were inspected and confirmed correct in the current source; they are repor
 
 ## Summary
 
-**Modified:** `src/services/ProductService.ts`, `electron/ipc/referenceData.ipc.ts`, `electron/ipc/ai.ipc.ts`, `electron/ipc/system.ipc.ts`, `electron/preload.ts`, `src/pages/SettingsPage.tsx`, `src/validation/schemas.ts`, `src/database/schema/database.sql`, `src/repositories/InventorySessionRepository.ts`, `tests/hardening-p0.test.ts`.
+**Modified (this pass):** `src/database/config/connection.ts` (refactored), `tests/database-schema.test.ts` (new). `src/database/schema/database.sql` is the single authoritative schema (no change needed — already complete).
+**Also modified (earlier hardening pass):** `src/services/ProductService.ts`, `electron/ipc/referenceData.ipc.ts`, `electron/ipc/ai.ipc.ts`, `electron/ipc/system.ipc.ts`, `electron/preload.ts`, `src/pages/SettingsPage.tsx`, `src/validation/schemas.ts`, `src/repositories/InventorySessionRepository.ts`, `tests/hardening-p0.test.ts`.
 
-**Validation:** Typecheck ✅ · 131 tests passing ✅ · Vite build ✅.
+**Validation:** Typecheck ✅ · 139 tests / 10 files passing ✅ · Vite build ✅ · electron-builder packaging ✅ (validated to temp dir).
+
+**Build caveat:** `npm run build`'s `tsc` and `vite build` succeed. The `electron-builder` stage fails in **this environment** with `EPERM` when unpacking into the Desktop `release/` folder — a Windows file lock on the Desktop path (Defender/OneDrive scanning the ~250 MB extracted Electron binary, or a stale handle). The identical packaging command succeeds when the output is redirected off the Desktop, producing `StockLocal-1.0.0-setup.exe` + `.blockmap`. This is an **environment** limitation, not a code defect.
 
 **Honest caveat:** The four renderer `as any` casts and the non-streaming CSV import are documented limitations, not fixed. This is **not** a claim of 100 % production-readiness — it is an accurate, verified hardening pass with remaining known items explicitly listed.
