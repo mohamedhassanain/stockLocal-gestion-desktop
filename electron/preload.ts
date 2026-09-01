@@ -359,6 +359,7 @@ export const api = {
     getStats: () => ipcRenderer.invoke('dashboard:getStats'),
     getTopProducts: () => ipcRenderer.invoke('dashboard:getTopProducts'),
     getTopClients: () => ipcRenderer.invoke('dashboard:getTopClients'),
+    getPaymentsByMethod: () => ipcRenderer.invoke('dashboard:getPaymentsByMethod'),
     getLowStock: () => ipcRenderer.invoke('dashboard:getLowStock'),
     getUpcomingDues: (days: number) => ipcRenderer.invoke('dashboard:getUpcomingDues', days),
     getRevenue: (period?: string) => ipcRenderer.invoke('dashboard:getRevenue', period),

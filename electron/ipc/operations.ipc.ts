@@ -24,6 +24,7 @@ export function registerOperationsHandlers(): void {
   ipcMain.handle('dashboard:getStats', async () => DashboardRepository.getStats());
   ipcMain.handle('dashboard:getTopProducts', async () => DashboardRepository.getTopProducts());
   ipcMain.handle('dashboard:getTopClients', async () => DashboardRepository.getTopClients());
+  ipcMain.handle('dashboard:getPaymentsByMethod', async () => DashboardRepository.getPaymentsByMethod());
   ipcMain.handle('dashboard:getLowStock', async () => DashboardRepository.getLowStockAlerts());
   ipcMain.handle('dashboard:getUpcomingDues', async (_, days: unknown) => {
     const d = Math.min(Math.max(Number(days) || 30, 1), 365);

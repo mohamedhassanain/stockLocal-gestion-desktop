@@ -27,6 +27,11 @@ export interface TopClient {
   invoice_count: number;
 }
 
+export interface PaymentMethodTotal {
+  payment_method: string;
+  total: number;
+}
+
 export interface LowStockAlert {
   id: string;
   reference: string;
@@ -136,6 +141,18 @@ const stmtTopClients = db.prepare<[]>(`
   LIMIT 5
 `);
 
+// Répartition des encaissements du mois courant par mode de paiement — SQL agrégé.
+const stmtPaymentsByMethod = db.prepare<[]>(`
+  SELECT py.payment_method,
+    COALESCE(SUM(py.amount), 0) AS total
+  FROM payments py
+  JOIN documents d ON d.id = py.document_id
+  WHERE strftime('%Y-%m', py.date) = strftime('%Y-%m', 'now')
+    AND d.status != 'CANCELLED'
+  GROUP BY py.payment_method
+  ORDER BY total DESC
+`);
+
 const stmtLowStock = db.prepare<[]>(`
   SELECT p.id, p.reference, p.designation, p.min_stock,
     COALESCE(ib.quantity, 0) AS current_stock
@@ -195,6 +212,10 @@ export const DashboardRepository = {
 
   getTopClients(): TopClient[] {
     return stmtTopClients.all() as TopClient[];
+  },
+
+  getPaymentsByMethod(): PaymentMethodTotal[] {
+    return stmtPaymentsByMethod.all() as PaymentMethodTotal[];
   },
 
   getLowStockAlerts(): LowStockAlert[] {

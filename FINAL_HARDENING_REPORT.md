@@ -312,3 +312,34 @@ La vérification **visuelle** en application Electron n'a pas pu être exécuté
 ### Gates (pass 6)
 `npx tsc --noEmit` ✅ · `npm test` ✅ (**152 tests / 13 fichiers** — 149 + 3 nouveaux) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
 **Fichiers modifiés (pass 6) :** `src/utils/chartFormat.ts` (nouveau), `src/pages/DashboardPage.tsx`, `tests/dashboard-chart.test.ts` (nouveau), `FINAL_HARDENING_REPORT.md`.
+
+---
+
+## Pass 7 — Rapports : graphique à barres colorées + graphique circulaire (donut)
+
+Ajout de 2 visualisations SVG fait main dans `src/pages/ReportsPage.tsx` (aucune dépendance de graphique ajoutée — cohérent avec l'approche du projet).
+
+### 1. Graphique à barres colorées — « Top produits du mois »
+- SVG vertical, une **couleur distincte par produit** (`CHART_COLORS` : var(--primary), var(--accent), var(--info), var(--success), var(--warning), var(--danger)).
+- Valeur au-dessus de chaque barre, nom du produit en dessous (tronqué si > 14 caractères), grille horizontale pointillée + labels Y.
+- Limite à `topProducts` (déjà LIMIT 5 côté SQL) → lisible à l'écran.
+- **Cas vide** : `EmptyState` « Aucune vente ce mois-ci. »
+- La liste textuelle complémentaire (qty/référence) est conservée sous le graphique.
+
+### 2. Graphique circulaire (donut) — « Répartition des encaissements par mode de paiement »
+- **Backend** : `DashboardRepository.getPaymentsByMethod()` — requête SQL **agrégée GROUP BY** sur `payments.payment_method` pour le mois courant (jointure à `documents`, statut != CANCELLED). Nouvelle interface `PaymentMethodTotal`. Exposée via IPC `dashboard:getPaymentsByMethod` (opérations.ipc.ts) + preload `dashboard.getPaymentsByMethod`.
+- **Libellés FR** : `CASH → Espèces`, `CHECK → Chèque`, `TRANSFER → Virement` (valeurs vérifiées dans `database.sql`).
+- **Frontend** : donut SVG avec pourcentages sur chaque part (si ≥ 5 %), légende couleur + montant par mode, total encaissé au centre.
+- **Cas limites** : un seul mode → cercle entier 100 % ; aucun encaissement → `EmptyState` « Aucun encaissement ce mois-ci. » ; total ≤ 0 → même état vide.
+
+### Tests ajoutés (`tests/reports-payments.test.ts`, 3 tests)
+- Agrégation multi-modes (CASH 100, CHECK 50, TRANSFER 200) → correct.
+- Un seul mode (CASH 500) → 1 ligne.
+- Aucun encaissement → liste vide.
+
+### Gates (pass 7)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**155 tests / 14 fichiers** — 152 + 3 nouveaux) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+
+**Note honnête :** la vérification visuelle en app Electron n'a pas pu être exécutée ici (app desktop) ; les deux graphiques sont garantis par `tsc` + le build, et les cas limites sont couverts par les tests.
+
+**Fichiers modifiés (pass 7) :** `src/repositories/DashboardRepository.ts`, `electron/ipc/operations.ipc.ts`, `electron/preload.ts`, `src/pages/ReportsPage.tsx`, `tests/reports-payments.test.ts` (nouveau), `FINAL_HARDENING_REPORT.md`.
