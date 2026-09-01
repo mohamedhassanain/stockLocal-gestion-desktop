@@ -144,8 +144,11 @@ export const InventorySessionRepository = {
       }>;
 
       for (const p of products) {
-        const level = stmtGetStockLevel.get(p.id) as { total: number };
-        stmtInsertItem.run(randomUUID(), id, p.id, level.total ?? 0);
+        // P0 — un produit sans ligne `inventory_balances` (créé sans stock
+        // initial) renvoie `undefined` ici : on ne doit PAS planter.
+        const level = stmtGetStockLevel.get(p.id) as { total?: number } | undefined;
+        const expected = Number(level?.total ?? 0);
+        stmtInsertItem.run(randomUUID(), id, p.id, expected);
       }
     });
 

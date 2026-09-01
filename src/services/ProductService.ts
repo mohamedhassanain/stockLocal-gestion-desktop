@@ -3,10 +3,28 @@ import { PriceHistoryRepository } from '../repositories/PriceHistoryRepository';
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { EntityCannotBeDeletedError } from '../domain/errors/EntityCannotBeDeletedError';
+import { StockLedgerService } from './StockLedgerService';
+import { StockService } from './StockService';
 
+/**
+ * Bornes de sécurité pour le stock initial / ajustement lors de la création
+ * ou modification d'un produit. Empêche un payload renderer de créer un
+ * stock grotesque (anti-doS mémoire / cohérence de la balance).
+ */
+const MAX_INITIAL_STOCK = 1_000_000;
+
+/**
+ * Service métier Produits.
+ *
+ * Toutes les opérations multi-tables (produit + stock initial, produit +
+ * historique de prix, produit + ajustement de stock) sont ATOMIQUES :
+ *   BEGIN → écritures → COMMIT
+ * Sur erreur → ROLLBACK complet (jamais d'état partiel).
+ */
 export class ProductService {
   /**
    * Crée un nouveau produit avec validation des règles métier.
+   * L'entrée est validée AVANT toute écriture.
    */
   static createProduct(productData: ProductInput): Product {
     // 1. Validation métier (ex: prix de vente >= prix d'achat)
@@ -47,7 +65,102 @@ export class ProductService {
   }
 
   /**
-   * Met à jour un produit existant.
+   * P0-2 — Crée un produit + son stock initial de façon ATOMIQUE.
+   *
+   * BEGIN
+   *   createProduct
+   *   recordMovement(OPENING_BALANCE)
+   * COMMIT
+   *
+   * Si l'entrée de stock échoue (produit invalide, quantité non conformes,
+   * erreur SQLite…), le produit n'est JAMAIS créé : tout est annulé.
+   * Il est impossible d'obtenir un produit sans son stock initial, ou
+   * l'inverse.
+   */
+  static createProductWithInitialStock(productData: ProductInput, initialStock: number): Product {
+    const stock = Number(initialStock);
+    if (!Number.isFinite(stock) || stock < 0 || stock > MAX_INITIAL_STOCK) {
+      throw new Error(`Stock initial invalide (0 à ${MAX_INITIAL_STOCK}).`);
+    }
+
+    return db.transaction(() => {
+      const product = ProductService.createProduct(productData);
+      if (stock > 0) {
+        StockLedgerService.recordMovement({
+          product_id: product.id,
+          movement_type: 'OPENING_BALANCE',
+          quantity: stock,
+          unit_price: productData.purchase_price || 0,
+          notes: 'Stock initial à la création',
+        });
+      }
+      return product;
+    })();
+  }
+
+  /**
+   * P0-3 — Met à jour un produit ET ajuste son stock de façon ATOMIQUE.
+   *
+   * BEGIN
+   *   updateProduct (produit + historique de prix)
+   *   recordMovement (entrée/sortie d'ajustement)
+   * COMMIT
+   *
+   * Si l'ajustement échoue (stock insuffisant…), la mise à jour du produit
+   * est annulée. Aucun état partiel (produit modifié mais stock incohérent).
+   * Le produit + son historique de prix + son mouvement de stock sont
+   * cohérents ou rien n'est écrit.
+   */
+  static updateProductWithStock(id: string, productData: ProductInput, stockAdjustment: number): Product {
+    const adjustment = Number(stockAdjustment);
+    if (!Number.isFinite(adjustment)) {
+      throw new Error('Ajustement de stock invalide.');
+    }
+    if (Math.abs(adjustment) > MAX_INITIAL_STOCK) {
+      throw new Error(`Ajustement de stock invalide (valeur absolue > ${MAX_INITIAL_STOCK}).`);
+    }
+
+    return db.transaction(() => {
+      const product = ProductService.updateProduct(id, productData);
+
+      if (adjustment !== 0) {
+        const currentStock = StockLedgerService.getStockLevel(id);
+        const newStock = currentStock + adjustment;
+        if (newStock < 0) {
+          throw new Error(
+            `Stock insuffisant. Stock actuel : ${currentStock}, tentative de retirer ${Math.abs(adjustment)}.`
+          );
+        }
+        if (adjustment > 0) {
+          StockService.addStockEntry({
+            product_id: id,
+            quantity: adjustment,
+            unit_price: productData.purchase_price ?? product.purchase_price,
+            reference_doc: undefined,
+            supplier_id: undefined,
+            notes: `Ajustement stock: ${currentStock} → ${newStock}`,
+          });
+        } else {
+          StockService.addStockExit({
+            product_id: id,
+            quantity: Math.abs(adjustment),
+            unit_price: productData.purchase_price ?? product.purchase_price,
+            exitType: 'CASSE',
+            notes: `Ajustement stock: ${currentStock} → ${newStock}`,
+          });
+        }
+      }
+
+      return product;
+    })();
+  }
+
+  /**
+   * P0-3 — Met à jour un produit existant.
+   *
+   * La mise à jour du produit ET l'enregistrement de l'historique de prix
+   * se font dans la MÊME transaction : si l'enregistrement échoue, le
+   * produit n'est pas modifié (pas de dérive prix/historique).
    */
   static updateProduct(id: string, productData: ProductInput): Product {
     const existing = ProductRepository.findById(id);
@@ -64,32 +177,34 @@ export class ProductService {
       wholesale_price: existing.wholesale_price
     };
 
-    ProductRepository.update({
-      ...productData,
-      id,
-      description: productData.description ?? null,
-      category_id: productData.category_id ?? null,
-      subcategory_id: productData.subcategory_id ?? null,
-      barcode: productData.barcode ?? null,
-      image_path: productData.image_path ?? null,
-      unit: productData.unit || 'PIÈCE',
-      status: productData.status || 'ACTIVE',
-    });
-    const updated = ProductRepository.findById(id);
-    if (!updated) throw new Error('Erreur lors de la mise à jour du produit.');
+    return db.transaction(() => {
+      ProductRepository.update({
+        ...productData,
+        id,
+        description: productData.description ?? null,
+        category_id: productData.category_id ?? null,
+        subcategory_id: productData.subcategory_id ?? null,
+        barcode: productData.barcode ?? null,
+        image_path: productData.image_path ?? null,
+        unit: productData.unit || 'PIÈCE',
+        status: productData.status || 'ACTIVE',
+      });
+      const updated = ProductRepository.findById(id);
+      if (!updated) throw new Error('Erreur lors de la mise à jour du produit.');
 
-    // Enregistrer l'historique des prix si les prix ont changé
-    PriceHistoryRepository.recordChange(
-      id,
-      oldPrices,
-      {
-        purchase_price: updated.purchase_price,
-        selling_price: updated.selling_price,
-        wholesale_price: updated.wholesale_price
-      }
-    );
+      // Enregistrer l'historique des prix si les prix ont changé
+      PriceHistoryRepository.recordChange(
+        id,
+        oldPrices,
+        {
+          purchase_price: updated.purchase_price,
+          selling_price: updated.selling_price,
+          wholesale_price: updated.wholesale_price
+        }
+      );
 
-    return updated;
+      return updated;
+    })();
   }
 
   /**

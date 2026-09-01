@@ -5,14 +5,23 @@ import fs from 'node:fs';
 import { AiAssistantService } from '../../src/ai/AiAssistantService';
 import { MCP_TOOLS } from '../../src/ai/McpTools';
 import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
+import {
+  safeParse,
+  AiSaveConfigSchema,
+  AiTestConnectionSchema,
+  AiChatSchema,
+  AiRequestToolSchema,
+  AiConfirmActionSchema,
+  AiMcpConfigFolderSchema,
+} from '../../src/validation/schemas';
 
 function run<T>(action: () => T | Promise<T>): Promise<T> {
   return Promise.resolve(action());
 }
 
 /** Calcule le dossier de config du client MCP (Claude Desktop / Cursor / Kimi CLI) selon l'OS. */
-function computeMcpConfigFolder(client: unknown): string {
-  const c = client === 'cursor' ? 'cursor' : client === 'kimi' ? 'kimi' : 'claude';
+function computeMcpConfigFolder(client: 'claude' | 'cursor' | 'kimi'): string {
+  const c = client;
   const home = os.homedir();
   // Kimi Code (CLI / Desktop) : fichier ~/.kimi-code/mcp.json — même chemin sur tous les OS.
   if (c === 'kimi') {
@@ -31,38 +40,37 @@ function computeMcpConfigFolder(client: unknown): string {
 export function registerAiHandlers(): void {
   ipcMain.handle('ai:getConfig', async () => run(() => AiAssistantService.getConfig()));
 
+  // P1-11 : validation Zod du payload de configuration (jamais `as`).
   ipcMain.handle('ai:saveConfig', async (_, input: unknown) => {
     return run(() => {
-      const config = input as { provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom'; providerName?: string; baseUrl?: string; apiKey?: string; model?: string; expiryMode?: 'none' | 'date'; expiryDate?: string; rateLimitPerMin?: number };
-      if (!config.provider) throw new Error('Provider manquant.');
+      const config = safeParse(AiSaveConfigSchema, input, 'Configuration IA');
       return AiAssistantService.saveConfig(config);
     });
   });
 
   ipcMain.handle('ai:testConnection', async (_, input: unknown) => {
-    const config = input as { provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom'; baseUrl?: string; apiKey: string; model: string };
+    const config = safeParse(AiTestConnectionSchema, input, 'Test de connexion IA');
     return AiAssistantService.testConnection(config);
   });
 
   ipcMain.handle('ai:disconnect', async () => run(() => AiAssistantService.disconnect()));
 
   ipcMain.handle('ai:chat', async (_, messages: unknown) => {
-    return run(() => AiAssistantService.chat(messages as Parameters<typeof AiAssistantService.chat>[0]));
+    const safe = safeParse(AiChatSchema, messages, 'Messages du chat');
+    return run(() => AiAssistantService.chat(safe));
   });
 
   // Exécution directe d'un outil (READ immédiat ; WRITE/DESTRUCTIVE → confirmation)
   ipcMain.handle('ai:requestTool', async (_, payload: unknown) => {
     return run(() => {
-      const p = payload as { name: string; params: unknown };
-      if (!p.name) throw new Error('Nom d\'outil manquant.');
+      const p = safeParse(AiRequestToolSchema, payload, 'Demande d\'outil');
       return AiAssistantService.requestTool(p.name, p.params);
     });
   });
 
   ipcMain.handle('ai:confirmAction', async (_, payload: unknown) => {
     return run(() => {
-      const p = payload as { actionId: string; confirmed: boolean };
-      if (!p.actionId) throw new Error('Action manquante.');
+      const p = safeParse(AiConfirmActionSchema, payload, 'Confirmation d\'action');
       return AiAssistantService.confirmAction(p.actionId, p.confirmed);
     });
   });
@@ -96,7 +104,8 @@ export function registerAiHandlers(): void {
   // « Ouvrir le dossier de configuration ». On recrée le dossier s'il manque
   // pour que `shell.openPath` réussisse toujours.
   ipcMain.handle('ai:getMcpConfigFolder', async (_, client: unknown) => run(() => {
-    const folder = computeMcpConfigFolder(client);
+    const safeClient = safeParse(AiMcpConfigFolderSchema, client, 'Client MCP');
+    const folder = computeMcpConfigFolder(safeClient);
     try {
       fs.mkdirSync(folder, { recursive: true });
     } catch {
@@ -108,14 +117,15 @@ export function registerAiHandlers(): void {
   // Ouvre directement le dossier de config du client (Claude/Cursor) via shell.openPath,
   // en le créant au besoin. Renvoie { success, error?, path } pour un feedback UI.
   ipcMain.handle('ai:openMcpConfigFolder', async (_, client: unknown) => {
-    const folder = computeMcpConfigFolder(client);
     try {
+      const safeClient = safeParse(AiMcpConfigFolderSchema, client, 'Client MCP');
+      const folder = computeMcpConfigFolder(safeClient);
       fs.mkdirSync(folder, { recursive: true });
       const error = await shell.openPath(folder);
       return { success: !error, error: error || null, path: folder };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      return { success: false, error: msg, path: folder };
+      return { success: false, error: msg, path: '' };
     }
   });
 

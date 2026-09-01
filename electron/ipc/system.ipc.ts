@@ -95,8 +95,27 @@ export function registerSystemHandlers(context: IpcContext): void {
   // ─── Réinitialisation complète (Zone de danger) ───────────────────────────
   // Supprime toutes les données métier + toutes les sauvegardes, documents,
   // exports et images. Conserve les paramètres (entreprise, unités, alertes).
-  ipcMain.handle('data:wipeAll', async () => {
+  //
+  // P1-17 — PROTECTION FORTE. Le backend exige un jeton de confirmation fort
+  // (`confirm` === 'WIPE_ALL') fourni par le renderer. Cette garde ne repose
+  // PAS sur la seule UI : un appel direct à `data:wipeAll` sans jeton est
+  // refusé. De plus, un backup de sécurité est effectué AVANT l'effacement,
+  // sauf si l'utilisateur passe explicitement `skipBackup: true`.
+  ipcMain.handle('data:wipeAll', async (_, payload: unknown) => {
     return run(async () => {
+      // 1. Jeton fort obligatoire (anti-accident / anti-appel direct depuis devtools).
+      const p = (payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {}) as Record<string, unknown>;
+      if (p['confirm'] !== 'WIPE_ALL') {
+        throw new Error('Confirmation forte requise : la réinitialisation complète est refusée. Le jeton "WIPE_ALL" est manquant.');
+      }
+      const skipBackup = p['skipBackup'] === true;
+
+      // 2. Backup de sécurité AVANT l'effacement (sauf refus explicite).
+      let backupPath: string | undefined;
+      if (!skipBackup) {
+        backupPath = await BackupService.backup();
+      }
+
       const { db } = await import('../../src/database/config/connection');
 
       // Tables de données métier (ordre enfants → parents).
@@ -149,9 +168,9 @@ export function registerSystemHandlers(context: IpcContext): void {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      AuditService.log('DATA_WIPE', 'system', 'all', 'Toutes les données ont été supprimées (y compris les sauvegardes).');
+      AuditService.log('DATA_WIPE', 'system', 'all', `Toutes les données ont été supprimées.${backupPath ? ` Backup de sécurité : ${backupPath}` : ''}`);
 
-      return { success: true };
+      return { success: true, backupPath };
     });
   });
 

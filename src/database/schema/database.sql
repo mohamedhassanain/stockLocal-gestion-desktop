@@ -273,7 +273,9 @@ CREATE TABLE IF NOT EXISTS price_history (
     wholesale_price REAL,
     changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     reason TEXT,
-    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+    -- P1-15 : l'historique de prix est une donnée historique/comptable.
+    -- Supprimer un produit ne doit JAMAIS effacer ses prix passés.
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
 );
 
 -- ─── Commandes d'achat ────────────────────────────────────────────────────────

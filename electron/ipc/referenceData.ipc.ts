@@ -2,7 +2,7 @@ import { ipcMain, dialog } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { z } from 'zod';
-import { requireId, validatePathWithinDataDir, FILE_LIMITS, assertFileSizeWithin, toHumanError } from '../ipcValidation';
+import { requireId, validatePathWithinDataDir, validateFilePath, FILE_LIMITS, assertFileSizeWithin, toHumanError } from '../ipcValidation';
 import { ProductRepository, type Product, type ProductInput } from '../../src/repositories/ProductRepository';
 import { ProductService } from '../../src/services/ProductService';
 import { StockService } from '../../src/services/StockService';
@@ -117,36 +117,12 @@ export function registerReferenceDataHandlers(): void {
   ipcMain.handle('products:updateWithStock', async (_, { id, data, stockAdjustment }: { id: unknown; data: unknown; stockAdjustment: unknown }) => {
     return humanError(() => {
       const safeId = requireId(id, 'id produit');
-      const adjustment = Number(stockAdjustment) || 0;
+      const adjustment = Number(stockAdjustment);
       const safeData = safeParse(ProductUpdateSchema, data, 'Modification produit');
       const current = ProductRepository.findById(safeId);
       if (!current) throw new Error('Produit introuvable.');
-      const product = ProductService.updateProduct(safeId, buildProductInput(current, safeData));
-      if (adjustment !== 0) {
-        const currentStock = StockMovementRepository.getStockLevel(safeId);
-        const newStock = currentStock + adjustment;
-        if (newStock < 0) {
-          throw new Error(`Stock insuffisant. Stock actuel : ${currentStock}, tentative de retirer ${Math.abs(adjustment)}.`);
-        }
-        if (adjustment > 0) {
-          StockService.addStockEntry({
-            product_id: safeId,
-            quantity: adjustment,
-            unit_price: safeData.purchase_price ?? product.purchase_price,
-            reference_doc: undefined,
-            supplier_id: undefined,
-            notes: `Ajustement stock: ${currentStock} → ${newStock}`,
-          });
-        } else {
-          StockService.addStockExit({
-            product_id: safeId,
-            quantity: Math.abs(adjustment),
-            unit_price: safeData.purchase_price ?? product.purchase_price,
-            exitType: 'CASSE',
-            notes: `Ajustement stock: ${currentStock} → ${newStock}`,
-          });
-        }
-      }
+      // P0-3 : produit + ajustement de stock dans une seule transaction.
+      const product = ProductService.updateProductWithStock(safeId, buildProductInput(current, safeData), adjustment);
       AuditService.log('PRODUCT_UPDATE', 'product', safeId, `Modification produit ${product.reference}${adjustment !== 0 ? ` (stock ajusté de ${adjustment})` : ''}`);
       return { success: true, data: product };
     });
@@ -193,21 +169,12 @@ export function registerReferenceDataHandlers(): void {
   ipcMain.handle('products:createWithStock', async (_, { productData, initialStock }: { productData: unknown; initialStock: unknown }) => {
     return humanError(() => {
       const safe = nullToUndefined(safeParse(ProductCreateSchema, productData, 'Création produit'));
-      const initial = Number(initialStock) || 0;
-      if (initial < 0 || initial > 1_000_000) {
+      const initial = Number(initialStock);
+      if (!Number.isFinite(initial) || initial < 0 || initial > 1_000_000) {
         throw new Error('Stock initial invalide (0 à 1 000 000).');
       }
-      const product = ProductService.createProduct(safe);
-      if (initial > 0) {
-        StockService.addStockEntry({
-          product_id: product.id,
-          quantity: initial,
-          unit_price: safe.purchase_price || 0,
-          reference_doc: undefined,
-          supplier_id: undefined,
-          notes: 'Stock initial à la création',
-        });
-      }
+      // P0-2 : produit + stock initial dans une seule transaction (jamais d'état partiel).
+      const product = ProductService.createProductWithInitialStock(safe, initial);
       AuditService.log('PRODUCT_CREATE', 'product', product.id, `Création produit ${product.reference}${initial > 0 ? ` (stock initial: ${initial})` : ''}`);
       return { success: true, data: product };
     });
@@ -427,10 +394,12 @@ export function registerReferenceDataHandlers(): void {
   ipcMain.handle('products:importCsv', async (_, filePath: unknown) => {
     return humanError(() => {
       if (typeof filePath !== 'string') throw new Error('Chemin CSV invalide.');
-      // Fichier choisi via la boîte de dialogue native : validation structurelle
-      // (traversal) + limite de taille (anti DoS mémoire).
-      assertFileSizeWithin(filePath, FILE_LIMITS.CSV_MAX_BYTES, 'chemin CSV');
-      const result = ImportService.importProductsFromCsv(filePath);
+      // P1-12 : rejet des traversals / chemins absolus arbitraires + limite de
+      // taille (anti DoS mémoire). Le fichier vient normalement du dialogue
+      // natif, mais on ne fait pas confiance au renderer.
+      const safePath = validateFilePath(filePath, 'chemin CSV');
+      assertFileSizeWithin(safePath, FILE_LIMITS.CSV_MAX_BYTES, 'chemin CSV');
+      const result = ImportService.importProductsFromCsv(safePath);
       AuditService.log('PRODUCT_IMPORT', 'product', 'bulk', `Import CSV : ${result.imported} produits, ${result.errors} erreurs`);
       return { success: true, ...result };
     });
@@ -439,8 +408,10 @@ export function registerReferenceDataHandlers(): void {
   ipcMain.handle('products:previewImportCsv', async (_, filePath: unknown) => {
     return humanError(() => {
       if (typeof filePath !== 'string') throw new Error('Chemin CSV invalide.');
-      assertFileSizeWithin(filePath, FILE_LIMITS.CSV_MAX_BYTES, 'chemin CSV');
-      const result = ImportService.previewProductsFromCsv(filePath);
+      // P1-12 : même validation que l'import (traversal + taille).
+      const safePath = validateFilePath(filePath, 'chemin CSV');
+      assertFileSizeWithin(safePath, FILE_LIMITS.CSV_MAX_BYTES, 'chemin CSV');
+      const result = ImportService.previewProductsFromCsv(safePath);
       return { success: true, data: result };
     });
   });

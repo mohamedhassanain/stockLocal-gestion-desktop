@@ -228,8 +228,9 @@ export const api = {
   },
 
   // ─── Données / Réinitialisation ────────────────────────────────────────────
+  // P1-17 : wipeAll exige un jeton fort + un backup automatique côté main.
   data: {
-    wipeAll: () => ipcRenderer.invoke('data:wipeAll'),
+    wipeAll: (confirm: string, skipBackup = false) => ipcRenderer.invoke('data:wipeAll', { confirm, skipBackup }),
   },
 
   // ─── Produits ──────────────────────────────────────────────────────────────

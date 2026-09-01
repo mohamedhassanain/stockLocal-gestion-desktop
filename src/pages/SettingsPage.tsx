@@ -330,7 +330,7 @@ export const SettingsPage: React.FC = () => {
     if (wipeConfirmText.trim().toUpperCase() !== 'SUPPRIMER') return;
     setWipeLoading(true);
     try {
-      const result = await window.api.data.wipeAll();
+      const result = await window.api.data.wipeAll('WIPE_ALL');
       if (result.success) {
         notify('🗑️ Toutes les données ont été supprimées (y compris les sauvegardes).');
         setWipeOpen(false);

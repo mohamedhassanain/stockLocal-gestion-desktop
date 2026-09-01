@@ -245,6 +245,50 @@ export const GlobalSettingsSchema = z.object({
   stock_exit_types: z.array(z.string().min(1).max(50)).optional(),
 });
 
+// ─── Assistant IA (electron/ipc/ai.ipc.ts) ───────────────────────────────────
+// P0 — Validation stricte de TOUTE frontière AI. Jamais de `input as ...` :
+// le renderer ne fournit qu'un objet brut, validé par Zod avant le service.
+
+export const AiProviderSchema = z.enum(['anthropic', 'openai', 'openai-compatible', 'custom']);
+
+export const AiSaveConfigSchema = z.object({
+  provider: AiProviderSchema,
+  providerName: z.string().max(100).optional(),
+  baseUrl: z.string().url('URL de base invalide.').max(500).optional(),
+  apiKey: z.string().max(1000).optional(),
+  model: z.string().max(200).optional(),
+  expiryMode: z.enum(['none', 'date']).optional(),
+  expiryDate: z.string().max(50).optional(),
+  rateLimitPerMin: z.number().int().min(1).max(1000).optional(),
+});
+
+export const AiTestConnectionSchema = z.object({
+  provider: AiProviderSchema,
+  baseUrl: z.string().url('URL de base invalide.').max(500).optional(),
+  apiKey: z.string().min(1, 'La clé API est obligatoire pour un test de connexion.').max(1000),
+  model: z.string().min(1, 'Le modèle est obligatoire pour un test de connexion.').max(200),
+});
+
+export const AiChatMessageSchema = z.object({
+  role: z.enum(['system', 'user', 'assistant']),
+  content: z.string().max(100_000, 'Message trop long.'),
+});
+
+export const AiChatSchema = z.array(AiChatMessageSchema).min(1, 'Au moins un message est requis.').max(200);
+
+export const AiRequestToolSchema = z.object({
+  name: z.string().min(1, 'Le nom de l\'outil est obligatoire.').max(100),
+  // Les paramètres d'outil sont un objet arbitraire, mais bornés (anti-doS).
+  params: z.record(z.string().max(200), z.unknown()).optional().default({}),
+});
+
+export const AiConfirmActionSchema = z.object({
+  actionId: z.string().min(1, 'L\'identifiant d\'action est obligatoire.').max(200),
+  confirmed: z.boolean(),
+});
+
+export const AiMcpConfigFolderSchema = z.enum(['claude', 'cursor', 'kimi']);
+
 // ─── Système / Stockage / Backup / Migration (electron/ipc/system.ipc.ts) ────
 
 /** Chemin de stockage (dataPath) fourni par le renderer. */
