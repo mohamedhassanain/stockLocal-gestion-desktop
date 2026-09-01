@@ -343,3 +343,32 @@ Ajout de 2 visualisations SVG fait main dans `src/pages/ReportsPage.tsx` (aucune
 **Note honnête :** la vérification visuelle en app Electron n'a pas pu être exécutée ici (app desktop) ; les deux graphiques sont garantis par `tsc` + le build, et les cas limites sont couverts par les tests.
 
 **Fichiers modifiés (pass 7) :** `src/repositories/DashboardRepository.ts`, `electron/ipc/operations.ipc.ts`, `electron/preload.ts`, `src/pages/ReportsPage.tsx`, `tests/reports-payments.test.ts` (nouveau), `FINAL_HARDENING_REPORT.md`.
+
+---
+
+## Pass 8 — Dashboard : tooltip au survol sur le graphique « Évolution du chiffre d'affaires »
+
+Interaction au survol ajoutée au graphique en ligne (`src/pages/DashboardPage.tsx`), sans nouvelle dépendance (SVG/React natif).
+
+### Comportement
+1. **Détection** : `onMouseMove`/`onMouseLeave` sur le `<svg>` — la position souris (`clientX`) est mappée dans le système de coordonnées du SVG (`((clientX - rect.left) / rect.width) * CHART_W`), puis l'index du **point le plus proche horizontalement** est calculé (`Math.round(((svgX - plotLeft) / plotW) * (points.length - 1))`, borné à `[0, points.length-1]`). La zone de tolérance couvre tout l'espace entre deux points (une tranche par point).
+2. **Repère visuel** : ligne verticale pointillée discrète à la position X du point survolé + marqueur carré **agrandi/surligné** (stroke blanc) par rapport aux autres.
+3. **Tooltip (SVG)** : boîte arrondie (fond `var(--surface)`, bordure `var(--border)`) contenant :
+   - le **label de la période** (ex. `2026-09` ou `2026-09-01`),
+   - le **chiffre d'affaires exact** en MAD (`h.revenue.toFixed(2) MAD` — pas de troncature « k »),
+   - la **marge** (`Marge : X.XX MAD`) et le **nombre de factures** du point (données déjà disponibles dans `points`).
+4. **Anti-débordement** : si la boîte dépasserait à droite (`tx + boxW + 10 > plotRight`), elle est positionnée à **gauche** du point (`tx - boxW - 10`) ; `boxX` est ensuite borné à `[plotLeft, CHART_W - boxW - 8]` et `boxY` borné à `>= plotTop` — elle ne sort jamais du viewBox (bords gauche/droit/haut).
+5. **Comportement par défaut conservé** : les valeurs statiques au-dessus des points restent affichées quand `points.length <= 12` (le tooltip est un ajout, pas un remplacement). Pour les grandes périodes (1 an, beaucoup de points rapprochés), le tooltip au survol devient le moyen simple de lire une valeur précise — il fonctionne aussi dans ce cas.
+6. **Accessibilité** : les données restent lisibles par le texte sous le graphique (footer « 📊 X factures au total » / « 💹 Marge totale : Y MAD ») ; le survol est un confort visuel supplémentaire. Le `<title>` natif des marqueurs a été retiré pour éviter un double tooltip.
+7. **Sécurité de l'état** : `points[hoverIndex]` est gardé (`if (!h) return null`) → pas de crash si la période change (index hors bornes).
+
+### Vérification (descriptions — app Electron non lancée ici)
+- **Semaine (7 points)** : peu de points → les valeurs statiques restent affichées ET le survol montre la valeur exacte au point le plus proche.
+- **1 an (12 points)** : beaucoup de points → le tooltip au survol devient la lecture principale ; il est positionné au-dessus du point et bascule à gauche près du bord droit.
+
+### Gates (pass 8)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**155 tests / 14 fichiers** — inchangé) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+
+**Note honnête :** la vérification visuelle réelle (souris) n'a pas pu être exécutée dans ce sandbox (app desktop). Le comportement est garanti par `tsc` + le build ; les cas « bord gauche/droit » et « point le plus proche » sont couverts par la logique de bornage/calcul ci-dessus.
+
+**Fichiers modifiés (pass 8) :** `src/pages/DashboardPage.tsx`, `FINAL_HARDENING_REPORT.md`.

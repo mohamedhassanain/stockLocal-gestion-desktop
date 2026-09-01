@@ -65,6 +65,7 @@ export const DashboardPage: React.FC = () => {
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [dueDays, setDueDays] = useState(30);
   const [revenuePeriod, setRevenuePeriod] = useState('6months');
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -253,6 +254,16 @@ export const DashboardPage: React.FC = () => {
 
             const linePoints = points.map((p, i) => `${xFor(i)},${yFor(p.revenue)}`).join(' ');
 
+            const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+              if (points.length === 0) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              if (rect.width === 0) return;
+              const svgX = ((e.clientX - rect.left) / rect.width) * CHART_W;
+              const idx = points.length === 1 ? 0 : Math.round(((svgX - plotLeft) / plotW) * (points.length - 1));
+              setHoverIndex(Math.max(0, Math.min(points.length - 1, idx)));
+            };
+            const handleMouseLeave = () => setHoverIndex(null);
+
             const footer = (
               <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
                 <span>📊 {totalInvoices} factures au total</span>
@@ -296,6 +307,8 @@ export const DashboardPage: React.FC = () => {
                     style={{ width: '100%', height: 'auto', display: 'block', minWidth: 320 }}
                     role="img"
                     aria-label="Évolution du chiffre d'affaires"
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
                   >
                     {/* Grille horizontale + valeurs axe Y */}
                     {ySteps.map((f) => {
@@ -323,7 +336,6 @@ export const DashboardPage: React.FC = () => {
                     {/* Marqueurs carrés + tooltip, et valeur affichée si peu de points */}
                     {points.map((p, i) => (
                       <g key={p.label}>
-                        <title>{`${p.label} : ${p.revenue.toFixed(0)} MAD`}</title>
                         <rect x={xFor(i) - 4} y={yFor(p.revenue) - 4} width="8" height="8" style={{ fill: 'var(--primary)' }} />
                         {showValueLabels && (
                           <text x={xFor(i)} y={yFor(p.revenue) - 10} textAnchor="middle" fontSize="11" fontWeight="600" style={{ fill: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{p.revenue.toFixed(0)}</text>
@@ -337,6 +349,30 @@ export const DashboardPage: React.FC = () => {
                         <text key={`x-${p.label}`} x={xFor(i)} y={CHART_H - 8} textAnchor="middle" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{p.label.slice(5)}</text>
                       )
                     ))}
+                    {/* Tooltip au survol */}
+                    {hoverIndex !== null && (() => {
+                      const h = points[hoverIndex];
+                      if (!h) return null;
+                      const tx = xFor(hoverIndex);
+                      const ty = yFor(h.revenue);
+                      const boxW = 170, boxH = 78;
+                      let boxX = tx + boxW + 10 > plotRight ? tx - boxW - 10 : tx + 10;
+                      boxX = Math.max(plotLeft, Math.min(boxX, CHART_W - boxW - 8));
+                      const boxY = Math.max(plotTop, ty - boxH - 8);
+                      return (
+                        <g>
+                          <line x1={tx} y1={plotTop} x2={tx} y2={plotBottom} style={{ stroke: 'var(--primary)' }} strokeWidth="1" strokeDasharray="4 4" opacity="0.45" />
+                          <rect x={tx - 6} y={ty - 6} width="12" height="12" style={{ fill: 'var(--primary)', stroke: 'var(--surface)', strokeWidth: 2 }} />
+                          <g>
+                            <rect x={boxX} y={boxY} width={boxW} height={boxH} rx="6" style={{ fill: 'var(--surface)', stroke: 'var(--border)' }} />
+                            <text x={boxX + 10} y={boxY + 17} fontSize="11" style={{ fill: 'var(--muted)' }}>{h.label}</text>
+                            <text x={boxX + 10} y={boxY + 36} fontSize="12" fontWeight="700" style={{ fill: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{h.revenue.toFixed(2)} MAD</text>
+                            <text x={boxX + 10} y={boxY + 54} fontSize="11" style={{ fill: 'var(--text-secondary)' }}>Marge : {h.margin.toFixed(2)} MAD</text>
+                            <text x={boxX + 10} y={boxY + 70} fontSize="11" style={{ fill: 'var(--text-secondary)' }}>{h.invoice_count} facture(s)</text>
+                          </g>
+                        </g>
+                      );
+                    })()}
                   </svg>
                 </div>
                 {footer}
