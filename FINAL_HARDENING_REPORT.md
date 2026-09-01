@@ -288,3 +288,27 @@ L'ancien placeholder « claude-3-7-sonnet-latest, gpt-4o, etc. » pointait vers 
 ### Gates (pass 5)
 `npx tsc --noEmit` ✅ · `npm test` ✅ (**149 tests / 12 fichiers** — inchangé) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
 **Fichiers modifiés (pass 5) :** `src/pages/DashboardPage.tsx`, `FINAL_HARDENING_REPORT.md`.
+
+---
+
+## Pass 6 — Corriger le bug d'affichage de l'axe Y (données à zéro / échelle très faible)
+
+### Bug confirmé
+Dans le graphique « Évolution du chiffre d'affaires », quand toutes les valeurs de la période sont à 0 (base neuve sans vente), `scaleMax` était forcé à 1, et `fmtAxis` (`.toFixed(0)`) arrondissait 0.25→« 0 », 0.5→« 1 », 0.75→« 1 », 1→« 1 » → l'axe Y affichait « 0, 0, 1, 1, 1 » en doublon/trompeur. Le même risque existait pour toute période à très faible CA réel (scaleMax petit, ex. 2 à 10).
+
+### Correctif
+1. **Cas « toutes les valeurs à 0 » (explicite)** : `src/pages/DashboardPage.tsx` — quand `dataMax === 0`, on rend désormais un **état vide clair** : axe X en bas + **un seul repère Y à « 0 »**, une ligne plate pointillée à 0, des marqueurs à 0, et le message **« Aucune vente enregistrée sur cette période. »** (réutilise le composant `EmptyState` existant). Les boutons de période restent fonctionnels.
+2. **Robustesse générale du formatage** : extrait dans `src/utils/chartFormat.ts` — `formatAxisValue(value, scaleMax)` choisit le **nombre de décimales adapté à l'échelle réelle** (pas = `scaleMax × 0.25`) pour que les 5 paliers restent **distincts** :
+   - `scaleMax ≥ 1000` → format « k » (inchangé) ; sinon `step ≥ 1 → 0 déc. ; ≥ 0.1 → 1 déc. ; ≥ 0.01 → 2 déc. ; sinon 3 déc.`
+
+### Tests ajoutés (`tests/dashboard-chart.test.ts`, 3 tests)
+- `scaleMax = 1` (cas zéro) → les 5 libellés Y sont **tous distincts**.
+- petites échelles réalistes (`0.5, 2, 3, 5, 10`) → libellés distincts.
+- grande échelle (`5000`) → libellés distincts + présent en format « k ».
+
+### Note honnête
+La vérification **visuelle** en application Electron n'a pas pu être exécutée dans ce sandbox (app desktop) ; la correction est garantie par le typage (`tsc`) + le build, et les cas limites sont couverts par le nouveau test unitaire sur `formatAxisValue`.
+
+### Gates (pass 6)
+`npx tsc --noEmit` ✅ · `npm test` ✅ (**152 tests / 13 fichiers** — 149 + 3 nouveaux) · `npx vite build` ✅ (`dist-electron/main.js` + `preload.js`).
+**Fichiers modifiés (pass 6) :** `src/utils/chartFormat.ts` (nouveau), `src/pages/DashboardPage.tsx`, `tests/dashboard-chart.test.ts` (nouveau), `FINAL_HARDENING_REPORT.md`.

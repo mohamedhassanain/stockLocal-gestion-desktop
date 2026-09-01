@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, CardBody, CardHeader, PageHeader, StatCard } from '../components/ui';
 import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, RevenuePoint, AlertSummary } from '../repositories/DashboardRepository';
+import { formatAxisValue } from '../utils/chartFormat';
 
 const EmptyState: React.FC<{ icon: string; text: string; good?: boolean }> = ({ icon, text, good }) => (
   <div className="text-center text-sm font-semibold" style={{ padding: 16, color: good ? 'var(--success)' : 'var(--muted)' }}>
@@ -244,7 +245,6 @@ export const DashboardPage: React.FC = () => {
             const yFor = (v: number) => plotBottom - (v / scaleMax) * plotH;
 
             const ySteps = [0, 0.25, 0.5, 0.75, 1];
-            const fmtAxis = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : v.toFixed(0);
 
             const maxXLabels = 7;
             const xLabelStep = Math.max(1, Math.ceil(points.length / maxXLabels));
@@ -252,6 +252,41 @@ export const DashboardPage: React.FC = () => {
             const showValueLabels = points.length <= 12;
 
             const linePoints = points.map((p, i) => `${xFor(i)},${yFor(p.revenue)}`).join(' ');
+
+            const footer = (
+              <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
+                <span>📊 {totalInvoices} factures au total</span>
+                <span className="text-success">💹 Marge totale : {totalMargin.toFixed(2)} MAD</span>
+              </div>
+            );
+
+            // Cas explicite : aucune vente sur toute la période → état vide clair.
+            if (dataMax === 0) {
+              return (
+                <>
+                  <div style={{ overflowX: 'auto' }}>
+                    <svg
+                      viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+                      style={{ width: '100%', height: 'auto', display: 'block', minWidth: 320 }}
+                      role="img"
+                      aria-label="Évolution du chiffre d'affaires"
+                    >
+                      {/* Axe X (bas) + unique repère Y à 0 */}
+                      <line x1={plotLeft} y1={CHART_H - PAD_BOTTOM} x2={plotRight} y2={CHART_H - PAD_BOTTOM} style={{ stroke: 'var(--border-strong)' }} strokeWidth="1" />
+                      <text x={plotLeft - 8} y={CHART_H - PAD_BOTTOM + 4} textAnchor="end" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>0</text>
+                      {/* Ligne plate à 0 (discrète, pointillée) */}
+                      <line x1={plotLeft} y1={plotBottom} x2={plotRight} y2={plotBottom} style={{ stroke: 'var(--primary)' }} strokeWidth="2.5" strokeDasharray="4 4" />
+                      {/* Marqueurs à 0 */}
+                      {points.map((p, i) => (
+                        <rect key={p.label} x={xFor(i) - 4} y={plotBottom - 4} width="8" height="8" style={{ fill: 'var(--primary)' }} />
+                      ))}
+                    </svg>
+                  </div>
+                  <EmptyState icon="📈" text="Aucune vente enregistrée sur cette période." />
+                  {footer}
+                </>
+              );
+            }
 
             return (
               <>
@@ -269,7 +304,7 @@ export const DashboardPage: React.FC = () => {
                       return (
                         <g key={f}>
                           <line x1={plotLeft} y1={y} x2={plotRight} y2={y} style={{ stroke: 'var(--border)' }} strokeDasharray="3 3" strokeWidth="1" />
-                          <text x={plotLeft - 8} y={y + 4} textAnchor="end" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{fmtAxis(val)}</text>
+                          <text x={plotLeft - 8} y={y + 4} textAnchor="end" fontSize="11" style={{ fill: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{formatAxisValue(val, scaleMax)}</text>
                         </g>
                       );
                     })}
@@ -304,10 +339,7 @@ export const DashboardPage: React.FC = () => {
                     ))}
                   </svg>
                 </div>
-                <div className="flex gap-4 text-sm text-secondary" style={{ marginTop: 12, justifyContent: 'center' }}>
-                  <span>📊 {totalInvoices} factures au total</span>
-                  <span className="text-success">💹 Marge totale : {totalMargin.toFixed(2)} MAD</span>
-                </div>
+                {footer}
               </>
             );
           })()}
