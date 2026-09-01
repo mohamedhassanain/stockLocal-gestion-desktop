@@ -42,12 +42,10 @@
 
 ---
 
-### P1-8 — Versioned migration system
-**Root cause:** `migrationRunner.ts` existed but had **no** `NNN_*.sql` migration files; all migrations were ad-hoc in `connection.ts`.
+### P1-8 — Single-schema approach
+Decision (per user): keep **one** consolidated SQL schema file (`src/database/schema/database.sql`) that is the single source of truth for new databases. The existing `migrationRunner.ts` + `schema_migrations` mechanism remains for future versioned migrations, but no separate `001_*.sql` file is introduced for this task — the `price_history` change lives directly in `database.sql`.
 
-**Fix:** Added the first versioned migration `src/database/migrations/001_price_history_restrict.sql` (deterministic order, tracked in `schema_migrations`, transactional, re-runnable safe).
-
-**Files:** `src/database/migrations/001_price_history_restrict.sql`
+**Files:** `src/database/schema/database.sql`
 
 ---
 
@@ -76,12 +74,11 @@
 **Root cause:** `price_history` used `ON DELETE CASCADE`. Deleting a product would silently wipe its historical prices (a business/comptable record).
 
 **Fix:**
-- Changed base schema `src/database/schema/database.sql`: `price_history.product_id → ON DELETE RESTRICT`.
-- Added migration `001_price_history_restrict.sql` to rebuild existing `price_history` tables to `RESTRICT` without data loss.
+- Changed base schema `src/database/schema/database.sql`: `price_history.product_id → ON DELETE RESTRICT`. This is the single source of truth for the schema (no separate migration file).
 - `product_batches` / `unit_conversions` remain `CASCADE` — they are genuinely disposable product-scoped data.
 - `ProductService.deleteProduct` already refused deletion when price history existed; now the FK enforces it too.
 
-**Files:** `src/database/schema/database.sql`, `src/database/migrations/001_price_history_restrict.sql`
+**Files:** `src/database/schema/database.sql`
 **Tests:** `tests/hardening-p0.test.ts` (P1-15 block).
 
 ---
@@ -168,7 +165,7 @@ These were inspected and confirmed correct in the current source; they are repor
 
 ## Summary
 
-**Modified:** `src/services/ProductService.ts`, `electron/ipc/referenceData.ipc.ts`, `electron/ipc/ai.ipc.ts`, `electron/ipc/system.ipc.ts`, `electron/preload.ts`, `src/pages/SettingsPage.tsx`, `src/validation/schemas.ts`, `src/database/schema/database.sql`, `src/database/migrations/001_price_history_restrict.sql`, `src/repositories/InventorySessionRepository.ts`, `tests/hardening-p0.test.ts`.
+**Modified:** `src/services/ProductService.ts`, `electron/ipc/referenceData.ipc.ts`, `electron/ipc/ai.ipc.ts`, `electron/ipc/system.ipc.ts`, `electron/preload.ts`, `src/pages/SettingsPage.tsx`, `src/validation/schemas.ts`, `src/database/schema/database.sql`, `src/repositories/InventorySessionRepository.ts`, `tests/hardening-p0.test.ts`.
 
 **Validation:** Typecheck ✅ · 131 tests passing ✅ · Vite build ✅.
 
