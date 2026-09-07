@@ -514,15 +514,25 @@ function createPreMigrationBackup(): string | null {
 
     return backupPath;
   } catch (e) {
-    console.warn('[DB] Backup pré-migration ignoré (non bloquant) :', e);
-    return null;
+    // Une base EXISTANTE (non vide) est sur le point d'être migrée : si le
+    // backup de sécurité échoue, on BLOQUE le démarrage. Démarrer une
+    // migration sans copie de sécurité met en danger les données existantes.
+    // (Une base NEUVE/absente retourne null plus haut : aucun backup requis.)
+    throw new Error(
+      `[DB] Backup pré-migration impossible : la migration est annulée pour protéger les données. ` +
+      `${e instanceof Error ? e.message : String(e)}`
+    );
   }
 }
 
 function initDb(): void {
-  const safetyBackup = createPreMigrationBackup();
+  let safetyBackup: string | null = null;
   try {
     // Base NEUVE : database.sql est la SOURCE DE VÉRITÉ UNIQUE du schéma.
+    // Backup pré-migration AVANT toute migration (fail-fast si une base
+    // existante ne peut pas être sauvegardée — data integrity).
+    safetyBackup = createPreMigrationBackup();
+
     applySchema();
 
     // Base EXISTANTE : correctifs additifs minimaux + centralisés.
