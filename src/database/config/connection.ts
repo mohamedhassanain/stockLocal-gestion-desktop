@@ -146,7 +146,26 @@ function applySchema(): void {
     // signale clairement le problème (avec backup pré-migration si existant).
     throw new Error('[DB] Fichier de schéma (database.sql) introuvable : impossible d\'initialiser la base de données.');
   }
-  db.exec(fs.readFileSync(schemaPath, 'utf-8'));
+  // Exécution STATEMENT PAR STATEMENT. `CREATE TABLE IF NOT EXISTS` ne modifie
+  // jamais une table existante ; mais `CREATE INDEX IF NOT EXISTS` peut référencer
+  // une colonne absente sur une base ANCIENNE (ex. stock_movements.document_id /
+  // movement_type, ajoutées plus bas par upgradeLegacyDatabase). On tolère
+  // UNIQUEMENT l'échec d'un CREATE INDEX (recréé correctement par
+  // upgradeLegacyDatabase à la fin) ; jamais celui d'une CREATE TABLE.
+  const schemaSql = fs.readFileSync(schemaPath, 'utf-8');
+  for (const raw of schemaSql.split(';')) {
+    const stmt = raw.trim();
+    if (!stmt) continue;
+    try {
+      db.exec(stmt);
+    } catch (e) {
+      if (/^create\s+index/i.test(stmt)) {
+        console.warn(`[DB] Index ignoré (colonne absente sur base ancienne, recréé plus bas) : ${stmt.split('\n')[0].slice(0, 80)}`);
+        continue;
+      }
+      throw e;
+    }
+  }
   console.log('[DB] Schéma appliqué (database.sql).');
 }
 
