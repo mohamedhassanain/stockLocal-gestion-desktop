@@ -145,16 +145,23 @@ export function registerSystemHandlers(context: IpcContext): void {
         'suppliers',
       ];
 
+      // §14 — foreign_keys doit être TOUJOURS restauré, même si l'effacement
+      // échoue (sinon la connexion partagée resterait avec FK OFF et
+      // accepterait des contraintes violées ensuite). try/finally garantit le
+      // rétablissement.
       db.pragma('foreign_keys = OFF');
-      const wipe = db.transaction(() => {
-        for (const t of tables) {
-          try { db.prepare(`DELETE FROM ${t}`).run(); } catch { /* table absente */ }
-        }
-        try { db.prepare('DELETE FROM document_sequences').run(); } catch { /* ignore */ }
-        try { db.prepare('DELETE FROM audit_logs').run(); } catch { /* ignore */ }
-      });
-      wipe();
-      db.pragma('foreign_keys = ON');
+      try {
+        const wipe = db.transaction(() => {
+          for (const t of tables) {
+            try { db.prepare(`DELETE FROM ${t}`).run(); } catch { /* table absente */ }
+          }
+          try { db.prepare('DELETE FROM document_sequences').run(); } catch { /* ignore */ }
+          try { db.prepare('DELETE FROM audit_logs').run(); } catch { /* ignore */ }
+        });
+        wipe();
+      } finally {
+        db.pragma('foreign_keys = ON');
+      }
 
       // Supprimer et recréer les dossiers de données (backups, documents, exports, images)
       const dirs = [

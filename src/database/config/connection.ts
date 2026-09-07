@@ -141,23 +141,33 @@ function resolveSchemaPath(): string | null {
 function applySchema(): void {
   const schemaPath = resolveSchemaPath();
   if (!schemaPath) {
-    console.warn('[DB] Fichier de schéma introuvable.');
-    return;
+    // Démarrer sans schéma produirait une base vide/partielle et des erreurs
+    // runtime diffuses. C'est un échec bloquant : on lève pour que initDb()
+    // signale clairement le problème (avec backup pré-migration si existant).
+    throw new Error('[DB] Fichier de schéma (database.sql) introuvable : impossible d\'initialiser la base de données.');
   }
   db.exec(fs.readFileSync(schemaPath, 'utf-8'));
   console.log('[DB] Schéma appliqué (database.sql).');
 }
 
-/** Ajoute une colonne si elle n'existe pas encore (upgrade de bases anciennes). */
+/**
+ * Ajoute une colonne si elle n'existe pas encore (upgrade de bases anciennes).
+ *
+ * Une migration de structure qui échoue doit FAIRE ÉCHOUER le démarrage :
+ * démarrer avec un schéma incomplet produit des erreurs runtime diffuses
+ * (requêtes référençant une colonne absente) bien plus difficiles à
+ * diagnostiquer. L'exception remonte jusqu'à initDb(), qui a déjà créé un
+ * backup pré-migration et lève un message clair.
+ */
 function addColumnIfMissing(table: string, column: string, definition: string): void {
-  try {
-    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (!cols.some(c => c.name === column)) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some(c => c.name === column)) {
+    try {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
       console.log(`[DB] Colonne ajoutée (upgrade) : ${table}.${column}`);
+    } catch (e) {
+      throw new Error(`[DB] Impossible d'ajouter la colonne ${table}.${column} : ${e instanceof Error ? e.message : String(e)}`);
     }
-  } catch {
-    // Table n'existe peut-être pas encore
   }
 }
 
@@ -187,8 +197,12 @@ function rebuildTable(target: string, newSql: string, copyColumns: string[]): vo
     })();
     console.log(`[DB] Table ${target} reconstruite (upgrade).`);
   } catch (e) {
-    console.warn(`[DB] Upgrade de ${target} ignoré :`, e);
+    // Une reconstruction échouée laisse la table dans son état d'origine. La
+    // base peut alors être incohérente (ancienne FK, type de colonne obsolète) :
+    // on NETTOIE la table temporaire puis on PROPAGE l'erreur jusqu'à initDb()
+    // (qui a déjà fait un backup pré-migration et lèvera un message clair).
     try { db.exec(`DROP TABLE IF EXISTS ${temp};`); } catch { /* ignore */ }
+    throw new Error(`[DB] Impossible de reconstruire la table ${target} : ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
