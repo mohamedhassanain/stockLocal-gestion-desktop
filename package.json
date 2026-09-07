@@ -47,6 +47,10 @@
     "electron@43.4.1": true,
     "esbuild@0.21.5": true
   },
+  "overrides": {
+    "uuid": "^11.1.1",
+    "fast-uri": "^3.1.6"
+  },
   "build": {
     "appId": "com.stocklocal.app",
     "productName": "StockLocal",
