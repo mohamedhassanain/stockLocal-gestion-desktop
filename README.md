@@ -143,7 +143,9 @@ src/
 
 ## Installation
 
-Prérequis : Node.js >= 18 et npm.
+Prérequis : Node.js >= 18 et npm >= 11 (npm 11+ résout correctement l'arbre de
+peer dependencies de vitest — un simple `npm install` suffit, sans
+`--legacy-peer-deps`).
 
 ```bash
 # 1. Cloner
