@@ -540,12 +540,11 @@ export const PDFService = {
     drawText(disclaimer, footerX, footerY - 22, { size: 7, color: MUTED });
     drawText('Réalisé par :', footerX, footerY - 38, { size: 8, font: boldFont, color: MUTED });
 
-    // Zone QR : lien (site web / Facebook / Instagram / YouTube…) configuré dans Paramètres
+    // Zone QR : affichée UNIQUEMENT si l'option est activée ET qu'un lien est configuré.
+    // Désactivée → rien n'est dessiné (plus de carré vide).
     if (settings.show_qr_on_documents && settings.qr_link && settings.qr_link.trim()) {
       drawQrCode(settings.qr_link.trim(), RIGHT - 70, footerY, 70);
       drawText('Scannez-moi', RIGHT - 35, footerY + 74, { size: 6, font: boldFont, color: MUTED, align: 'center' });
-    } else {
-      drawBox(RIGHT - 70, footerY, 70, 70, rgb(0.97, 0.96, 0.95));
     }
 
     const pdfBytes = await pdfDoc.save();
