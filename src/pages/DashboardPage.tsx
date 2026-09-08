@@ -106,8 +106,9 @@ export const DashboardPage: React.FC = () => {
       } else {
         toast.error(result.error);
       }
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -116,8 +117,9 @@ export const DashboardPage: React.FC = () => {
       const result = await window.api.reports.generate();
       if (!result.success) throw new Error(result.error);
       toast.success('Rapport PDF généré avec succès.');
-    } catch (e: any) {
-      toast.error(`Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Erreur : ${message}`);
     }
   };
 
@@ -132,8 +134,9 @@ export const DashboardPage: React.FC = () => {
       });
       if (!result.success) throw new Error(result.error);
       toast.success(`Rapport Excel (CSV) exporté : ${result.filePath}`);
-    } catch (e: any) {
-      toast.error(`Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Erreur : ${message}`);
     }
   };
 

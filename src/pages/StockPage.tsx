@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useStockStore } from '../stores/useStockStore';
 import { useProductStore } from '../stores/useProductStore';
+import type { Product } from '../repositories/ProductRepository';
 import { DataTable } from '../components/ui/DataTable';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, CardHeader, Badge, Select, PageHeader } from '../components/ui';
@@ -78,7 +79,7 @@ const GlobalHistoryTab: React.FC = () => {
         if (loaded === 0 && !isLoading) {
           // Fin de l'historique : aucune action supplémentaire.
         }
-      }).catch((err: any) => toast.error(`Erreur : ${err.message}`));
+      }).catch((err: unknown) => toast.error(`Erreur : ${err instanceof Error ? err.message : String(err)}`));
     }
   };
 
@@ -164,11 +165,12 @@ export const StockPage: React.FC = () => {
 
   useEffect(() => {
     window.api.globalSettings.get()
-      .then((gs: any) => {
-        if (Array.isArray(gs?.stock_exit_types) && gs.stock_exit_types.length > 0) {
-          setExitTypes(gs.stock_exit_types);
+      .then((gs: { stock_exit_types?: string[] }) => {
+        const stockExitTypes: string[] = gs.stock_exit_types ?? [];
+        if (stockExitTypes.length > 0) {
+          setExitTypes(stockExitTypes);
           // Conserve la sélection si elle existe encore, sinon retombe sur le premier type.
-          setExitType(prev => gs.stock_exit_types.includes(prev) ? prev : gs.stock_exit_types[0]);
+          setExitType(prev => stockExitTypes.includes(prev) ? prev : stockExitTypes[0]);
         }
       })
       .catch(() => { /* silencieux : on garde les types par défaut */ });
@@ -203,8 +205,9 @@ export const StockPage: React.FC = () => {
       setBlRef('');
       loadProductStock(selectedProductId);
       loadProducts();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -223,8 +226,9 @@ export const StockPage: React.FC = () => {
       setNotes('');
       loadProductStock(selectedProductId);
       loadProducts();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -238,8 +242,9 @@ export const StockPage: React.FC = () => {
       toast.success('Inventaire enregistré (écart ajusté).');
       loadProductStock(selectedProductId);
       loadProducts();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -290,19 +295,19 @@ export const StockPage: React.FC = () => {
                     key: 'current_stock',
                     label: 'Stock',
                     sortable: true,
-                    render: (p: any) => (
+                    render: (p: Product) => (
                       <span className={`${stockLevelClass(p.current_stock ?? 0, p.min_stock ?? 0)} font-semibold`}>
                         {p.current_stock ?? 0} {p.unit || 'PIÈCE'}
                       </span>
                     ),
                   },
                 ]}
-                rows={products as any}
-                getRowId={(p: any) => p.id}
+                rows={products}
+                getRowId={(p: Product) => p.id}
                 searchableKeys={['reference', 'designation', 'barcode']}
                 searchPlaceholder="Filtrer dans les résultats…"
                 pageSize={10}
-                onRowClick={(p: any) => handleSelectProduct(p.id)}
+                onRowClick={(p: Product) => handleSelectProduct(p.id)}
               />
             </Card>
 

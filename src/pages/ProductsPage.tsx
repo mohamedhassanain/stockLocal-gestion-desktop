@@ -40,9 +40,10 @@ export const ProductsPage: React.FC = () => {
     if (!imagePath) return '';
     if (imageCache[imagePath]) return imageCache[imagePath];
     // Lancer le chargement sans bloquer le rendu
-    window.api.products.getImageBase64(imagePath).then((r: any) => {
+    window.api.products.getImageBase64(imagePath).then((r: { success: boolean; dataUrl?: string }) => {
       if (r && r.success && r.dataUrl) {
-        setImageCache(prev => ({ ...prev, [imagePath]: r.dataUrl }));
+        const dataUrl: string = r.dataUrl;
+        setImageCache(prev => ({ ...prev, [imagePath]: dataUrl }));
       }
     }).catch(() => {});
     return '';
@@ -99,13 +100,19 @@ export const ProductsPage: React.FC = () => {
       ),
       confirmLabel: 'Archiver',
       action: async () => {
-        try { await archiveProduct(product.id); toast.success(`Produit « ${product.designation} » archivé.`); } catch (e: any) { toast.error(e.message); }
+        try { await archiveProduct(product.id); toast.success(`Produit « ${product.designation} » archivé.`); } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
+        }
       },
     });
   };
 
   const handleActivate = async (product: Product) => {
-    try { await activateProduct(product.id); toast.success(`Produit « ${product.designation} » réactivé.`); } catch (e: any) { toast.error(e.message); }
+    try { await activateProduct(product.id); toast.success(`Produit « ${product.designation} » réactivé.`); } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
+    }
   };
 
   const handleDisable = (product: Product) => {
@@ -118,7 +125,10 @@ export const ProductsPage: React.FC = () => {
       ),
       confirmLabel: 'Désactiver',
       action: async () => {
-        try { await disableProduct(product.id); toast.success(`Produit « ${product.designation} » désactivé.`); } catch (e: any) { toast.error(e.message); }
+        try { await disableProduct(product.id); toast.success(`Produit « ${product.designation} » désactivé.`); } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
+        }
       },
     });
   };
@@ -137,7 +147,10 @@ export const ProductsPage: React.FC = () => {
       danger: true,
       confirmLabel: 'Supprimer définitivement',
       action: async () => {
-        try { await deleteProduct(product.id); toast.success(`Produit « ${product.designation} » supprimé.`); } catch (e: any) { toast.error(e.message); }
+        try { await deleteProduct(product.id); toast.success(`Produit « ${product.designation} » supprimé.`); } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
+        }
       },
     });
   };
@@ -148,7 +161,10 @@ export const ProductsPage: React.FC = () => {
       const result = await window.api.products.printLabels(filteredProducts.map(p => p.id));
       if (!result.success) throw new Error(result.error);
       toast.success(`Étiquettes générées pour ${filteredProducts.length} produit(s).`);
-    } catch (e: any) { toast.error(e.message); }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
+    }
   };
 
   const openNewProductForm = () => {

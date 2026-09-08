@@ -162,8 +162,9 @@ export const InventoryPage: React.FC = () => {
       if (session) {
         await loadSessionById(session.id);
       }
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -186,8 +187,9 @@ export const InventoryPage: React.FC = () => {
       await updateSession(selectedSession.id, { name, notes: editNotes.trim() || undefined, status: editStatus });
       toast.success('Session modifiée.');
       setShowEditForm(false);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -202,8 +204,9 @@ export const InventoryPage: React.FC = () => {
     try {
       await startCounting(selectedSession.id);
       toast.success('Comptage démarré.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -211,8 +214,9 @@ export const InventoryPage: React.FC = () => {
     try {
       await countItem(itemId, countInput);
       setEditingItemId(null);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -221,8 +225,9 @@ export const InventoryPage: React.FC = () => {
     try {
       await calculateGaps(selectedSession.id);
       toast.success('Écarts calculés avec succès.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -231,8 +236,9 @@ export const InventoryPage: React.FC = () => {
     try {
       await createVersion(selectedSession.id);
       toast.success('Version enregistrée.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -252,8 +258,9 @@ export const InventoryPage: React.FC = () => {
         try {
           await restoreVersion(selectedSession!.id, versionId);
           toast.success('Version restaurée. Une nouvelle version a été créée.');
-        } catch (e: any) {
-          toast.error(e.message);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
         }
       },
     });
@@ -264,8 +271,9 @@ export const InventoryPage: React.FC = () => {
     try {
       await correctValidatedInventory(selectedSession.id, { [itemId]: correctedQty });
       toast.success('Correction appliquée. Le stock a été ajusté.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -292,8 +300,9 @@ export const InventoryPage: React.FC = () => {
         try {
           await validateSession(selectedSession!.id);
           toast.success('Session d\'inventaire validée. Les stocks ont été ajustés.');
-        } catch (e: any) {
-          toast.error(e.message);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
         }
       },
     });
@@ -313,8 +322,9 @@ export const InventoryPage: React.FC = () => {
         try {
           await deleteSession(id);
           toast.success('Session d\'inventaire supprimée.');
-        } catch (e: any) {
-          toast.error(e.message);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
         }
       },
     });

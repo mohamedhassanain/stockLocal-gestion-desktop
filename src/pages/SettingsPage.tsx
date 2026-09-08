@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import type { Product } from '../repositories/ProductRepository';
 import { Button, Card, Input, Select, PageHeader, DeleteButton, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
 // ─── Onglets ────────────────────────────────────────────────────────────────
 type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
@@ -142,9 +143,10 @@ export const SettingsPage: React.FC = () => {
       setDataPath(path);
       setConversions(convs ?? []);
       if (gs) setGlobalSettings(prev => ({ ...prev, ...gs }));
-      setProductsList((prods ?? []).map((p: any) => ({ id: p.id, designation: p.designation, reference: p.reference ?? '', min_stock: p.min_stock ?? 0 })));
-    } catch (e: any) {
-      notify(e.message);
+      setProductsList((prods ?? []).map((p: Product) => ({ id: p.id, designation: p.designation, reference: p.reference ?? '', min_stock: p.min_stock ?? 0 })));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(message);
     }
   };
 
@@ -156,7 +158,7 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     if (!company.logo_path) { setLogoPreview(''); return; }
     const timeout = setTimeout(() => {
-      window.api.products.getImageBase64(company.logo_path).then((r: any) => {
+      window.api.products.getImageBase64(company.logo_path).then((r: { success: boolean; dataUrl?: string }) => {
         if (r && r.success && r.dataUrl) setLogoPreview(r.dataUrl);
         else setLogoPreview('');
       }).catch(() => setLogoPreview(''));
@@ -308,8 +310,9 @@ export const SettingsPage: React.FC = () => {
       } else {
         notify(`❌ ${migrateResult.error}`);
       }
-    } catch (e: any) {
-      notify(`❌ Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ Erreur : ${message}`);
     } finally {
       setIsChangingLocation(false);
     }
@@ -339,8 +342,9 @@ export const SettingsPage: React.FC = () => {
       } else {
         notify(`❌ ${result.error}`);
       }
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     } finally {
       setWipeLoading(false);
     }
@@ -350,8 +354,9 @@ export const SettingsPage: React.FC = () => {
     try {
       const list = await window.api.backup.list();
       setBackups(list);
-    } catch (e: any) {
-      notify(`❌ Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ Erreur : ${message}`);
     }
   };
 
@@ -369,8 +374,9 @@ export const SettingsPage: React.FC = () => {
       } else {
         notify(`❌ ${result.error}`);
       }
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     } finally {
       setBackupLoading(false);
     }
@@ -384,8 +390,9 @@ export const SettingsPage: React.FC = () => {
       } else {
         notify(`❌ ${result.error}`);
       }
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     }
   };
 
@@ -424,8 +431,9 @@ export const SettingsPage: React.FC = () => {
           } else {
             notify(`❌ ${result.error}`);
           }
-        } catch (e: any) {
-          notify(`❌ ${e.message}`);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          notify(`❌ ${message}`);
         }
       },
     });
@@ -454,7 +462,7 @@ export const SettingsPage: React.FC = () => {
 
   const addConversion = async () => {
     if (!conversionForm.from_unit.trim() || !conversionForm.to_unit.trim()) return;
-    const data: any = {
+    const data: Omit<UnitConversion, 'id'> = {
       from_unit: conversionForm.from_unit.trim(),
       to_unit: conversionForm.to_unit.trim(),
       factor: conversionForm.factor,
@@ -532,8 +540,9 @@ export const SettingsPage: React.FC = () => {
       } else {
         notify(`❌ ${result.error}`);
       }
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     }
   };
 
@@ -541,8 +550,9 @@ export const SettingsPage: React.FC = () => {
     setGlobalSettings(prev => ({ ...prev, product_units: units }));
     try {
       await window.api.globalSettings.save({ product_units: units });
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     }
   };
 
@@ -568,8 +578,9 @@ export const SettingsPage: React.FC = () => {
     setGlobalSettings(prev => ({ ...prev, stock_exit_types: types }));
     try {
       await window.api.globalSettings.save({ stock_exit_types: types });
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     }
   };
 
@@ -599,8 +610,9 @@ export const SettingsPage: React.FC = () => {
     try {
       const result = await window.api.updates.checkForUpdates();
       setUpdateResult(result.success ? result.message : `❌ ${result.message}`);
-    } catch (e: any) {
-      setUpdateResult(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      setUpdateResult(`❌ ${message}`);
     } finally {
       setIsCheckingUpdates(false);
     }
@@ -614,8 +626,9 @@ export const SettingsPage: React.FC = () => {
       } else {
         notify(`❌ ${result.error}`);
       }
-    } catch (e: any) {
-      notify(`❌ ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
     }
   };
 

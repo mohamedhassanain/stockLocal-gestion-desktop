@@ -63,7 +63,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
   useEffect(() => {
     window.api.categories.getAll().then(setCategories).catch(() => {});
     // Unités de mesure configurables (Paramètres > Unités)
-    window.api.globalSettings.get().then((gs: any) => {
+    window.api.globalSettings.get().then((gs: { product_units?: string[] }) => {
       if (gs?.product_units?.length) setUnits(gs.product_units);
     }).catch(() => {});
     if (editingProduct) {
@@ -81,7 +81,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
       return;
     }
     const timeout = setTimeout(() => {
-      window.api.products.getImageBase64(formData.image_path).then((result: any) => {
+      window.api.products.getImageBase64(formData.image_path).then((result: { success: boolean; dataUrl?: string }) => {
         if (result && result.success && result.dataUrl) {
           setImagePreview(result.dataUrl);
         } else {
@@ -126,7 +126,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
         await addProductWithStock({ ...validatedData, image_path: formData.image_path || undefined, status: 'ACTIVE' }, formData.initial_stock || 0);
       }
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
         error.errors.forEach(err => {
@@ -136,7 +136,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
         });
         setErrors(newErrors);
       } else {
-        toast.error(error.message);
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error(message);
       }
     }
   };

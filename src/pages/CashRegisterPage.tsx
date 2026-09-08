@@ -31,8 +31,9 @@ export const CashRegisterPage: React.FC = () => {
     try {
       const data = await window.api.documents.getAllPayments({ limit: 500, offset: 0 });
       setPayments(data ?? []);
-    } catch (e: any) {
-      toast.error(`Impossible de charger la caisse : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de charger la caisse : ${message}`);
     } finally {
       setIsLoading(false);
     }

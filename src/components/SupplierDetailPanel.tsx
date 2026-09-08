@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from '../stores/useToastStore';
 import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
+import type { PurchaseOrder } from '../repositories/PurchaseOrderRepository';
 
 const STATUS_LABELS: Record<string, string> = {
   PAID: 'Payée',
@@ -20,7 +21,7 @@ interface Props {
 
 export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayment }) => {
   const [supplierHistory, setSupplierHistory] = useState<SupplierCredit[]>([]);
-  const [purchases, setPurchases] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [amount, setAmount] = useState(0);
   const [desc, setDesc] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'purchases'>('overview');
@@ -148,7 +149,7 @@ export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayme
             <div style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>Aucune commande pour ce fournisseur.</div>
           ) : (
             <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-              {purchases.map((p: any) => (
+              {purchases.map((p: PurchaseOrder) => (
                 <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
                   <div>
                     <span style={{ fontWeight: '600', fontSize: '14px', color: '#111827' }}>{p.order_number}</span>

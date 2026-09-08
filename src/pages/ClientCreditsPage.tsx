@@ -2,7 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, CardHeader, PageHeader, StatCard } from '../components/ui';
+import type { Customer } from '../repositories/ClientRepository';
 import type { UpcomingDue } from '../repositories/DashboardRepository';
+
+interface DebtorRow {
+  id: string;
+  name: string;
+  balance: number;
+}
 
 export const ClientCreditsPage: React.FC = () => {
   const { clients, loadClients } = useClientStore();
@@ -15,8 +22,9 @@ export const ClientCreditsPage: React.FC = () => {
     try {
       const d = await window.api.dashboard.getUpcomingDues(dueDays);
       setDues(d ?? []);
-    } catch (e: any) {
-      toast.error(`Impossible de charger les échéances : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de charger les échéances : ${message}`);
     } finally {
       setIsLoading(false);
     }
@@ -25,12 +33,12 @@ export const ClientCreditsPage: React.FC = () => {
   useEffect(() => { loadClients(); }, []);
   useEffect(() => { load(); }, [dueDays]);
 
-  const debtors = (clients ?? [])
-    .filter((c: any) => (c.balance ?? 0) > 0)
-    .map((c: any) => ({ id: c.id, name: c.name, balance: c.balance ?? 0 }))
-    .sort((a: any, b: any) => b.balance - a.balance);
+  const debtors: DebtorRow[] = (clients ?? [])
+    .filter((c: Customer) => (c.balance ?? 0) > 0)
+    .map((c: Customer): DebtorRow => ({ id: c.id, name: c.name, balance: c.balance ?? 0 }))
+    .sort((a, b) => b.balance - a.balance);
 
-  const totalDebt = debtors.reduce((s: number, d: any) => s + d.balance, 0);
+  const totalDebt = debtors.reduce((s: number, d: DebtorRow) => s + d.balance, 0);
 
   return (
     <div className="page-shell">
@@ -81,7 +89,7 @@ export const ClientCreditsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {debtors.map((d: any) => (
+                    {debtors.map((d: DebtorRow) => (
                       <tr key={d.id}>
                         <td className="font-semibold">{d.name}</td>
                         <td className="money text-right font-semibold text-danger">{d.balance.toFixed(2)} MAD</td>

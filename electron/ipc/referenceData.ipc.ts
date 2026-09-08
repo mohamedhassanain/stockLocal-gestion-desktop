@@ -46,7 +46,7 @@ async function humanError(action: () => unknown): Promise<unknown> {
  * validé par Zod. `undefined` = champ non fourni (on garde la valeur courante),
  * `null` = champ explicitement effacé (code-barres, description…).
  *
- * Plus aucun `as any` : la frontière IPC est typée de bout en bout.
+ * Plus aucun cast : la frontière IPC est typée de bout en bout.
  */
 function buildProductInput(
   current: Product,

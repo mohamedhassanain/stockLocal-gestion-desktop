@@ -12,8 +12,9 @@ export const StockAlertsPage: React.FC = () => {
     try {
       const data = await window.api.dashboard.getLowStock();
       setAlerts(data ?? []);
-    } catch (e: any) {
-      toast.error(`Impossible de charger les alertes : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de charger les alertes : ${message}`);
     } finally {
       setIsLoading(false);
     }

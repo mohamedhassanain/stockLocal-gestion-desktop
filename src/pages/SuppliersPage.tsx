@@ -6,8 +6,15 @@ import { toast } from '../stores/useToastStore';
 import type { Supplier } from '../repositories/SupplierRepository';
 import { Button, Input, PageHeader, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
 
-const SupplierFormModal: React.FC<{ initial?: Supplier; onClose: () => void; onSave: (data: any) => void }> = ({ initial, onClose, onSave }) => {
-  const [form, setForm] = useState(() =>
+interface SupplierFormState {
+  name: string;
+  phone: string;
+  address: string;
+  ice: string;
+}
+
+const SupplierFormModal: React.FC<{ initial?: Supplier; onClose: () => void; onSave: (data: SupplierFormState) => void }> = ({ initial, onClose, onSave }) => {
+  const [form, setForm] = useState<SupplierFormState>(() =>
     initial
       ? { name: initial.name, phone: initial.phone ?? '', address: initial.address ?? '', ice: initial.ice ?? '' }
       : { name: '', phone: '', address: '', ice: '' });
@@ -16,18 +23,18 @@ const SupplierFormModal: React.FC<{ initial?: Supplier; onClose: () => void; onS
     <Modal open onClose={onClose} width={480}>
       <ModalHeader title={initial ? '✏️ Modifier le Fournisseur' : '🏭 Nouveau Fournisseur'} />
       <ModalBody>
-        {[
+        {([
           { key: 'name', label: 'Nom *', type: 'text', placeholder: 'Raison sociale du fournisseur' },
           { key: 'phone', label: 'Téléphone', type: 'tel', placeholder: '05XXXXXXXX' },
           { key: 'address', label: 'Adresse', type: 'text', placeholder: 'Ville, région...' },
           { key: 'ice', label: 'ICE', type: 'text', placeholder: "Identifiant Commun de l'Entreprise" },
-        ].map(({ key, label, type, placeholder }) => (
+        ] as Array<{ key: keyof SupplierFormState; label: string; type: string; placeholder: string }>).map(({ key, label, type, placeholder }) => (
           <Input
             key={key}
             label={label}
             type={type}
             placeholder={placeholder}
-            value={(form as any)[key]}
+            value={form[key]}
             onChange={e => setForm({ ...form, [key]: e.target.value })}
           />
         ))}
@@ -47,7 +54,7 @@ export const SuppliersPage: React.FC = () => {
 
   useEffect(() => { loadSuppliers(); }, []);
 
-  const handleSaveForm = async (data: any) => {
+  const handleSaveForm = async (data: SupplierFormState) => {
     try {
       if (modalState?.mode === 'edit' && modalState.supplier) {
         await updateSupplier(modalState.supplier.id, data);
@@ -57,8 +64,9 @@ export const SuppliersPage: React.FC = () => {
         toast.success('Fournisseur créé.');
       }
       setModalState(null);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -68,8 +76,9 @@ export const SuppliersPage: React.FC = () => {
     try {
       await deleteSupplier(id);
       toast.success(`Fournisseur « ${name} » supprimé.`);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     } finally {
       setDeleteTarget(null);
     }
@@ -151,8 +160,8 @@ export const SuppliersPage: React.FC = () => {
               </div>
               <SupplierDetailPanel
                 supplier={selectedSupplier}
-                onDebt={(a: number, d: string) => addDebt(selectedSupplier.id, a, d).catch((e: any) => toast.error(e.message))}
-                onPayment={(a: number, d: string) => addPayment(selectedSupplier.id, a, d).catch((e: any) => toast.error(e.message))}
+                onDebt={(a: number, d: string) => addDebt(selectedSupplier.id, a, d).catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))}
+                onPayment={(a: number, d: string) => addPayment(selectedSupplier.id, a, d).catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))}
               />
             </>
           )}

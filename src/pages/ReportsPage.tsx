@@ -53,8 +53,9 @@ export const ReportsPage: React.FC = () => {
       setTopProducts(tp);
       setTopClients(tc);
       setPaymentsByMethod(pm);
-    } catch (e: any) {
-      toast.error(`Impossible de charger le rapport : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de charger le rapport : ${message}`);
     } finally {
       setIsLoading(false);
     }
@@ -67,8 +68,9 @@ export const ReportsPage: React.FC = () => {
       const result = await window.api.reports.generate(month);
       if (!result.success) throw new Error(result.error);
       toast.success('Rapport PDF généré.');
-    } catch (e: any) {
-      toast.error(`Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Erreur : ${message}`);
     }
   };
 
@@ -77,8 +79,9 @@ export const ReportsPage: React.FC = () => {
       const result = await window.api.reports.exportCsv({ stats, topProducts, topClients, lowStock: [], dues: [] });
       if (!result.success) throw new Error(result.error);
       toast.success(`Rapport Excel exporté : ${result.filePath}`);
-    } catch (e: any) {
-      toast.error(`Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Erreur : ${message}`);
     }
   };
 

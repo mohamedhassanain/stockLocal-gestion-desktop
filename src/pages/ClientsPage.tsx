@@ -6,8 +6,18 @@ import { toast } from '../stores/useToastStore';
 import type { Customer } from '../repositories/ClientRepository';
 import { Button, Badge, Input, Select, PageHeader, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
 
-const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSave: (data: any) => void }> = ({ initial, onClose, onSave }) => {
-  const [form, setForm] = useState(() =>
+interface ClientFormState {
+  name: string;
+  phone: string;
+  address: string;
+  ice: string;
+  payment_conditions: string;
+  credit_limit: number;
+  category: 'DÉTAIL' | 'GROSSISTE' | 'VIP';
+}
+
+const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSave: (data: ClientFormState) => void }> = ({ initial, onClose, onSave }) => {
+  const [form, setForm] = useState<ClientFormState>(() =>
     initial
       ? { name: initial.name, phone: initial.phone ?? '', address: initial.address ?? '', ice: initial.ice ?? '', payment_conditions: initial.payment_conditions ?? 'Comptant', credit_limit: initial.credit_limit ?? 0, category: initial.category ?? 'DÉTAIL' }
       : { name: '', phone: '', address: '', ice: '', payment_conditions: 'Comptant', credit_limit: 0, category: 'DÉTAIL' });
@@ -19,7 +29,7 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
         <Select
           label="Catégorie *"
           value={form.category}
-          onChange={e => setForm({ ...form, category: e.target.value })}
+          onChange={e => setForm({ ...form, category: e.target.value as 'DÉTAIL' | 'GROSSISTE' | 'VIP' })}
         >
           <option value="DÉTAIL">Détail</option>
           <option value="GROSSISTE">Grossiste</option>
@@ -39,20 +49,22 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
           <option value="60 jours">60 jours</option>
         </Select>
 
-        {[
+        {([
           { key: 'name', label: 'Nom *', type: 'text', placeholder: 'Nom complet ou raison sociale' },
           { key: 'phone', label: 'Téléphone', type: 'tel', placeholder: '06XXXXXXXX' },
           { key: 'address', label: 'Adresse', type: 'text', placeholder: 'Ville, quartier...' },
           { key: 'ice', label: 'ICE', type: 'text', placeholder: "Identifiant commun de l'entreprise" },
           { key: 'credit_limit', label: 'Plafond crédit (MAD)', type: 'number', placeholder: '0 = illimité' },
-        ].map(({ key, label, type, placeholder }) => (
+        ] as Array<{ key: keyof ClientFormState; label: string; type: string; placeholder: string }>).map(({ key, label, type, placeholder }) => (
           <Input
             key={key}
             label={label}
             type={type}
             placeholder={placeholder}
-            value={(form as any)[key]}
-            onChange={e => setForm({ ...form, [key]: key === 'credit_limit' ? Number(e.target.value) : e.target.value })}
+            value={form[key]}
+            // Le spread avec clé calculée (type union de clés) force un cast vers ClientFormState :
+            // TS ne peut pas déduire que la valeur (string | number) correspond à chaque clé.
+            onChange={e => setForm({ ...form, [key]: key === 'credit_limit' ? Number(e.target.value) : e.target.value } as ClientFormState)}
           />
         ))}
       </ModalBody>
@@ -71,7 +83,7 @@ export const ClientsPage: React.FC = () => {
 
   useEffect(() => { loadClients(); }, []);
 
-  const handleSaveForm = async (data: any) => {
+  const handleSaveForm = async (data: ClientFormState) => {
     try {
       if (modalState?.mode === 'edit' && modalState.client) {
         await updateClient(modalState.client.id, data);
@@ -81,8 +93,9 @@ export const ClientsPage: React.FC = () => {
         toast.success('Client créé.');
       }
       setModalState(null);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -92,8 +105,9 @@ export const ClientsPage: React.FC = () => {
     try {
       await deleteClient(id);
       toast.success(`Client « ${name} » supprimé.`);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     } finally {
       setDeleteTarget(null);
     }
@@ -176,8 +190,8 @@ export const ClientsPage: React.FC = () => {
               </div>
               <ClientDetailPanel
                 client={selectedClient}
-                onDebt={(a: number, d: string) => addDebt(selectedClient.id, a, d).catch((e: any) => toast.error(e.message))}
-                onPayment={(a: number, d: string) => addPayment(selectedClient.id, a, d).catch((e: any) => toast.error(e.message))}
+                onDebt={(a: number, d: string) => addDebt(selectedClient.id, a, d).catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))}
+                onPayment={(a: number, d: string) => addPayment(selectedClient.id, a, d).catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))}
               />
             </>
           )}

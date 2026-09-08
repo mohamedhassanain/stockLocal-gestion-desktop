@@ -121,8 +121,9 @@ export const ReceivingsPage: React.FC = () => {
         };
       });
       setReceivings(mapped);
-    } catch (e: any) {
-      toast.error(`Impossible de charger les réceptions : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de charger les réceptions : ${message}`);
     } finally {
       setIsLoading(false);
     }

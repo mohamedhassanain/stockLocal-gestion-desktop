@@ -215,8 +215,9 @@ export const POSPage: React.FC = () => {
       setShowPayment(false);
       setShowReceipt(true);
       clearCart();
-    } catch (e: any) {
-      toast.error(`Erreur : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Erreur : ${message}`);
     }
   };
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
+import type { Customer } from '../repositories/ClientRepository';
 
 interface PaymentRecordUI {
   id: string;
@@ -36,8 +37,9 @@ export const PaymentsPage: React.FC = () => {
     try {
       const data = await window.api.documents.getAllPayments({ limit: 500, offset: 0 });
       setPayments(data ?? []);
-    } catch (e: any) {
-      toast.error(`Impossible de charger les paiements : ${e.message}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de charger les paiements : ${message}`);
     } finally {
       setIsLoading(false);
     }
@@ -47,8 +49,8 @@ export const PaymentsPage: React.FC = () => {
 
   // Synthèse : clients ayant un solde impayé.
   const debtors: DebtorRow[] = (clients ?? [])
-    .filter((c: any) => (c.balance ?? 0) > 0)
-    .map((c: any) => ({
+    .filter((c: Customer) => (c.balance ?? 0) > 0)
+    .map((c: Customer) => ({
       id: c.id,
       name: c.name,
       balance: c.balance ?? 0,

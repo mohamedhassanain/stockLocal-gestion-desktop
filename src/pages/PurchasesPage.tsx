@@ -17,7 +17,15 @@ import {
   PURCHASE_STATUS_BADGE,
 } from '../components/ui';
 import { toast } from '../stores/useToastStore';
+import type { Product } from '../repositories/ProductRepository';
 import type { PurchaseOrder, PurchaseStatus } from '../stores/usePurchaseStore';
+
+interface PurchaseOrderData {
+  supplier_id: string;
+  date: string;
+  notes: string;
+  items: Array<{ product_id: string; quantity: number; unit_price: number }>;
+}
 
 const getPurchaseBadge = (status: PurchaseStatus) =>
   PURCHASE_STATUS_BADGE[status] ?? PURCHASE_STATUS_BADGE.DRAFT;
@@ -26,7 +34,7 @@ const getPurchaseBadge = (status: PurchaseStatus) =>
 
 const NewOrderModal: React.FC<{
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: PurchaseOrderData) => void;
   initial?: PurchaseOrder | null;
 }> = ({ onClose, onSave, initial }) => {
   const { suppliers, loadSuppliers } = useSupplierStore();
@@ -55,7 +63,7 @@ const NewOrderModal: React.FC<{
     p.reference.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const addLine = (product: any) => {
+  const addLine = (product: Product) => {
     setItems(prev => [...prev, {
       product_id: product.id,
       quantity: 1,
@@ -311,13 +319,14 @@ export const PurchasesPage: React.FC = () => {
 
   useEffect(() => { loadOrders(); }, []);
 
-  const handleCreate = async (data: any) => {
+  const handleCreate = async (data: PurchaseOrderData) => {
     try {
       await createOrder(data);
       setShowNewForm(false);
       toast.success('Commande d\'achat créée avec succès.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -325,14 +334,15 @@ export const PurchasesPage: React.FC = () => {
     setEditingOrder(order);
   };
 
-  const handleEditSave = async (data: any) => {
+  const handleEditSave = async (data: PurchaseOrderData) => {
     if (!editingOrder) return;
     try {
       await updateOrder(editingOrder.id, data);
       setEditingOrder(null);
       toast.success('Commande d\'achat modifiée avec succès.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -340,8 +350,9 @@ export const PurchasesPage: React.FC = () => {
     try {
       await confirmOrder(id);
       toast.success('Commande confirmée.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -349,8 +360,9 @@ export const PurchasesPage: React.FC = () => {
     try {
       await receiveOrder(id);
       toast.success('Commande réceptionnée : le stock a été mis à jour.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -376,8 +388,9 @@ export const PurchasesPage: React.FC = () => {
         try {
           await cancelOrder(id);
           toast.success('Commande annulée.');
-        } catch (e: any) {
-          toast.error(e.message);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
         }
       },
     });
@@ -402,8 +415,9 @@ export const PurchasesPage: React.FC = () => {
         try {
           await deleteOrder(id);
           toast.success('Commande supprimée.');
-        } catch (e: any) {
-          toast.error(e.message);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
         }
       },
     });

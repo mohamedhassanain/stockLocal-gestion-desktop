@@ -6,6 +6,26 @@ import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import type { Document, DocumentType } from '../repositories/DocumentRepository';
+import type { Product } from '../repositories/ProductRepository';
+
+type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
+
+interface NewDocumentData {
+  type: DocumentType;
+  entity_id: string;
+  date: string;
+  due_date?: string;
+  notes: string;
+  items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
+}
+
+interface EditDocumentData {
+  entity_id: string;
+  date: string;
+  due_date?: string;
+  notes?: string;
+  items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
+}
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 
@@ -190,7 +210,7 @@ const PartialReturnModal: React.FC<{
 const NewDocumentModal: React.FC<{
   type: DocumentType;
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: NewDocumentData) => void;
 }> = ({ type, onClose, onSave }) => {
   const { clients, loadClients } = useClientStore();
   const { products, loadProducts } = useProductStore();
@@ -210,7 +230,7 @@ const NewDocumentModal: React.FC<{
     productSearch === '' || p.designation.toLowerCase().includes(productSearch.toLowerCase()) || p.reference.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const addLine = (product: any) => {
+  const addLine = (product: Product) => {
     setItems(prev => [...prev, {
       product_id: product.id,
       quantity: 1,
@@ -393,7 +413,7 @@ const EditDocumentModal: React.FC<{
     productSearch === '' || p.designation.toLowerCase().includes(productSearch.toLowerCase()) || p.reference.toLowerCase().includes(productSearch.toLowerCase())
   );
 
-  const addLine = (product: any) => {
+  const addLine = (product: Product) => {
     setItems(prev => [...prev, { product_id: product.id, quantity: 1, unit_price: product.selling_price ?? 0, discount: 0, _name: `${product.reference} — ${product.designation}` }]);
     setProductSearch('');
   };
@@ -691,23 +711,25 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
 
   useEffect(() => { loadDocuments(); }, []);
 
-  const handleCreate = async (data: any) => {
+  const handleCreate = async (data: NewDocumentData) => {
     try {
       await createDocument(data);
       setShowNewForm(false);
       toast.success('Document créé avec succès.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
   const handlePayment = async (amount: number, method: string) => {
     if (!selectedDocument) return;
     try {
-      await addPayment(selectedDocument.id, amount, method as any);
+      await addPayment(selectedDocument.id, amount, method as PaymentMethod);
       toast.success(`Paiement de ${amount.toFixed(2)} MAD encaissé.`);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -716,8 +738,9 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
     try {
       await convertBL(selectedDocument.id);
       toast.success('Bon de livraison converti en facture avec succès.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -727,8 +750,9 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
       const result = await window.api.documents.exportPdf(selectedDocument.id);
       if (!result.success) throw new Error(result.error);
       toast.success('PDF exporté avec succès.');
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -749,8 +773,9 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
         await selectDocument(result.data);
         setActiveType('CREDIT_NOTE');
       }
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -761,8 +786,9 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
       toast.success('Document supprimé avec succès.');
       setPendingDelete(null);
       if (selectedDocument?.id === pendingDelete.id) clearSelectedDocument();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
@@ -784,19 +810,21 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
       await updateNotes(editNotesDoc.id, editNotesValue);
       toast.success('Notes modifiées.');
       setEditNotesDoc(null);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
-  const handleSaveEdit = async (data: any) => {
+  const handleSaveEdit = async (data: EditDocumentData) => {
     if (!editDoc) return;
     try {
       await updateDocument(editDoc.id, data);
       toast.success('Document modifié avec succès.');
       setEditDoc(null);
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
     }
   };
 
