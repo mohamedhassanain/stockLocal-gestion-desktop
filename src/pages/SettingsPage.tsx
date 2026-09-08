@@ -744,7 +744,7 @@ export const SettingsPage: React.FC = () => {
                   .then(r => { if (r && r.success) setCompany(r.data); })
                   .catch(() => {});
               }} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
-              🔗 Afficher le QR code (lien) sur la facture & PDF
+              🔗 Afficher le code QR sur les factures & PDF
             </label>
 
             <Button onClick={saveCompany} className="mt-4">💾 Enregistrer</Button>
