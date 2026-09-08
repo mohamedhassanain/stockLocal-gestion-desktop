@@ -13,6 +13,9 @@ export interface CompanySettings {
   logo_path: string;
   show_logo_on_documents: boolean;
   show_company_name_on_documents: boolean;
+  /** Lien (site web, Facebook, Instagram, YouTube…) affiché en QR code sur la facture. */
+  qr_link: string;
+  show_qr_on_documents: boolean;
 }
 
 const DEFAULTS: CompanySettings = {
@@ -28,6 +31,8 @@ const DEFAULTS: CompanySettings = {
   logo_path: '',
   show_logo_on_documents: true,
   show_company_name_on_documents: true,
+  qr_link: '',
+  show_qr_on_documents: true,
 };
 
 const stmtGet = db.prepare('SELECT key, value FROM company_settings');
@@ -53,6 +58,8 @@ export const CompanySettingsService = {
       logo_path: map['logo_path'] ?? DEFAULTS.logo_path,
       show_logo_on_documents: (map['show_logo_on_documents'] ?? 'true') === 'true',
       show_company_name_on_documents: (map['show_company_name_on_documents'] ?? 'true') === 'true',
+      qr_link: map['qr_link'] ?? DEFAULTS.qr_link,
+      show_qr_on_documents: (map['show_qr_on_documents'] ?? 'true') === 'true',
     };
   },
 
@@ -71,6 +78,8 @@ export const CompanySettingsService = {
       ['logo_path', settings.logo_path],
       ['show_logo_on_documents', settings.show_logo_on_documents === undefined ? undefined : String(settings.show_logo_on_documents)],
       ['show_company_name_on_documents', settings.show_company_name_on_documents === undefined ? undefined : String(settings.show_company_name_on_documents)],
+      ['qr_link', settings.qr_link],
+      ['show_qr_on_documents', settings.show_qr_on_documents === undefined ? undefined : String(settings.show_qr_on_documents)],
     ];
     const txn = db.transaction(() => {
       for (const [key, value] of entries) {

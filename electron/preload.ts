@@ -171,6 +171,8 @@ export interface CompanySettingsInput {
   logo_path?: string;
   show_logo_on_documents?: boolean;
   show_company_name_on_documents?: boolean;
+  qr_link?: string;
+  show_qr_on_documents?: boolean;
 }
 
 // ── Paramètres globaux ──

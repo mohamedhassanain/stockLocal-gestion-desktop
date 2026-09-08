@@ -76,7 +76,7 @@ export const SettingsPage: React.FC = () => {
     action: () => void;
   } | null>(null);
 
-  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '', show_logo_on_documents: true, show_company_name_on_documents: true });
+  const [company, setCompany] = useState({ name: '', tagline: '', ice: '', rc: '', if_: '', patente: '', address: '', phone: '', email: '', logo_path: '', show_logo_on_documents: true, show_company_name_on_documents: true, qr_link: '', show_qr_on_documents: true });
   const [logoPreview, setLogoPreview] = useState('');
   const [wipeOpen, setWipeOpen] = useState(false);
   const [wipeConfirmText, setWipeConfirmText] = useState('');
@@ -721,6 +721,30 @@ export const SettingsPage: React.FC = () => {
                   .catch(() => {});
               }} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
               🏷️ Afficher le nom sur les factures & PDF
+            </label>
+
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <Input
+                label="Lien QR code (site web, Facebook, Instagram, YouTube…)"
+                value={company.qr_link}
+                onChange={e => setCompany({ ...company, qr_link: e.target.value })}
+                placeholder="Ex : https://monsite.com  ou  https://facebook.com/mapage"
+              />
+              <p className="text-xs text-muted" style={{ marginTop: 4 }}>
+                🔗 Ce lien sera affiché sous forme de QR code sur la facture (scannable par le client).
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary mb-4">
+              <input type="checkbox" checked={company.show_qr_on_documents} onChange={e => {
+                const checked = e.target.checked;
+                setCompany(prev => ({ ...prev, show_qr_on_documents: checked }));
+                // Auto-persistance : le réglage s'applique immédiatement aux PDF.
+                window.api.company.save({ show_qr_on_documents: checked })
+                  .then(r => { if (r && r.success) setCompany(r.data); })
+                  .catch(() => {});
+              }} style={{ width: 18, height: 18, accentColor: 'var(--primary)' }} />
+              🔗 Afficher le QR code (lien) sur la facture & PDF
             </label>
 
             <Button onClick={saveCompany} className="mt-4">💾 Enregistrer</Button>

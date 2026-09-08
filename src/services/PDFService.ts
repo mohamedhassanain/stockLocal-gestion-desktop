@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts, type PDFImage, type PDFFont } from 'pd
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
+import qrcode from 'qrcode-generator';
 import type { Customer, ClientCredit } from '../repositories/ClientRepository';
 import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
 import type { Document, Payment } from '../repositories/DocumentRepository';
@@ -297,6 +298,35 @@ export const PDFService = {
       });
     };
 
+    // Dessine un VRAI QR code (lien site / réseaux sociaux) dans un carré qSize à (qx, qy).
+    const drawQrCode = (text: string, qx: number, qy: number, qSize: number): void => {
+      try {
+        const qr = qrcode(0, 'M');
+        qr.addData(text);
+        qr.make();
+        const count = qr.getModuleCount();
+        const cell = qSize / count;
+        // Fond blanc
+        page.drawRectangle({ x: qx, y: qy, width: qSize, height: qSize, color: rgb(1, 1, 1), borderColor: BORDER, borderWidth: 0.5 });
+        for (let r = 0; r < count; r++) {
+          for (let c = 0; c < count; c++) {
+            if (qr.isDark(r, c)) {
+              page.drawRectangle({
+                x: qx + c * cell,
+                y: qy + (count - 1 - r) * cell, // repère PDF : origine en bas à gauche
+                width: cell,
+                height: cell,
+                color: rgb(0, 0, 0),
+              });
+            }
+          }
+        }
+      } catch {
+        // Lien trop long / invalide : ne jamais casser la génération du PDF.
+        drawBox(qx, qy, qSize, qSize, rgb(0.97, 0.96, 0.95));
+      }
+    };
+
     const centerX = width / 2;
     let y = height - MARGIN;
 
@@ -510,9 +540,13 @@ export const PDFService = {
     drawText(disclaimer, footerX, footerY - 22, { size: 7, color: MUTED });
     drawText('Réalisé par :', footerX, footerY - 38, { size: 8, font: boldFont, color: MUTED });
 
-    // Zone signature + QR décoratif
-    drawBox(RIGHT - 70, footerY, 70, 70, rgb(0.97, 0.96, 0.95));
-    drawText('QR', RIGHT - 35, footerY + 32, { size: 16, font: boldFont, color: rgb(0.6, 0.6, 0.6), align: 'center' });
+    // Zone QR : lien (site web / Facebook / Instagram / YouTube…) configuré dans Paramètres
+    if (settings.show_qr_on_documents && settings.qr_link && settings.qr_link.trim()) {
+      drawQrCode(settings.qr_link.trim(), RIGHT - 70, footerY, 70);
+      drawText('Scannez-moi', RIGHT - 35, footerY + 74, { size: 6, font: boldFont, color: MUTED, align: 'center' });
+    } else {
+      drawBox(RIGHT - 70, footerY, 70, 70, rgb(0.97, 0.96, 0.95));
+    }
 
     const pdfBytes = await pdfDoc.save();
     const documentsPath = app.getPath('documents');
