@@ -1,18 +1,48 @@
-import { PDFDocument, rgb, StandardFonts, type PDFImage } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, type PDFImage, type PDFFont } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import type { Customer, ClientCredit } from '../repositories/ClientRepository';
 import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
-import type { Document } from '../repositories/DocumentRepository';
+import type { Document, Payment } from '../repositories/DocumentRepository';
 import type { Product } from '../repositories/ProductRepository';
 import { CompanySettingsService } from './CompanySettingsService';
 import { DashboardRepository } from '../repositories/DashboardRepository';
 
 function truncate(text: string, max: number): string {
-  return text.length > max ? text.substring(0, max) : text;
+  return text.length > max ? text.substring(0, max) + '…' : text;
 }
 
+/**
+ * Découpe un texte en lignes tenant dans une largeur donnée.
+ * Utilisé pour la colonne Désignation (les désignations longues ne doivent
+ * jamais déborder du tableau).
+ */
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [''];
+
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) lines.push(current);
+    current = word;
+    // Un mot seul plus large que la colonne → on le coupe
+    while (font.widthOfTextAtSize(current, size) > maxWidth) {
+      let split = current.length - 1;
+      while (split > 0 && font.widthOfTextAtSize(current.slice(0, split), size) > maxWidth) split--;
+      lines.push(current.slice(0, split));
+      current = current.slice(split);
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
 
 export const PDFService = {
   async generateClientStatement(client: Customer, history: ClientCredit[]): Promise<string> {
@@ -199,129 +229,290 @@ export const PDFService = {
 
   /**
    * Génère un PDF pour un document commercial (Devis, BL, Facture, Avoir)
-   * avec logo (optionnel), mentions légales marocaines (ICE, RC, IF) et paramètres entreprise.
+   * — format A4 portrait, mise en page inspirée de la facture professionnelle
+   * de référence (bandeaux colorés, double rangée d'en-tête, bloc de totaux).
+   *
+   * Les valeurs affichées proviennent UNIQUEMENT du moteur métier
+   * (DocumentRepository/DocumentService) : aucune recalcul ici. Les
+   * coordonnées de l'entreprise viennent de CompanySettingsService (jamais
+   * de valeurs codées en dur).
    */
   async generateDocument(doc: Document): Promise<string> {
     const settings = CompanySettingsService.getAll();
+    const { DocumentRepository } = await import('../repositories/DocumentRepository');
+    const { ClientRepository } = await import('../repositories/ClientRepository');
+    const payments: Payment[] = DocumentRepository.getPayments(doc.id);
+    const customer = ClientRepository.getById(doc.entity_id);
+
     const pdfDoc = await PDFDocument.create();
     let page = pdfDoc.addPage();
     const { width, height } = page.getSize();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
+    const MARGIN = 30;
+    const RIGHT = width - MARGIN;
+    const BOTTOM = 46;
+
     const TYPE_TITLES: Record<string, string> = {
-      QUOTE: 'DEVIS',
-      DELIVERY_NOTE: 'BON DE LIVRAISON',
-      INVOICE: 'FACTURE',
-      CREDIT_NOTE: 'AVOIR'
+      QUOTE: 'Devis N°',
+      DELIVERY_NOTE: 'Bon de Livraison N°',
+      INVOICE: 'Facture N°',
+      CREDIT_NOTE: 'Avoir N°',
     };
-    const title = TYPE_TITLES[doc.type] || doc.type;
+    const titleLabel = TYPE_TITLES[doc.type] || doc.type;
 
-    let y = height - 50;
+    const STATUS_LABELS: Record<string, string> = {
+      PAID: 'PAYÉE', UNPAID: 'IMPAYÉE', PARTIAL: 'PARTIELLEMENT PAYÉE',
+      DRAFT: 'BROUILLON', CANCELLED: 'ANNULÉE'
+    };
+    const PAYMENT_LABELS: Record<string, string> = {
+      CASH: 'Espèces', CHECK: 'Chèque', TRANSFER: 'Virement'
+    };
 
-    // ── En-tête : logo + nom CENTRÉS ensemble, puis titre centré en dessous ──
-    const nameText = settings.name || 'StockLocal';
-    const nameSize = 22;
-    const logoW = 90, logoH = 45, logoGap = 14;
+    // Palette inspirée de la référence : bandeaux pêche / saumon
+    const PEACH_HEADER = rgb(0.97, 0.80, 0.64);
+    const PEACH_TOTAL = rgb(0.95, 0.72, 0.53);
+    const BORDER = rgb(0.35, 0.34, 0.33);
+    const TEXT = rgb(0.12, 0.12, 0.12);
+    const MUTED = rgb(0.45, 0.44, 0.43);
+
+    const drawText = (
+      text: string, x: number, y: number,
+      attr: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; align?: 'left' | 'right' | 'center' } = {}
+    ): void => {
+      const size = attr.size ?? 10;
+      const f = attr.font ?? font;
+      const color = attr.color ?? TEXT;
+      const w = f.widthOfTextAtSize(text, size);
+      const tx = attr.align === 'right' ? x - w : attr.align === 'center' ? x - w / 2 : x;
+      page.drawText(text, { x: tx, y, size, font: f, color });
+    };
+
+    const drawBox = (x: number, y: number, w: number, h: number, fill?: ReturnType<typeof rgb>) => {
+      page.drawRectangle({
+        x, y, width: w, height: h,
+        borderColor: BORDER, borderWidth: 0.5,
+        color: fill,
+      });
+    };
+
+    const centerX = width / 2;
+    let y = height - MARGIN;
+
+    // ─────────────────────── EN-TÊTE : logo + entreprise (gauche) ───────────────────────
     let logoImage: PDFImage | null = null;
     if (settings.show_logo_on_documents && settings.logo_path && fs.existsSync(settings.logo_path)) {
       try {
         const logoBytes = fs.readFileSync(settings.logo_path);
         const ext = path.extname(settings.logo_path).toLowerCase();
         logoImage = ext === '.png' ? await pdfDoc.embedPng(logoBytes) : await pdfDoc.embedJpg(logoBytes);
-      } catch {
-        logoImage = null;
-      }
+      } catch { logoImage = null; }
     }
+
     const showName = settings.show_company_name_on_documents;
-    const nameW = showName ? boldFont.widthOfTextAtSize(nameText, nameSize) : 0;
-    const headerStartX = (width - (logoImage ? logoW + logoGap : 0) - nameW) / 2;
-    const nameBaseline = y - 14;
+    const leftX = MARGIN;
+    const topY = y;
+
+    // Logo à l'extrême GAUCHE
     if (logoImage) {
-      // Logo verticalement aligné sur le nom, à gauche de celui-ci
-      page.drawImage(logoImage, { x: headerStartX, y: nameBaseline - 12, width: logoW, height: logoH });
+      page.drawImage(logoImage, { x: leftX, y: topY - 36, width: 72, height: 36 });
     }
+    // Nom de l'entreprise à l'extrême DROITE (aligné à droite)
     if (showName) {
-      page.drawText(nameText, { x: headerStartX + (logoImage ? logoW + logoGap : 0), y: nameBaseline, size: nameSize, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
+      drawText(settings.name || 'StockLocal', RIGHT, topY - 14, { size: 20, font: boldFont, color: rgb(0.1, 0.2, 0.4), align: 'right' });
     }
-    y -= 50; // retour à la ligne avant le titre
 
-    // ── Titre du document (aligné à gauche, noir, taille réduite) ──
-    page.drawText(title, { x: 50, y, size: 14, font: boldFont, color: rgb(0, 0, 0) });
-    y -= 18;
+    // ── Titre centré + numéro ──
+    const titleY = topY - 60;
+    drawText(titleLabel, centerX, titleY, { size: 10, font: boldFont, color: MUTED, align: 'center' });
+    drawText(doc.document_number, centerX, titleY - 14, { size: 13, font: boldFont, color: TEXT, align: 'center' });
 
-    // ── Mentions entreprise + n° document + date (alignées à gauche) ──
-    if (settings.address) {
-      page.drawText(settings.address, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
-      y -= 12;
+    // ── Encadré client + date (à droite, face au numéro de facture) ──
+    const clientBoxW = 150;
+    const clientBoxH = 40;
+    const clientBoxX = RIGHT - clientBoxW;
+    const clientBoxY = titleY - 54; // bas de l'encadré (au niveau du numéro)
+    drawText(`le ${new Date(doc.date).toLocaleDateString('fr-MA')}`, RIGHT, titleY, { size: 9, font: boldFont, color: TEXT, align: 'right' });
+    drawBox(clientBoxX, clientBoxY, clientBoxW, clientBoxH, rgb(0.98, 0.97, 0.95));
+    drawText(
+      truncate(customer?.name || doc.customer_name || '-', 24),
+      clientBoxX + clientBoxW / 2,
+      clientBoxY + clientBoxH / 2 - 3,
+      { size: 10, font: boldFont, color: TEXT, align: 'center' }
+    );
+
+    // Espace entre le numéro/encadré et le tableau (tableau sous l'encadré, bien séparé)
+    y = clientBoxY - 22;
+
+    // ─────────────────────── TABLEAU : CODE ARTICLE | DESIGNATION | QTE | P.U | REMISE % | TOTAL ───────────────────────
+    const colB = [
+      { label: 'CODE ARTICLE', w: 70 },
+      { label: 'DESIGNATION', w: 180 },
+      { label: 'QTE', w: 50, align: 'right' as const },
+      { label: 'P.U', w: 55, align: 'right' as const },
+      { label: 'REMISE %', w: 50, align: 'right' as const },
+      { label: 'TOTAL', w: 130, align: 'right' as const },
+    ];
+    const colBx: number[] = [];
+    let bx = MARGIN;
+    for (const c of colB) {
+      colBx.push(bx);
+      bx += c.w;
     }
-    if (settings.phone || settings.email) {
-      page.drawText([settings.phone, settings.email].filter(Boolean).join(' · '), { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
-      y -= 12;
+    const bandBh = 18;
+    let cx = MARGIN;
+    for (let i = 0; i < colB.length; i++) {
+      drawBox(cx, y - bandBh, colB[i].w, bandBh, PEACH_HEADER);
+      drawText(colB[i].label, cx + colB[i].w / 2, y - bandBh / 2 - 3, {
+        size: 7.5, font: boldFont, color: TEXT, align: 'center' as const,
+      });
+      cx += colB[i].w;
     }
-    page.drawText(settings.tagline || 'Gestion commerciale - Grossiste', { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
-    y -= 12;
-    page.drawText(doc.document_number, { x: 50, y, size: 12, font: boldFont, color: rgb(0, 0, 0) });
-    y -= 12;
-    page.drawText(`ICE : ${settings.ice}  ·  RC : ${settings.rc}  ·  IF : ${settings.if_}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
-    y -= 12;
-    page.drawText(`Date : ${new Date(doc.date).toLocaleDateString('fr-MA')}`, { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
-    y -= 12;
-    if (doc.due_date) {
-      page.drawText(`Échéance : ${new Date(doc.due_date).toLocaleDateString('fr-MA')}`, { x: 50, y, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
-      y -= 12;
-    }
-    y -= 25;
+    y -= bandBh;
 
-    // ── Client ──
-    page.drawText('Client :', { x: 50, y, size: 11, font: boldFont });
-    y -= 16;
-    page.drawText(doc.customer_name || '-', { x: 50, y, size: 12, font });
-    y -= 25;
-
-    // ── Table des lignes ──
-    page.drawText('Désignation', { x: 50, y, size: 11, font: boldFont });
-    page.drawText('Qté', { x: 320, y, size: 11, font: boldFont });
-    page.drawText('P.U.', { x: 380, y, size: 11, font: boldFont });
-    page.drawText('Rem%', { x: 450, y, size: 11, font: boldFont });
-    page.drawText('Total', { x: 500, y, size: 11, font: boldFont });
-    y -= 10;
-    page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 1, color: rgb(0.6, 0.6, 0.6) });
-    y -= 18;
-
-    for (const item of (doc.items ?? [])) {
-      if (y < 100) {
+    const ensureSpace = (needed: number): void => {
+      if (y - needed < BOTTOM) {
         page = pdfDoc.addPage();
-        y = height - 50;
+        y = height - MARGIN - 20;
+        // Redessiner l'en-tête du tableau sur la nouvelle page
+        cx = MARGIN;
+        for (const c of colB) {
+          drawBox(cx, y - bandBh, c.w, bandBh, PEACH_HEADER);
+          drawText(c.label, cx + c.w / 2, y - bandBh / 2 - 3, { size: 7.5, font: boldFont, color: TEXT, align: 'center' as const });
+          cx += c.w;
+        }
+        y -= bandBh;
       }
-      page.drawText(truncate(item.product_name || item.product_ref || '-', 40), { x: 50, y, size: 10, font });
-      page.drawText(String(item.quantity), { x: 320, y, size: 10, font });
-      page.drawText(item.unit_price.toFixed(2), { x: 380, y, size: 10, font });
-      page.drawText(String(item.discount), { x: 450, y, size: 10, font });
-      page.drawText(`${item.total.toFixed(2)} MAD`, { x: 500, y, size: 10, font: boldFont });
-      y -= 16;
-    }
-
-    y -= 10;
-    page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 1, color: rgb(0.6, 0.6, 0.6) });
-    y -= 20;
-    page.drawText(`TOTAL HT : ${doc.total_excl_tax.toFixed(2)} MAD`, { x: width - 250, y, size: 13, font: boldFont, color: rgb(0, 0, 0) });
-    y -= 18;
-    page.drawText(`TOTAL TTC : ${doc.total_incl_tax.toFixed(2)} MAD`, { x: width - 250, y, size: 13, font: boldFont });
-    y -= 40;
-
-    if (doc.notes) {
-      page.drawText(`Notes : ${doc.notes}`, { x: 50, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
-      y -= 15;
-    }
-
-    const statusLabel: Record<string, string> = {
-      PAID: 'PAYÉE', UNPAID: 'IMPAYÉE', PARTIAL: 'PARTIELLEMENT PAYÉE', DRAFT: 'BROUILLON', CANCELLED: 'ANNULÉE'
     };
-    page.drawText(`Statut : ${statusLabel[doc.status] || doc.status}`, { x: 50, y, size: 10, font: boldFont });
-    page.drawText('Merci de votre confiance. Document généré par StockLocal - 100% local.', {
-      x: 50, y: 40, size: 9, font, color: rgb(0.5, 0.5, 0.5)
-    });
+
+    const items = doc.items ?? [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const code = item.product_ref || '—';
+      const designation = item.product_name || item.product_ref || '—';
+      const lines = wrapText(designation || '—', font, 8.5, colB[1].w - 8);
+      const rowH = Math.max(1, lines.length) * 10 + 5;
+
+      ensureSpace(rowH);
+
+      // Fond léger alterné + bordures : chaque cellule dessinée avec sa bordure
+      const cellBg = i % 2 === 0 ? rgb(0.985, 0.985, 0.985) : rgb(0.97, 0.95, 0.93);
+      for (let ci = 0; ci < colB.length; ci++) {
+        drawBox(colBx[ci], y - rowH, colB[ci].w, rowH, cellBg);
+      }
+      const rowTop = y - 8;
+      drawText(truncate(code, 12), colBx[0] + 3, rowTop, { size: 8.5 });
+      for (let li = 0; li < lines.length; li++) {
+        drawText(lines[li], colBx[1] + 3, rowTop - li * 10, { size: 8.5 });
+      }
+      drawText(item.quantity.toFixed(2), colBx[2] + colB[2].w - 3, rowTop, { size: 8.5, align: 'right' });
+      drawText(item.unit_price.toFixed(2), colBx[3] + colB[3].w - 3, rowTop, { size: 8.5, align: 'right' });
+      drawText(`${item.discount}%`, colBx[4] + colB[4].w - 3, rowTop, { size: 8.5, align: 'right' });
+      drawText(`${item.total.toFixed(2)}`, colBx[5] + colB[5].w - 3, rowTop, { size: 8.5, font: boldFont, align: 'right' });
+      y -= rowH;
+    }
+
+    // ─────────────────────── BLOC TOTAUX (MONTANT H. TVA | T.V.A | MONTANT TVA | MONTANT TTC) — aligné à droite ───────────────────────
+    ensureSpace(90);
+    const totalW = 85; // largeur de chaque case
+    const totalH = 18;
+    const totalY = y - totalH;
+    const totalStart = RIGHT - totalW * 4; // bloc aligné à droite
+    const totalLabels = ['MONTANT H. TVA', 'T.V.A', 'MONTANT TVA', 'MONTANT TTC'];
+    const taxRate = doc.total_excl_tax > 0 ? (doc.total_tax / doc.total_excl_tax) * 100 : 0;
+    const totalValues = [
+      doc.total_excl_tax.toFixed(2),
+      `${taxRate.toFixed(2)} %`,
+      doc.total_tax.toFixed(2),
+      doc.total_incl_tax.toFixed(2),
+    ];
+    let tx2 = totalStart;
+    for (let i = 0; i < 4; i++) {
+      drawBox(tx2, totalY, totalW, totalH, PEACH_TOTAL);
+      drawText(totalLabels[i], tx2 + totalW / 2, totalY + totalH / 2 - 3, { size: 7, font: boldFont, color: TEXT, align: 'center' });
+      tx2 += totalW;
+    }
+    tx2 = totalStart;
+    for (let i = 0; i < 4; i++) {
+      drawBox(tx2, totalY - 16, totalW, 16);
+      drawText(totalValues[i], tx2 + totalW - 4, totalY - 11, { size: 8, font: boldFont, color: TEXT, align: 'right' });
+      tx2 += totalW;
+    }
+    y = totalY - 26;
+
+    // ── PAYÉ / RESTE DÛ (factures) — aligné à droite ──
+    if (doc.type === 'INVOICE') {
+      const paid = doc.amount_paid ?? 0;
+      const restDue = Math.max(0, doc.total_incl_tax - paid);
+      const payW = 150, restW = 150, payGap = 5;
+      const restX = RIGHT - restW;
+      const payX = restX - payGap - payW;
+      drawBox(payX, y - 16, payW, 16, PEACH_TOTAL);
+      drawText('PAYÉ', payX + 4, y - 11, { size: 8, font: boldFont, color: TEXT });
+      drawText(`${paid.toFixed(2)}`, payX + payW - 4, y - 11, { size: 8, font: boldFont, color: TEXT, align: 'right' });
+      drawBox(restX, y - 16, restW, 16, PEACH_TOTAL);
+      drawText('RESTE DÛ', restX + 4, y - 11, { size: 8, font: boldFont, color: TEXT });
+      drawText(`${restDue.toFixed(2)}`, restX + restW - 4, y - 11, { size: 8, font: boldFont, color: TEXT, align: 'right' });
+      y -= 26;
+    }
+
+    // ── Paiements détaillés — aligné à droite ──
+    if (payments.length > 0) {
+      ensureSpace(30 + payments.length * 10);
+      drawText('Paiements :', RIGHT, y, { size: 8.5, font: boldFont, color: TEXT, align: 'right' });
+      y -= 11;
+      for (const p of payments) {
+        const label = PAYMENT_LABELS[p.payment_method] || p.payment_method;
+        drawText(`${new Date(p.date).toLocaleDateString('fr-MA')} — ${label}`, RIGHT - 60, y, { size: 8, color: MUTED, align: 'right' });
+        drawText(`${p.amount.toFixed(2)}`, RIGHT, y, { size: 8, color: MUTED, align: 'right' });
+        y -= 10;
+      }
+      y -= 4;
+    }
+
+    // ── Notes / statut ──
+    if (doc.notes) {
+      ensureSpace(36);
+      drawText('Notes :', MARGIN, y, { size: 8.5, font: boldFont, color: TEXT });
+      y -= 11;
+      const noteLines = wrapText(doc.notes, font, 8, RIGHT - MARGIN - 40);
+      for (const nl of noteLines) {
+        drawText(nl, MARGIN, y, { size: 8, color: MUTED });
+        y -= 10;
+      }
+      y -= 4;
+    }
+
+    ensureSpace(14);
+    drawText(`Statut : ${STATUS_LABELS[doc.status] || doc.status}`, RIGHT, y, { size: 8.5, font: boldFont, color: TEXT, align: 'right' });
+
+    // ─────────────────────── PIED DE PAGE (mentions légales) ───────────────────────
+    const footerY = 30;
+    const footerX = MARGIN;
+    page.drawLine({ start: { x: MARGIN, y: footerY + 14 }, end: { x: RIGHT, y: footerY + 14 }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
+
+    const contactLine = [
+      settings.address,
+      [settings.phone, settings.email].filter(Boolean).join(' · '),
+    ].filter(Boolean).join('  —  ');
+    if (contactLine) drawText(contactLine, footerX, footerY, { size: 8, color: MUTED });
+
+    const legalLine = [
+      settings.rc ? `RC : ${settings.rc}` : '',
+      settings.if_ ? `IF : ${settings.if_}` : '',
+      settings.patente ? `Patente : ${settings.patente}` : '',
+      settings.ice ? `ICE : ${settings.ice}` : '',
+    ].filter(Boolean).join('   ');
+    if (legalLine) drawText(legalLine, footerX, footerY - 11, { size: 8, color: MUTED });
+
+    const disclaimer = 'Les marchandises sont considérées comme agréées par l\'acheteur et voyagent à ses risques et périls. En cas de litige, les tribunaux du siège de l\'entreprise seront seuls compétents.';
+    drawText(disclaimer, footerX, footerY - 22, { size: 7, color: MUTED });
+    drawText('Réalisé par :', footerX, footerY - 38, { size: 8, font: boldFont, color: MUTED });
+
+    // Zone signature + QR décoratif
+    drawBox(RIGHT - 70, footerY, 70, 70, rgb(0.97, 0.96, 0.95));
+    drawText('QR', RIGHT - 35, footerY + 32, { size: 16, font: boldFont, color: rgb(0.6, 0.6, 0.6), align: 'center' });
 
     const pdfBytes = await pdfDoc.save();
     const documentsPath = app.getPath('documents');
