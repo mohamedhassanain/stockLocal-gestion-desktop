@@ -95,6 +95,18 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (appState !== 'ready') return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ⚠️ Ne jamais intercepter la frappe quand l'utilisateur saisit du texte
+      // (champ Clé API, chat, recherche, etc.) : sinon les raccourcis globaux
+      // volent la saisie clavier et on ne peut plus taper dans les champs.
+      const target = e.target as HTMLElement | null;
+      const isTyping = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+      if (isTyping) return;
+
       const page = PAGE_SHORTCUTS[e.key];
       if (page) {
         e.preventDefault();
