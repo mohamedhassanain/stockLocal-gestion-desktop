@@ -65,9 +65,14 @@ const PROVIDER_DEFAULT_BASE_URL: Record<AiProvider, string> = {
 // Actions en attente de confirmation utilisateur (chat intégré).
 let pendingActions: Record<string, PendingAction> = {};
 
+/** Nettoie une URL de base : trim + suppression de TOUS les `/` finaux. */
+function cleanBaseUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
+}
+
 function resolveBaseUrl(provider: AiProvider, explicit: string): string {
-  const trimmed = explicit.trim();
-  if (trimmed) return trimmed.replace(/\/$/, '');
+  const trimmed = cleanBaseUrl(explicit);
+  if (trimmed) return trimmed;
   return PROVIDER_DEFAULT_BASE_URL[provider];
 }
 
@@ -160,9 +165,13 @@ function appendToolResults(
 }
 
 // ─── Helpers provider-aware (endpoint + payload + clé déchiffrée) ─────────────
-function getEndpoint(provider: AiProvider, baseUrl: string): string {
+// Exposé (export) pour être testé directement : construit l'endpoint à partir de
+// la baseUrl, en neutralisant un éventuel `/` final (évite les doubles slashes,
+// ex. .../openai//chat/completions ou .../v1//messages).
+export function getEndpoint(provider: AiProvider, baseUrl: string): string {
+  const clean = cleanBaseUrl(baseUrl);
   // Anthropic → /messages ; OpenAI + tout provider compatible OpenAI → /chat/completions.
-  return provider === 'anthropic' ? `${baseUrl}/messages` : `${baseUrl}/chat/completions`;
+  return provider === 'anthropic' ? `${clean}/messages` : `${clean}/chat/completions`;
 }
 
 function getApiKey(): string {
@@ -273,7 +282,7 @@ export const AiAssistantService = {
     GlobalSettingsService.save({
       ai_provider: provider,
       ai_provider_name: input.providerName ?? '',
-      ai_base_url: input.baseUrl ?? '',
+      ai_base_url: cleanBaseUrl(input.baseUrl ?? ''),
       ai_api_key: encryptSecret(apiKey),
       ai_model: input.model ?? '',
       ai_expiry_mode: input.expiryMode ?? 'none',

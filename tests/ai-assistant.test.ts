@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AiAssistantService } from '../src/ai/AiAssistantService';
+import { AiAssistantService, getEndpoint } from '../src/ai/AiAssistantService';
 import { executeMcpTool, MCP_TOOLS, resetRateLimitCounter } from '../src/ai/McpTools';
 import { GlobalSettingsService } from '../src/services/GlobalSettingsService';
 import { AuditService } from '../src/services/AuditService';
@@ -278,5 +278,57 @@ describe('Correctif endpoints par provider + safeStorage + FINANCIAL', () => {
     expect(res.success).toBe(false);
     expect(res.needsConfirmation).toBe(true);
     expect(res.error).toContain('financière');
+  });
+});
+describe('getEndpoint — robustesse URL de base (slash final)', () => {
+  it('construit l’endpoint correct quand baseUrl est sans slash final (inchangé)', () => {
+    expect(getEndpoint('openai', 'https://api.openai.com/v1')).toBe('https://api.openai.com/v1/chat/completions');
+    expect(getEndpoint('anthropic', 'https://api.anthropic.com/v1')).toBe('https://api.anthropic.com/v1/messages');
+  });
+
+  it('supprime un slash final → pas de double slash', () => {
+    // Exactement le cas documenté par Google pour l'API Gemini (URL base avec '/' final).
+    expect(getEndpoint('openai', 'https://generativelanguage.googleapis.com/v1beta/openai/'))
+      .toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect(getEndpoint('anthropic', 'https://api.anthropic.com/v1/'))
+      .toBe('https://api.anthropic.com/v1/messages');
+  });
+
+  it('supprime plusieurs slashs finaux (cas limite) → pas de double slash', () => {
+    expect(getEndpoint('openai', 'https://generativelanguage.googleapis.com/v1beta/openai///'))
+      .toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
+    expect(getEndpoint('anthropic', 'https://api.anthropic.com/v1///'))
+      .toBe('https://api.anthropic.com/v1/messages');
+  });
+
+  it('nettoie aussi baseUrl stockée via saveConfig (trim + slashs finaux)', () => {
+    AiAssistantService.saveConfig({
+      provider: 'openai',
+      baseUrl: '  https://generativelanguage.googleapis.com/v1beta/openai/  ',
+      apiKey: 'clé-test',
+      model: 'gemini',
+    });
+    const cfg = AiAssistantService.getConfig();
+    expect(cfg.baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+  });
+
+  it('testConnection aboutit sur une URL sans double slash malgré un slash final', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const r = await AiAssistantService.testConnection({
+        provider: 'openai',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        apiKey: 'clé',
+        model: 'gemini',
+      });
+      expect(r.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        expect.any(Object),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
