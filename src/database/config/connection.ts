@@ -126,6 +126,13 @@ function resolveSchemaPath(): string | null {
   if (process.env.APP_ROOT) {
     candidates.push(path.join(process.env.APP_ROOT, 'src', 'database', 'schema', 'database.sql'));
   }
+  // Application PACKAGÉE (electron-builder `extraResources`) : le schéma est
+  // copié HORS de l'asar vers `<resources>/schema/database.sql`. Sans ce
+  // candidat, `database.sql` est introuvable en production → la migration DB
+  // échoue au démarrage (« Erreur lors de la migration de la base de données »).
+  if (process.resourcesPath) {
+    candidates.push(path.join(process.resourcesPath, 'schema', 'database.sql'));
+  }
   return candidates.find(p => fs.existsSync(p)) ?? null;
 }
 
