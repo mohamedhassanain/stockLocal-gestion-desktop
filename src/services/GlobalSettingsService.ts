@@ -27,6 +27,9 @@ export interface GlobalSettings {
   ai_expiry_mode: 'none' | 'date';
   ai_expiry_date: string;
   ai_rate_limit_per_min: number;
+  // Après un « Tout supprimer », on désactive le seed de démonstration pour
+  // éviter de ré-injecter les produits/données de démo au redémarrage.
+  demo_seed_suppressed: boolean;
 }
 
 const DEFAULTS: GlobalSettings = {
@@ -51,6 +54,7 @@ const DEFAULTS: GlobalSettings = {
   ai_expiry_mode: 'none',
   ai_expiry_date: '',
   ai_rate_limit_per_min: 30,
+  demo_seed_suppressed: false,
 };
 
 const stmtGetAll = db.prepare('SELECT key, value FROM global_settings');
@@ -107,6 +111,7 @@ export const GlobalSettingsService = {
       ai_expiry_mode: (map['ai_expiry_mode'] ?? DEFAULTS.ai_expiry_mode) as 'none' | 'date',
       ai_expiry_date: map['ai_expiry_date'] ?? DEFAULTS.ai_expiry_date,
       ai_rate_limit_per_min: parseInt(map['ai_rate_limit_per_min'] ?? String(DEFAULTS.ai_rate_limit_per_min), 10),
+      demo_seed_suppressed: (map['demo_seed_suppressed'] ?? 'false') === 'true',
     };
   },
 

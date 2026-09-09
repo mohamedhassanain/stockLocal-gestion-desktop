@@ -6,6 +6,7 @@ import { validatePathWithinDataDir, validatePathWithinSubDir, toHumanError, FILE
 import { DataStorageService } from '../../src/services/DataStorageService';
 import { BackupService } from '../../src/services/BackupService';
 import { AuditService } from '../../src/services/AuditService';
+import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
 import { ErrorLogService } from '../../src/services/ErrorLogService';
 import { MigrationService } from '../../src/services/MigrationService';
 import { checkIntegrity } from '../../src/database/config/connection';
@@ -162,6 +163,11 @@ export function registerSystemHandlers(context: IpcContext): void {
       } finally {
         db.pragma('foreign_keys = ON');
       }
+
+      // Ne plus jamais ré-injecter le jeu de démonstration après une
+      // réinitialisation volontaire : sinon les produits de démo réapparaissent
+      // au redémarrage (seedIfEmpty) et « Tout supprimer » semble ne rien faire.
+      GlobalSettingsService.save({ demo_seed_suppressed: true });
 
       // Supprimer et recréer les dossiers de données (backups, documents, exports, images)
       const dirs = [

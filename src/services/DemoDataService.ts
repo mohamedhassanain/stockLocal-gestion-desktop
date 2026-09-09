@@ -1,6 +1,7 @@
 import { db, runInTransaction } from '../database/config/connection';
 import { CategoryRepository } from '../repositories/CategoryRepository';
 import { StockLedgerService } from './StockLedgerService';
+import { GlobalSettingsService } from './GlobalSettingsService';
 import { randomUUID } from 'crypto';
 
 /**
@@ -14,6 +15,11 @@ export class DemoDataService {
   }
 
   static seedIfEmpty(): { seeded: boolean; message: string } {
+    // Si l'utilisateur a fait « Tout supprimer », on ne ré-injecte JAMAIS le jeu
+    // de démonstration (sinon les produits réapparaissent au redémarrage).
+    if (GlobalSettingsService.getAll().demo_seed_suppressed) {
+      return { seeded: false, message: 'Le jeu de démonstration est désactivé après la réinitialisation.' };
+    }
     if (this.hasData()) {
       return { seeded: false, message: 'La base contient déjà des données, aucun seed effectué.' };
     }
