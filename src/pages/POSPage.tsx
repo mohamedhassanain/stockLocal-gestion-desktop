@@ -192,17 +192,15 @@ export const POSPage: React.FC = () => {
 
       if (!result.success) throw new Error(result.error);
 
-      if (paymentMethod === 'CASH' && cashGiven >= subtotal) {
+      // Encaissement : on enregistre le montant réellement reçu.
+      //  - Tous les modes (Espèces / Chèque / Virement) : montant saisi,
+      //    plafonné au total → PAID si suffisant, PARTIAL sinon.
+      const received = Math.min(Math.max(0, cashGiven), subtotal);
+
+      if (received > 0) {
         const payResult = await window.api.documents.addPayment({
           document_id: result.data.id,
-          amount: subtotal,
-          payment_method: paymentMethod,
-        });
-        if (!payResult.success) throw new Error(payResult.error);
-      } else if (paymentMethod !== 'CASH') {
-        const payResult = await window.api.documents.addPayment({
-          document_id: result.data.id,
-          amount: subtotal,
+          amount: received,
           payment_method: paymentMethod,
         });
         if (!payResult.success) throw new Error(payResult.error);
@@ -221,8 +219,6 @@ export const POSPage: React.FC = () => {
       toast.error(`Erreur : ${message}`);
     }
   };
-
-  const paymentDisabled = paymentMethod === 'CASH' && cashGiven < subtotal;
 
   return (
     <div className="page-shell">
@@ -389,20 +385,18 @@ export const POSPage: React.FC = () => {
             ))}
           </div>
 
-          {paymentMethod === 'CASH' && (
-            <Input
-              label="Montant reçu"
-              type="number"
-              min={0}
-              step={0.01}
-              value={cashGiven || ''}
-              onChange={e => setCashGiven(Number(e.target.value))}
-              placeholder={`Minimum : ${subtotal.toFixed(2)} MAD`}
-              inputSize="lg"
-              className="money"
-              autoFocus
-            />
-          )}
+          <Input
+            label="Montant reçu"
+            type="number"
+            min={0}
+            step={0.01}
+            value={cashGiven || ''}
+            onChange={e => setCashGiven(Number(e.target.value))}
+            placeholder={`Minimum : ${subtotal.toFixed(2)} MAD`}
+            inputSize="lg"
+            className="money"
+            autoFocus
+          />
           {paymentMethod === 'CASH' && cashGiven >= subtotal && (
             <div className="surface-success text-center" style={{ padding: 'var(--space-3)' }}>
               <span className="text-sm text-success font-semibold">
@@ -413,7 +407,7 @@ export const POSPage: React.FC = () => {
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => { setShowPayment(false); setCashGiven(0); }}>Annuler</Button>
-          <Button variant="success" size="lg" onClick={handleValidateSale} disabled={paymentDisabled}>
+          <Button variant="success" size="lg" onClick={handleValidateSale} disabled={!canValidate}>
             ✓ Valider la vente
           </Button>
         </ModalFooter>
