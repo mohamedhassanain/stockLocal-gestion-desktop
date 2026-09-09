@@ -4,6 +4,7 @@ import { toast } from '../stores/useToastStore';
 import type { Product } from '../repositories/ProductRepository';
 import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader, PageHeader } from '../components/ui';
 import { stockLevelClass } from '../components/ui/statusMaps';
+import { toLocalDateString } from '../utils/date';
 
 interface CartItem {
   product_id: string;
@@ -179,7 +180,7 @@ export const POSPage: React.FC = () => {
       const result = await window.api.documents.create({
         type: 'INVOICE',
         entity_id: selectedClientId || '',
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateString(),
         notes: `Vente caisse — ${paymentMethod}`,
         items: cart.map(c => ({
           product_id: c.product_id,

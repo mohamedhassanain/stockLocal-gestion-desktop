@@ -7,6 +7,7 @@ import { toast } from '../stores/useToastStore';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import type { Document, DocumentType } from '../repositories/DocumentRepository';
 import type { Product } from '../repositories/ProductRepository';
+import { toLocalDateString } from '../utils/date';
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
 
@@ -215,7 +216,7 @@ const NewDocumentModal: React.FC<{
   const { clients, loadClients } = useClientStore();
   const { products, loadProducts } = useProductStore();
   const [entityId, setEntityId] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(toLocalDateString());
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; discount: number; _name?: string }>>([]);
@@ -399,7 +400,7 @@ const EditDocumentModal: React.FC<{
   const { clients, loadClients } = useClientStore();
   const { products, loadProducts } = useProductStore();
   const [entityId, setEntityId] = useState(doc.entity_id || '');
-  const [date, setDate] = useState((doc.date || new Date().toISOString()).split('T')[0]);
+  const [date, setDate] = useState(doc.date ? doc.date.split('T')[0] : toLocalDateString());
   const [dueDate, setDueDate] = useState(doc.due_date ? doc.due_date.split('T')[0] : '');
   const [notes, setNotes] = useState(doc.notes ?? '');
   const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; discount: number; _name?: string }>>(
