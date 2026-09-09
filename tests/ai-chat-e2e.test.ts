@@ -236,3 +236,64 @@ describe('A.1 — Chat intégré (Mode A) bout-en-bout via fetch simulé', () =>
     }
   });
 });
+
+describe('A.2 — Réponses non-JSON du provider (protection) → message humain', () => {
+  it('9. réponse non-JSON (HTML renvoyé en 200) → message humain clair, pas un SyntaxError brut', async () => {
+    AiAssistantService.saveConfig({ provider: 'openai', apiKey: 'sk-openai', model: 'gpt-4o' });
+    // Un serveur (URL de base / modèle incorrect) peut renvoyer une page HTML avec un 200.
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<!doctype html><html><body>Not Found</body></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(AiAssistantService.chat([{ role: 'user', content: 'Bonjour' }])).rejects.toThrow(
+        /Le serveur a répondu de façon inattendue \(pas au format attendu\)\. Vérifiez l'URL de base et le nom du modèle dans Paramètres avancés\./,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('10. réponse HTML en 404 du provider → message humain avec indice de statut', async () => {
+    AiAssistantService.saveConfig({ provider: 'openai', apiKey: 'sk-openai', model: 'gpt-4o' });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<!doctype html><html><body>404 Not Found</body></html>', {
+        status: 404,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(AiAssistantService.chat([{ role: 'user', content: 'Bonjour' }])).rejects.toThrow(
+        /réponse 404 du serveur/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('11. testConnection : réponse HTML en 200 → échec (pas de faux « Connexion réussie »)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('<!doctype html><html><body>Maintenance</body></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const r = await AiAssistantService.testConnection({
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKey: 'clé',
+        model: 'gpt-4o',
+      });
+      expect(r.success).toBe(false);
+      expect(r.message).toMatch(/Le serveur a répondu de façon inattendue/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

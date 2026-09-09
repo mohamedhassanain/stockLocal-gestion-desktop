@@ -233,6 +233,31 @@ function toUserFacingError(message: string): string {
   return `Ce modèle n'est pas compatible avec la configuration actuelle. Essayez un autre modèle (ex. gpt-4o) ou vérifiez le nom du modèle dans les Paramètres avancés. (Détail technique : ${message})`;
 }
 
+/** Message humain quand le serveur renvoie une réponse non-JSON (page HTML, etc.). */
+function toUnexpectedResponseMessage(status: number): string {
+  const statusHint = status >= 400 ? ` (réponse ${status} du serveur)` : '';
+  return `Le serveur a répondu de façon inattendue (pas au format attendu)${statusHint}. Vérifiez l'URL de base et le nom du modèle dans Paramètres avancés.`;
+}
+
+/** Vérifie si un texte ressemble à du JSON (commence par `{` ou `[`). */
+function looksLikeJson(text: string): boolean {
+  const t = text.trim();
+  return t.startsWith('{') || t.startsWith('[');
+}
+
+/**
+ * Parse la réponse provider en JSON. Si la réponse n'est pas du JSON (page HTML
+ * d'erreur, contenu inattendu, 404 renvoyé en 200), lève une erreur applicative
+ * claire au lieu de laisser remonter un SyntaxError technique brut.
+ */
+async function parseProviderJson(res: Response): Promise<Record<string, unknown>> {
+  try {
+    return await res.json() as Record<string, unknown>;
+  } catch {
+    throw new Error(toUnexpectedResponseMessage(res.status));
+  }
+}
+
 async function fetchWithTokenFallback(
   endpoint: string,
   headers: Record<string, string>,
@@ -240,7 +265,7 @@ async function fetchWithTokenFallback(
   provider: AiProvider,
 ): Promise<Record<string, unknown>> {
   const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
-  if (res.ok) return await res.json() as Record<string, unknown>;
+  if (res.ok) return await parseProviderJson(res);
   const text = await res.text().catch(() => '');
   if (provider !== 'anthropic' && isTokenParamError(text)) {
     // Bascule vers l'autre paramètre (l'undefined est ignoré par JSON.stringify).
@@ -248,9 +273,13 @@ async function fetchWithTokenFallback(
       ? { ...body, max_completion_tokens: body.max_tokens, max_tokens: undefined }
       : { ...body, max_tokens: body.max_completion_tokens, max_completion_tokens: undefined };
     const res2 = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(fallbackBody) });
-    if (res2.ok) return await res2.json() as Record<string, unknown>;
+    if (res2.ok) return await parseProviderJson(res2);
     const text2 = await res2.text().catch(() => '');
     throw new Error(toUserFacingError(`Erreur LLM (${res2.status}) : ${text2.slice(0, 200)}`));
+  }
+  // Réponse non-JSON (page HTML d'erreur, etc.) → message humain avec indice de statut.
+  if (!looksLikeJson(text)) {
+    throw new Error(toUnexpectedResponseMessage(res.status));
   }
   throw new Error(toUserFacingError(`Erreur LLM (${res.status}) : ${text.slice(0, 200)}`));
 }
@@ -320,7 +349,15 @@ export const AiAssistantService = {
           messages: [{ role: 'user', content: 'ping' }],
         }),
       });
-      if (res.ok) return { success: true, message: 'Connexion réussie.' };
+      if (res.ok) {
+        // Une page HTML renvoyée en 200 n'est PAS une connexion valide : on vérifie le
+        // Content-Type (sans consommer le body, pour ne pas casser les doublons d'appels).
+        const contentType = res.headers.get('content-type') ?? '';
+        if (contentType && !/json/i.test(contentType)) {
+          return { success: false, message: toUnexpectedResponseMessage(res.status) };
+        }
+        return { success: true, message: 'Connexion réussie.' };
+      }
       const text = await res.text().catch(() => '');
       return { success: false, message: `Échec (${res.status}) : ${text.slice(0, 200)}` };
     } catch (error: unknown) {
