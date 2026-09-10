@@ -1,5 +1,6 @@
 import { app, BrowserWindow, shell, session } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { setIpcContext } from './ipc/ipcContext';
 import { registerReferenceDataHandlers } from './ipc/referenceData.ipc';
@@ -54,6 +55,22 @@ function installContentSecurityPolicy(): void {
 }
 
 /**
+ * Résout le logo/icône de l'application pour la fenêtre.
+ *
+ * `public/logo.png` est copié par Vite dans `dist/` au build : VITE_PUBLIC
+ * pointe donc vers `public/` en dev et vers `dist/` en production, ce qui
+ * rend ce candidat valide dans les deux cas. On retombe sur `build/icon.png`
+ * (dossier de ressources electron-builder, présent en dev) si besoin.
+ */
+function resolveAppIcon(): string | undefined {
+  const candidates = [
+    path.join(process.env.VITE_PUBLIC ?? '', 'logo.png'),
+    path.join(process.env.APP_ROOT ?? '', 'build', 'icon.png'),
+  ];
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
+}
+
+/**
  * Sécurité Chromium/Electron :
  *  - sandbox: true  → le renderer n'a AUCUN accès Node (même limité)
  *  - contextIsolation: true → l'API exposée via preload est isolée du contexte page
@@ -64,7 +81,7 @@ function createWindow(): void {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
-    icon: path.join(process.env.VITE_PUBLIC ?? '', 'electron-vite.svg'),
+    icon: resolveAppIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
