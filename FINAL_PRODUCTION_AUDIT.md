@@ -171,6 +171,11 @@ recherche paginée ; 50 000 mouvements → historique paginé
   **aucun EBUSY** (vérifié pendant l'audit).
 - **E2E Electron réel** (`npm run e2e`) : fenêtre réelle pilotée via CDP, workflow
   produit+stock+recherche+audit — **PASS**.
+- **UI réelle inspectée** (capture d'écran via CDP — Phase 28) : layout correct
+  (sidebar groupée + raccourcis F1–F10, en-tête + bouton primaire, onglets
+  Devis/BL/Factures/Avoirs, états vides explicites, pied « Base de données active
+  · 100 % local ») ; aucun débordement ni texte illisible. Point mineur : un
+  libellé de menu est tronqué (« Commandes fourni… »).
 - Installeur NSIS produit et horodaté ; schéma embarqué via `extraResources`.
 - Lancement du binaire packagé **vérifié réellement** sur profil vierge
   (démarrage, création DB, migration, backup automatique, 4 processus Electron).
