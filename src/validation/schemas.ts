@@ -271,6 +271,13 @@ export const GlobalSettingsSchema = z.object({
   show_inactive_product_alerts: z.boolean().optional(),
   product_units: z.array(z.string().max(20)).optional(),
   stock_exit_types: z.array(z.string().min(1).max(50)).optional(),
+  // Types de mouvement de caisse définis par l'utilisateur (Caisse → Nouveau mouvement).
+  cash_movement_types: z.array(z.object({
+    label: z.string().min(1, 'Le libellé du type est obligatoire.').max(50),
+    direction: z.enum(['IN', 'OUT']),
+  })).max(100).optional(),
+  // Catégories de dépenses définies par l'utilisateur (Dépenses → Nouvelle dépense).
+  expense_categories: z.array(z.string().min(1, 'La catégorie est obligatoire.').max(50)).max(100).optional(),
   // Multi-dépôts : dépôt actif (persisté dans global_settings).
   active_warehouse_id: z.string().max(64).optional(),
 });

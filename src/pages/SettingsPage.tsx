@@ -3,8 +3,19 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { ProductImportModal } from '../components/products/ProductImportModal';
 import type { Product } from '../repositories/ProductRepository';
 import { Button, Card, Input, Select, PageHeader, DeleteButton, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
+import {
+  DEFAULT_CASH_MOVEMENT_TYPES,
+  CASH_MOVEMENT_TYPE_LABEL_MAX,
+  normalizeCashMovementTypes,
+  type CashMovementTypeDef,
+} from '../domain/cash/cashMovementTypes';
+import {
+  DEFAULT_EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_MAX_LENGTH,
+  normalizeExpenseCategories,
+} from '../domain/expenses/expenseCategories';
 // ─── Onglets ────────────────────────────────────────────────────────────────
-type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'alerts' | 'updates';
+type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'alerts' | 'updates';
 
 interface Category {
   id: string;
@@ -58,6 +69,8 @@ interface GlobalSettings {
   show_inactive_product_alerts: boolean;
   product_units: string[];
   stock_exit_types: string[];
+  cash_movement_types: CashMovementTypeDef[];
+  expense_categories: string[];
 }
 
 const SectionTitle: React.FC<{ icon: string; title: string }> = ({ icon, title }) => (
@@ -112,9 +125,14 @@ export const SettingsPage: React.FC = () => {
     show_inactive_product_alerts: true,
     product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
     stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
+    cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
+    expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
   });
   const [newUnit, setNewUnit] = useState('');
   const [newExitType, setNewExitType] = useState('');
+  const [newCashTypeLabel, setNewCashTypeLabel] = useState('');
+  const [newCashTypeDirection, setNewCashTypeDirection] = useState<'IN' | 'OUT'>('IN');
+  const [newExpenseCategory, setNewExpenseCategory] = useState('');
   const [productsList, setProductsList] = useState<Array<{ id: string; designation: string; reference: string; min_stock: number }>>([]);
   const [minStockSearch, setMinStockSearch] = useState('');
 
@@ -655,6 +673,90 @@ export const SettingsPage: React.FC = () => {
     notify(`🗑️ Type de sortie « ${type} » supprimé`);
   };
 
+  // ─── Types de mouvement de caisse (Caisse → Nouveau mouvement → Type) ──────
+  const persistCashMovementTypes = async (types: CashMovementTypeDef[]) => {
+    const clean = normalizeCashMovementTypes(types);
+    setGlobalSettings(prev => ({ ...prev, cash_movement_types: clean }));
+    try {
+      await window.api.globalSettings.save({ cash_movement_types: clean });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
+    }
+  };
+
+  const addCashMovementType = async () => {
+    const label = newCashTypeLabel.trim().slice(0, CASH_MOVEMENT_TYPE_LABEL_MAX);
+    if (!label) return;
+    const exists = globalSettings.cash_movement_types.some(
+      t => t.label.toLocaleLowerCase('fr') === label.toLocaleLowerCase('fr'),
+    );
+    if (exists) {
+      notify('⚠️ Ce type existe déjà');
+      return;
+    }
+    await persistCashMovementTypes([
+      ...globalSettings.cash_movement_types,
+      { label, direction: newCashTypeDirection },
+    ]);
+    setNewCashTypeLabel('');
+    notify('✅ Type de mouvement ajouté');
+  };
+
+  const removeCashMovementType = async (label: string) => {
+    // Au moins un type doit rester défini : sinon le menu « Type » de la caisse serait vide.
+    if (globalSettings.cash_movement_types.length <= 1) {
+      notify('⚠️ Au moins un type de mouvement est requis');
+      return;
+    }
+    await persistCashMovementTypes(globalSettings.cash_movement_types.filter(t => t.label !== label));
+    notify(`🗑️ Type « ${label} » supprimé`);
+  };
+
+  const toggleCashMovementTypeDirection = async (label: string) => {
+    await persistCashMovementTypes(globalSettings.cash_movement_types.map(t =>
+      t.label === label ? { ...t, direction: t.direction === 'IN' ? 'OUT' : 'IN' } : t,
+    ));
+    notify('✅ Sens mis à jour');
+  };
+
+  // ─── Catégories de dépenses (Dépenses → Nouvelle dépense → Catégorie) ──────
+  const persistExpenseCategories = async (categories: string[]) => {
+    const clean = normalizeExpenseCategories(categories);
+    setGlobalSettings(prev => ({ ...prev, expense_categories: clean }));
+    try {
+      await window.api.globalSettings.save({ expense_categories: clean });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
+    }
+  };
+
+  const addExpenseCategory = async () => {
+    const label = newExpenseCategory.trim().slice(0, EXPENSE_CATEGORY_MAX_LENGTH);
+    if (!label) return;
+    const exists = globalSettings.expense_categories.some(
+      c => c.toLocaleLowerCase('fr') === label.toLocaleLowerCase('fr'),
+    );
+    if (exists) {
+      notify('⚠️ Cette catégorie existe déjà');
+      return;
+    }
+    await persistExpenseCategories([...globalSettings.expense_categories, label]);
+    setNewExpenseCategory('');
+    notify('✅ Catégorie de dépense ajoutée');
+  };
+
+  const removeExpenseCategory = async (label: string) => {
+    // Au moins une catégorie doit rester définie (sinon le menu de dépense serait vide).
+    if (globalSettings.expense_categories.length <= 1) {
+      notify('⚠️ Au moins une catégorie de dépense est requise');
+      return;
+    }
+    await persistExpenseCategories(globalSettings.expense_categories.filter(c => c !== label));
+    notify(`🗑️ Catégorie « ${label} » supprimée`);
+  };
+
   const [updateResult, setUpdateResult] = useState<string | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 
@@ -691,6 +793,8 @@ export const SettingsPage: React.FC = () => {
     { id: 'categories', label: 'Catégories', icon: '🏷️' },
     { id: 'discounts', label: 'Remises volume', icon: '📊' },
     { id: 'units', label: 'Unités', icon: '📏' },
+    { id: 'cash', label: 'Caisse', icon: '💵' },
+    { id: 'expenses', label: 'Dépenses', icon: '🧾' },
     { id: 'alerts', label: 'Alertes', icon: '🔔' },
     { id: 'data', label: 'Données', icon: '💾' },
     { id: 'backups', label: 'Sauvegardes', icon: '🔐' },
@@ -1009,6 +1113,107 @@ export const SettingsPage: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+            )}
+          </Card>
+        )}
+
+        {tab === 'cash' && (
+          <Card padding style={{ maxWidth: 720 }}>
+            <SectionTitle icon="💵" title="Types de mouvement de caisse" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Définissez les types proposés dans « Caisse → Nouveau mouvement → Type »
+              (ex : Vente espèces, Encaissement, Dépense, Don…). Chaque type indique son sens :
+              entrée (ajoute au tiroir) ou sortie (retire du tiroir).
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 240px auto', gap: 10, marginBottom: 16, alignItems: 'end' }}>
+              <Input
+                label="Nom du type"
+                placeholder="Ex : Vente espèces"
+                value={newCashTypeLabel}
+                onChange={e => setNewCashTypeLabel(e.target.value)}
+              />
+              <Select
+                label="Sens"
+                value={newCashTypeDirection}
+                onChange={e => setNewCashTypeDirection(e.target.value as 'IN' | 'OUT')}
+              >
+                <option value="IN">Entrée (ajoute au tiroir)</option>
+                <option value="OUT">Sortie (retire du tiroir)</option>
+              </Select>
+              <Button onClick={addCashMovementType}>+ Ajouter</Button>
+            </div>
+            {globalSettings.cash_movement_types.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>Aucun type défini.</div>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th style={{ width: 140 }}>Sens</th>
+                    <th style={{ width: 120 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {globalSettings.cash_movement_types.map(t => (
+                    <tr key={t.label}>
+                      <td className="font-semibold">{t.label}</td>
+                      <td>
+                        <span className={`badge ${t.direction === 'IN' ? 'badge-success' : 'badge-danger'}`}>
+                          {t.direction === 'IN' ? 'Entrée' : 'Sortie'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="flex gap-2 items-center">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            title="Inverser le sens (entrée / sortie)"
+                            onClick={() => toggleCashMovementTypeDirection(t.label)}
+                          >
+                            ⇅
+                          </Button>
+                          <DeleteButton onClick={() => removeCashMovementType(t.label)} title={`Supprimer ${t.label}`} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="text-xs text-muted" style={{ marginTop: 12 }}>
+              Ces types apparaissent immédiatement dans la Caisse (menu « Type » du nouveau mouvement).
+            </p>
+          </Card>
+        )}
+
+        {tab === 'expenses' && (
+          <Card padding style={{ maxWidth: 720 }}>
+            <SectionTitle icon="🧾" title="Catégories de dépenses" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Définissez les catégories proposées dans « Dépenses → Nouvelle dépense → Catégorie »
+              (ex : Loyer, Transport, Impôts…). Elles apparaissent immédiatement dans la page Dépenses.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <Input
+                placeholder="Nouvelle catégorie (ex : Loyer)"
+                value={newExpenseCategory}
+                onChange={e => setNewExpenseCategory(e.target.value)}
+                className="flex-1"
+                inputSize="sm"
+              />
+              <Button onClick={addExpenseCategory}>+ Ajouter</Button>
+            </div>
+            {globalSettings.expense_categories.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>Aucune catégorie définie.</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {globalSettings.expense_categories.map(c => (
+                  <span key={c} className="badge badge-warning">
+                    {c}
+                    <DeleteButton size="xs" onClick={() => removeExpenseCategory(c)} title={`Supprimer ${c}`} />
+                  </span>
+                ))}
+              </div>
             )}
           </Card>
         )}

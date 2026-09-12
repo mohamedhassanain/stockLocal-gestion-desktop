@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Card, Input, Select, Modal, ModalBody, ModalFooter, ModalHeader } from '../ui';
 import { toast } from '../../stores/useToastStore';
-import type { CashSession, CashSessionDetail, CashMovementType, CashMethod } from '../../repositories/CashSessionRepository';
+import type { CashSession, CashSessionDetail, CashMethod } from '../../repositories/CashSessionRepository';
+import {
+  DEFAULT_CASH_MOVEMENT_TYPES,
+  normalizeCashMovementTypes,
+  cashMovementTypeLabel,
+  cashMovementDirection,
+  type CashMovementTypeDef,
+} from '../../domain/cash/cashMovementTypes';
 
 /**
  * §Phase 10 — Caisse : ouverture (fond initial), mouvements, fermeture
@@ -11,29 +18,10 @@ import type { CashSession, CashSessionDetail, CashMovementType, CashMethod } fro
  * IPC : ce composant n'effectue aucun calcul de solde lui-même.
  */
 
-const MOVEMENT_LABELS: Record<CashMovementType, string> = {
-  SALE_CASH: 'Vente espèces',
-  PAYMENT_IN: 'Encaissement',
-  EXPENSE: 'Dépense',
-  WITHDRAWAL: 'Retrait',
-  MANUAL_IN: 'Entrée manuelle',
-  MANUAL_OUT: 'Sortie manuelle',
-};
-
 const METHOD_LABELS: Record<CashMethod, string> = {
   CASH: 'Espèces',
   CHECK: 'Chèque',
   TRANSFER: 'Virement',
-};
-
-/** Sens imposé par le type de mouvement : évite toute saisie incohérente. */
-const MOVEMENT_DIRECTION: Record<CashMovementType, 'IN' | 'OUT'> = {
-  SALE_CASH: 'IN',
-  PAYMENT_IN: 'IN',
-  EXPENSE: 'OUT',
-  WITHDRAWAL: 'OUT',
-  MANUAL_IN: 'IN',
-  MANUAL_OUT: 'OUT',
 };
 
 function money(value: number): string {
@@ -49,8 +37,9 @@ export const CashSessionPanel: React.FC = () => {
   const [openingFloat, setOpeningFloat] = useState(0);
   const [openNotes, setOpenNotes] = useState('');
 
-  // Formulaire de mouvement
-  const [movementType, setMovementType] = useState<CashMovementType>('MANUAL_IN');
+  // Formulaire de mouvement — les types proviennent des Paramètres (définis par l'utilisateur).
+  const [movementTypes, setMovementTypes] = useState<CashMovementTypeDef[]>(() => [...DEFAULT_CASH_MOVEMENT_TYPES]);
+  const [movementType, setMovementType] = useState<string>('Entrée manuelle');
   const [movementAmount, setMovementAmount] = useState(0);
   const [movementMethod, setMovementMethod] = useState<CashMethod>('CASH');
   const [movementDesc, setMovementDesc] = useState('');
@@ -87,6 +76,25 @@ export const CashSessionPanel: React.FC = () => {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Types de mouvement définis par l'utilisateur dans Paramètres → menu « Type ».
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await window.api.globalSettings.get() as { cash_movement_types?: unknown } | null;
+        const loaded = normalizeCashMovementTypes(settings?.cash_movement_types);
+        const list = loaded.length > 0 ? loaded : [...DEFAULT_CASH_MOVEMENT_TYPES];
+        if (cancelled) return;
+        setMovementTypes(list);
+        setMovementType(prev => (list.some(t => t.label === prev) ? prev : list[0].label));
+      } catch {
+        // Réglages indisponibles : on conserve les types par défaut.
+        if (!cancelled) setMovementTypes([...DEFAULT_CASH_MOVEMENT_TYPES]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const handleOpen = async () => {
     try {
       const result = await window.api.cash.open(openingFloat, openNotes) as { success: boolean; error?: string };
@@ -102,7 +110,7 @@ export const CashSessionPanel: React.FC = () => {
 
   const handleAddMovement = async () => {
     try {
-      const direction = MOVEMENT_DIRECTION[movementType];
+      const direction = cashMovementDirection(movementTypes, movementType);
       const result = await window.api.cash.addMovement({
         movementType,
         direction,
@@ -216,10 +224,10 @@ export const CashSessionPanel: React.FC = () => {
           <Select
             label="Type"
             value={movementType}
-            onChange={e => setMovementType(e.target.value as CashMovementType)}
+            onChange={e => setMovementType(e.target.value)}
           >
-            {(Object.keys(MOVEMENT_LABELS) as CashMovementType[]).map(t => (
-              <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>
+            {movementTypes.map(t => (
+              <option key={t.label} value={t.label}>{t.label}</option>
             ))}
           </Select>
           <Input
@@ -248,7 +256,7 @@ export const CashSessionPanel: React.FC = () => {
           />
         </div>
         <div className="text-xs text-muted" style={{ marginTop: 6 }}>
-          Sens : <strong>{MOVEMENT_DIRECTION[movementType] === 'IN' ? 'Entrée' : 'Sortie'}</strong>
+          Sens : <strong>{cashMovementDirection(movementTypes, movementType) === 'IN' ? 'Entrée' : 'Sortie'}</strong>
           {movementMethod !== 'CASH' && ' · les mouvements chèque/virement n\'affectent pas le tiroir'}
         </div>
         <Button variant="primary" onClick={handleAddMovement} className="mt-3" disabled={!(movementAmount > 0)}>
@@ -279,7 +287,7 @@ export const CashSessionPanel: React.FC = () => {
                 {detail?.movements.map(m => (
                   <tr key={m.id}>
                     <td className="text-sm">{String(m.date).replace('T', ' ').slice(0, 16)}</td>
-                    <td className="text-sm font-semibold">{MOVEMENT_LABELS[m.movement_type] ?? m.movement_type}</td>
+                    <td className="text-sm font-semibold">{cashMovementTypeLabel(m.movement_type)}</td>
                     <td className="text-sm text-muted">{m.description ?? '—'}</td>
                     <td className="text-sm">{METHOD_LABELS[m.payment_method] ?? m.payment_method}</td>
                     <td className="money text-right" style={{ color: m.direction === 'IN' ? 'var(--success)' : 'var(--danger)' }}>

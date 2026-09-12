@@ -1,4 +1,13 @@
 import { db } from '../database/config/connection';
+import {
+  DEFAULT_CASH_MOVEMENT_TYPES,
+  parseCashMovementTypes,
+  type CashMovementTypeDef,
+} from '../domain/cash/cashMovementTypes';
+import {
+  DEFAULT_EXPENSE_CATEGORIES,
+  parseExpenseCategories,
+} from '../domain/expenses/expenseCategories';
 
 export interface GlobalSettings {
   low_stock_threshold_multiplier: number;
@@ -18,6 +27,10 @@ export interface GlobalSettings {
   product_units: string[];
   // Types de sortie de stock définis par l'utilisateur (Vente, Casse, Perte, Don…)
   stock_exit_types: string[];
+  // Types de mouvement de caisse définis par l'utilisateur (libellé + sens entrée/sortie).
+  cash_movement_types: CashMovementTypeDef[];
+  // Catégories de dépenses définies par l'utilisateur.
+  expense_categories: string[];
   // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
   ai_provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
   ai_provider_name: string;
@@ -48,6 +61,8 @@ const DEFAULTS: GlobalSettings = {
   show_inactive_product_alerts: true,
   product_units: ['PIÈCE', 'KG', 'LITRE', 'CARTON', 'PALETTE'],
   stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
+  cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
+  expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
   ai_provider: 'anthropic',
   ai_provider_name: '',
   ai_base_url: '',
@@ -106,6 +121,8 @@ export const GlobalSettingsService = {
           return legacy.length > 0 ? legacy : DEFAULTS.stock_exit_types;
         }
       })(),
+      cash_movement_types: parseCashMovementTypes(map['cash_movement_types']),
+      expense_categories: parseExpenseCategories(map['expense_categories']),
       ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'openai-compatible' | 'custom',
       ai_provider_name: map['ai_provider_name'] ?? DEFAULTS.ai_provider_name,
       ai_base_url: map['ai_base_url'] ?? DEFAULTS.ai_base_url,

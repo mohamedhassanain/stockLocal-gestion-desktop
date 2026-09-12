@@ -20,13 +20,13 @@ import { roundMoney } from '../utils/money';
  *   - Aucun mouvement n'est accepté sur une session fermée.
  */
 
-export type CashMovementType =
-  | 'SALE_CASH'
-  | 'PAYMENT_IN'
-  | 'EXPENSE'
-  | 'WITHDRAWAL'
-  | 'MANUAL_IN'
-  | 'MANUAL_OUT';
+/**
+ * Type de mouvement de caisse : LIBELLÉ libre défini par l'utilisateur dans
+ * Paramètres (ex : « Vente espèces », « Don »…). Les anciens codes internes
+ * (SALE_CASH, PAYMENT_IN, EXPENSE, WITHDRAWAL, MANUAL_IN, MANUAL_OUT) restent
+ * valides et lisibles afin de préserver l'historique et les tests existants.
+ */
+export type CashMovementType = string;
 
 export type CashDirection = 'IN' | 'OUT';
 export type CashMethod = 'CASH' | 'CHECK' | 'TRANSFER';

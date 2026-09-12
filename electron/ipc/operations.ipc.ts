@@ -7,7 +7,7 @@ import { DashboardRepository } from '../../src/repositories/DashboardRepository'
 import { PurchaseOrderRepository } from '../../src/repositories/PurchaseOrderRepository';
 import { InventorySessionRepository } from '../../src/repositories/InventorySessionRepository';
 import { GlobalSearchRepository } from '../../src/repositories/GlobalSearchRepository';
-import { CashSessionRepository, type CashMovementType, type CashDirection, type CashMethod } from '../../src/repositories/CashSessionRepository';
+import { CashSessionRepository, type CashDirection, type CashMethod } from '../../src/repositories/CashSessionRepository';
 import { ExpenseRepository } from '../../src/repositories/ExpenseRepository';
 import { ProfitService } from '../../src/services/ProfitService';
 import { StockAlertService } from '../../src/services/StockAlertService';
@@ -265,15 +265,18 @@ export function registerOperationsHandlers(): void {
   });
 
   // ─── Caisse : sessions (§Phase 10) ─────────────────────────────────────────
-  const CASH_MOVEMENT_TYPES: readonly CashMovementType[] = [
-    'SALE_CASH', 'PAYMENT_IN', 'EXPENSE', 'WITHDRAWAL', 'MANUAL_IN', 'MANUAL_OUT',
-  ];
   const CASH_METHODS: readonly CashMethod[] = ['CASH', 'CHECK', 'TRANSFER'];
 
-  const safeMovementType = (value: unknown): CashMovementType =>
-    typeof value === 'string' && (CASH_MOVEMENT_TYPES as readonly string[]).includes(value)
-      ? (value as CashMovementType)
-      : 'MANUAL_IN';
+  // Le type de mouvement est LIBRE : l'utilisateur définit ses propres types
+  // dans Paramètres (ex : « Vente espèces », « Don »…). On borne uniquement la
+  // longueur et on retombe sur un code hérité valide si la valeur est vide.
+  const safeMovementType = (value: unknown): string => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim().slice(0, 50);
+      if (trimmed) return trimmed;
+    }
+    return 'MANUAL_IN';
+  };
 
   const safeDirection = (value: unknown): CashDirection => (value === 'OUT' ? 'OUT' : 'IN');
 

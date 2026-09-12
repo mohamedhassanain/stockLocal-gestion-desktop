@@ -3,6 +3,11 @@ import { db, runInTransaction } from '../database/config/connection';
 import { roundMoney } from '../utils/money';
 import { toLocalDateString } from '../utils/date';
 import { CashSessionRepository, type CashMethod } from './CashSessionRepository';
+import { GlobalSettingsService } from '../services/GlobalSettingsService';
+import {
+  DEFAULT_EXPENSE_CATEGORIES,
+  parseExpenseCategories,
+} from '../domain/expenses/expenseCategories';
 
 /**
  * §Phase 11 — DÉPENSES.
@@ -14,17 +19,15 @@ import { CashSessionRepository, type CashMethod } from './CashSessionRepository'
  * Catégories normalisées, utilisées à l'identique dans toute l'application.
  */
 
-export const EXPENSE_CATEGORIES = [
-  'Transport',
-  'Électricité',
-  'Loyer',
-  'Téléphone',
-  'Carburant',
-  'Salaires',
-  'Autres',
-] as const;
+/**
+ * Catégories de dépenses PAR DÉFAUT. La liste réellement proposée est définie
+ * par l'utilisateur dans Paramètres → Dépenses (réglage `expense_categories`) :
+ * un utilisateur peut ajouter « Loyer », « Impôts », etc.
+ */
+export const EXPENSE_CATEGORIES: readonly string[] = DEFAULT_EXPENSE_CATEGORIES;
 
-export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+/** Catégorie de dépense : libellé libre défini par l'utilisateur. */
+export type ExpenseCategory = string;
 
 export interface Expense {
   id: string;
@@ -77,9 +80,9 @@ const stmtTotalsByCategory = db.prepare(`
 const stmtDelete = db.prepare('DELETE FROM expenses WHERE id = ?');
 
 export const ExpenseRepository = {
-  /** Catégories disponibles (source unique partagée avec l'UI). */
+  /** Catégories disponibles : définies par l'utilisateur dans Paramètres. */
   categories(): readonly string[] {
-    return EXPENSE_CATEGORIES;
+    return parseExpenseCategories(GlobalSettingsService.get('expense_categories'));
   },
 
   /**

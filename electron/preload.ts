@@ -230,6 +230,10 @@ export interface GlobalSettingsInput {
   show_inactive_product_alerts?: boolean;
   product_units?: string[];
   stock_exit_types?: string[];
+  // Types de mouvement de caisse définis par l'utilisateur (libellé + sens).
+  cash_movement_types?: Array<{ label: string; direction: 'IN' | 'OUT' }>;
+  // Catégories de dépenses définies par l'utilisateur.
+  expense_categories?: string[];
   // Multi-dépôts : dépôt actif (persisté).
   active_warehouse_id?: string;
 }
@@ -248,7 +252,9 @@ export interface ReportCsvData {
 // ── Caisse (§Phase 10) ──
 export interface CashMovementInput {
   sessionId?: string;
-  movementType: 'SALE_CASH' | 'PAYMENT_IN' | 'EXPENSE' | 'WITHDRAWAL' | 'MANUAL_IN' | 'MANUAL_OUT';
+  // Libellé LIBRE : type défini par l'utilisateur dans Paramètres
+  // (ex : « Vente espèces », « Don »…). Les anciens codes (SALE_CASH…) restent valides.
+  movementType: string;
   direction: 'IN' | 'OUT';
   amount: number;
   paymentMethod?: 'CASH' | 'CHECK' | 'TRANSFER';
