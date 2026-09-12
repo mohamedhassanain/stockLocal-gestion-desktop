@@ -27,6 +27,11 @@ export class DemoDataService {
     runInTransaction(() => {
       const now = new Date().toISOString();
 
+      // Multi-dépôts : `stock_movements.warehouse_id` est NOT NULL. Les mouvements
+      // de démonstration appartiennent au dépôt par défaut (créé au démarrage).
+      // Sans ce champ, le seed échouait sur une base NEUVE (installation fraîche).
+      const warehouseId = StockLedgerService.getDefaultWarehouseId();
+
       // ─── Catégories & sous-catégories ──────────────────────────────────────
       const catEpicerie = CategoryRepository.create({ name: 'Épicerie & Crémerie', description: 'Produits alimentaires courants' });
       const catBoissons = CategoryRepository.create({ name: 'Boissons', description: 'Eaux, sodas, jus' });
@@ -61,9 +66,9 @@ export class DemoDataService {
           description: `Produit de démonstration ${p.designation}`,
         });
         db.prepare(`
-          INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, date, notes)
-          VALUES (?, ?, 'IN', ?, ?, ?, 'Stock initial de démonstration')
-        `).run(randomUUID(), id, qty, p.purchase_price, now);
+          INSERT INTO stock_movements (id, product_id, warehouse_id, type, movement_type, quantity, unit_price, date, notes)
+          VALUES (?, ?, ?, 'IN', 'OPENING_BALANCE', ?, ?, ?, 'Stock initial de démonstration')
+        `).run(randomUUID(), id, warehouseId, qty, p.purchase_price, now);
       };
 
       defineProduct({ reference: 'LAIT-1L', designation: 'Lait entier 1L', unit: 'PIÈCE', category_id: catEpicerie.id, subcategory_id: subLaitiers.id, barcode: '6111000000011', purchase_price: 6.5, selling_price: 9.0, wholesale_price: 7.5, min_stock: 24, qty: 120 });

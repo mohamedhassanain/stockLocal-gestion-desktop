@@ -15,9 +15,10 @@ Statut global : 🟡 **Production Ready with known limitations**
 
 L'architecture est saine et conforme au produit défini (local, offline,
 mono‑utilisateur, SQLite source de vérité, IA/MCP validée, aucun backend cloud).
-L'audit a mis en évidence **4 défauts réels** (1 majeur d'intégrité de stock,
-2 moyenne gravité, 1 robustesse/tests), **tous corrigés et couverts par des
-tests**. Aucun problème P0 (perte de données / sécurité critique) non résolu.
+L'audit a mis en évidence **5 défauts réels** (1 majeur d'intégrité de stock,
+3 moyenne gravité — valorisation retour, restauration WAL, seed d'installation
+fraîche — et 1 robustesse/tests), **tous corrigés et couverts par des tests**.
+Aucun problème P0 (perte de données / sécurité critique) non résolu.
 Les limitations restantes sont documentées au §17 et sont des **choix de modèle
 assumés**, pas des bugs bloquants.
 
@@ -26,7 +27,7 @@ assumés**, pas des bugs bloquants.
 | Vérification | Résultat | Commande |
 |---|---|---|
 | TypeScript (`tsc --noEmit`) | **PASS** (0 erreur) | `npx tsc --noEmit` |
-| Tests unitaires + intégration | **PASS — 428/428**, 44 fichiers, code de sortie **0** | `npm test` |
+| Tests unitaires + intégration | **PASS — 430/430**, 45 fichiers, code de sortie **0** | `npm test` |
 | Build renderer + electron | **PASS** | `npx vite build` |
 | Build MCP | **PASS** | `npm run build:mcp` |
 | Build production complet (tsc+vite+mcp+electron-builder) | **PASS** (EXIT 0) | `npm run build` |
@@ -51,6 +52,7 @@ Preuves (fichiers de sortie générés par l'audit) : `tsc_audit2.txt`,
 | Finance / Retours | **Corrigé (P2)** | Un retour client (`RETURN_IN`) était valorisé au **prix de vente** → CMUP et valeur du stock gonflés | Valorisation au **coût** (CMUP, repli prix d'achat) |
 | Sauvegarde / Restauration | **Corrigé (P2)** | À la restauration au démarrage, les fichiers `-wal`/`-shm` de l'ancienne base n'étaient pas supprimés avant d'écraser le fichier DB | Purge des sidecars WAL/SHM avant application de la restauration |
 | Robustesse / Tests | **Corrigé (P3)** | L'import différé de `StockLedgerService` dans `connection.ts` n'avait pas de `.catch()` → rejet non géré (sortie de tests ≠ 0) quand la connexion est déjà fermée | `.catch()` avec journalisation (non bloquant) |
+| Seed démo / install fraîche | **Corrigé (P2)** | `DemoDataService.seedIfEmpty` insérait dans `stock_movements` **sans `warehouse_id`** (NOT NULL) → le seed échouait à la PREMIÈRE installation ; invisible sur une base déjà peuplée. Trouvé en lançant le binaire packagé | ajout de `warehouse_id` (dépôt par défaut) + `movement_type='OPENING_BALANCE'` ; test `tests/demo-seed.test.ts` |
 
 ## 4. Database Integrity — PASS
 
@@ -166,6 +168,12 @@ recherche paginée ; 50 000 mouvements → historique paginé
 - Démarrages répétés de `npm run dev` : plusieurs démarrages consécutifs propres,
   **aucun EBUSY** (vérifié pendant l'audit).
 - Installeur NSIS produit et horodaté ; schéma embarqué via `extraResources`.
+- Lancement du binaire packagé **vérifié réellement** sur profil vierge
+  (démarrage, création DB, migration, backup automatique, 4 processus Electron).
+  ⚠️ Sur CETTE machine, un second lancement du binaire fraîchement reconstruit est
+  bloqué par une **politique Windows « Application Control »** (« An Application
+  Control policy has blocked this file ») — restriction d'environnement, pas un
+  défaut applicatif.
 
 ## 17. Known Limitations
 
@@ -248,6 +256,18 @@ Fix:        .catch() journalisé (non bloquant).
 Verification: npm test → code de sortie 0, plus de « Unhandled Errors ».
 ```
 
+```
+Severity: P2
+File:     src/services/DemoDataService.ts
+Function: seedIfEmpty
+Root cause: INSERT dans stock_movements sans warehouse_id (NOT NULL depuis le
+            multi-dépôts) → échec du seed sur une base NEUVE (1re installation).
+Fix:        warehouse_id = dépôt par défaut (StockLedgerService.getDefaultWarehouseId)
+            + movement_type='OPENING_BALANCE'.
+Verification: tests/demo-seed.test.ts (2 tests) — 6 produits créés, 0 mouvement
+            sans dépôt, auditBalances() sans écart.
+```
+
 ## Files changed
 
 - `src/services/StockLedgerService.ts` — ajout `recomputeBalancesForProducts()`.
@@ -255,7 +275,9 @@ Verification: npm test → code de sortie 0, plus de « Unhandled Errors ».
   `createCreditNote` (valorisation retour).
 - `src/database/config/connection.ts` — `applyPendingRestore` (purge WAL/SHM) ;
   `.catch()` sur l'import différé.
+- `src/services/DemoDataService.ts` — `seedIfEmpty` (warehouse_id + movement_type).
 - `tests/document-stock-consistency.test.ts` — **nouveau** (4 tests).
+- `tests/demo-seed.test.ts` — **nouveau** (2 tests).
 - `FINAL_PRODUCTION_AUDIT.md` — **nouveau** (ce rapport).
 
 ## Database changes
