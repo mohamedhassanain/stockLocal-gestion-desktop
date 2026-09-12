@@ -42,6 +42,16 @@ function applyPendingRestore(): void {
     }
 
     // 2. Copier le backup en attente → base
+    // §Robustesse restauration — retirer les fichiers WAL/SHM résiduels de
+    // l'ANCIENNE base avant d'écrire la base restaurée : une base restaurée est
+    // un fichier SQLite complet et autonome ; un WAL étranger appliqué dessus
+    // corromprait l'état (ou ferait échouer l'ouverture). Correctif Windows.
+    for (const ext of ['-wal', '-shm']) {
+      const sidecar = dbPath + ext;
+      if (fs.existsSync(sidecar)) {
+        try { fs.unlinkSync(sidecar); } catch { /* non bloquant */ }
+      }
+    }
     fs.copyFileSync(markerPath, dbPath);
 
     // 3. Vérification d'intégrité sur une connexion en lecture seule
@@ -706,16 +716,25 @@ initDb();
 // L'import se résout après l'évaluation du graphe de modules, donc toujours
 // APRÈS le schéma et les migrations — exactement ce qu'on veut.
 // Idempotent : DELETE + re-INSERT agrégé depuis stock_movements.
-void import('../../services/StockLedgerService').then(({ StockLedgerService }) => {
-  try {
-    StockLedgerService.rebuildBalances();
-    console.log('[DB] Balances de stock recalculées.');
-  } catch (e) {
-    // Non bloquant : les écritures futures maintiennent les balances à jour,
-    // et un rebuild est relancable manuellement via StockLedgerService.
-    console.warn('[DB] Recalcul des balances échoué (non bloquant) :', e);
-  }
-});
+void import('../../services/StockLedgerService')
+  .then(({ StockLedgerService }) => {
+    try {
+      StockLedgerService.rebuildBalances();
+      console.log('[DB] Balances de stock recalculées.');
+    } catch (e) {
+      // Non bloquant : les écritures futures maintiennent les balances à jour,
+      // et un rebuild est relancable manuellement via StockLedgerService.
+      console.warn('[DB] Recalcul des balances échoué (non bloquant) :', e);
+    }
+  })
+  .catch((e) => {
+    // §Robustesse — si la connexion est DÉJÀ fermée (arrêt de l'application ou
+    // teardown de tests), le module StockLedgerService ne peut pas s'évaluer
+    // (ses `db.prepare` de haut niveau échouent). Ce n'est PAS une erreur
+    // applicative : on la journalise au lieu de laisser une promesse rejetée
+    // non gérée (qui faisait sortir la suite de tests en code ≠ 0).
+    console.warn('[DB] Import différé de StockLedgerService ignoré (connexion fermée ?) :', e);
+  });
 
 export function runInTransaction<T>(fn: () => T): T {
   const transaction = db.transaction(fn);

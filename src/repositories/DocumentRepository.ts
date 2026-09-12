@@ -493,7 +493,10 @@ export const DocumentRepository = {
           product_id: item.product_id,
           movement_type: 'RETURN_IN',
           quantity: item.quantity,
-          unit_price: Math.abs(item.unit_price),
+          // §Finance — une entrée en stock se valorise au COÛT (CMUP, repli prix
+          // d'achat), jamais au prix de VENTE : sinon la valeur du stock et le CMUP
+          // seraient artificiellement gonflés à chaque retour client.
+          unit_price: StockLedgerService.getAverageCost(item.product_id),
           reference_doc: document_number,
           document_id: id,
           notes: `RETOUR_CLIENT — ${document_number}`,
@@ -589,6 +592,12 @@ export const DocumentRepository = {
     const doc = stmtGetById.get(id) as Document | undefined;
     if (!doc) throw new Error('Document introuvable.');
 
+    // §Intégrité — produits dont ce document a modifié le stock : à recalculer
+    // après suppression des mouvements (le solde stocké doit rester égal au journal).
+    const affectedProductIds = (db.prepare(
+      'SELECT DISTINCT product_id FROM document_items WHERE document_id = ?',
+    ).all(id) as Array<{ product_id: string }>).map(r => r.product_id);
+
     runInTransaction(() => {
       if (doc.type === 'CREDIT_NOTE') {
         // Réinverser le crédit client généré par l'avoir
@@ -606,6 +615,9 @@ export const DocumentRepository = {
       db.prepare(`DELETE FROM document_items WHERE document_id = ?`).run(id);
       db.prepare(`DELETE FROM payments WHERE document_id = ?`).run(id);
       db.prepare(`DELETE FROM documents WHERE id = ?`).run(id);
+
+      // §Intégrité — recalculer les soldes des produits impactés depuis le journal.
+      StockLedgerService.recomputeBalancesForProducts(affectedProductIds);
     });
   },
 
@@ -653,6 +665,14 @@ export const DocumentRepository = {
 
     const applyStock = doc.type === 'INVOICE' || doc.type === 'DELIVERY_NOTE';
 
+    // §Intégrité — produits touchés AVANT modification : si l'édition retire un
+    // produit de la facture, son ancien mouvement SALE_OUT est supprimé et son
+    // solde doit aussi être recalculé (sinon il reste faussement décrémenté).
+    const previousProductIds = applyStock
+      ? (db.prepare('SELECT DISTINCT product_id FROM document_items WHERE document_id = ?')
+          .all(id) as Array<{ product_id: string }>).map(r => r.product_id)
+      : [];
+
     runInTransaction(() => {
       // Retirer les anciens mouvements de stock (restauration)
       if (applyStock) {
@@ -687,6 +707,15 @@ export const DocumentRepository = {
             notes: `${doc.type === 'INVOICE' ? 'VENTE' : 'LIVRAISON'} — ${doc.document_number}`,
           });
         }
+
+        // §Intégrité — le DELETE brut ci-dessus retire des mouvements SANS toucher
+        // `inventory_balances` (maintenu de façon incrémentale par recordMovement).
+        // On recalcule donc les soldes des produits concernés (anciens + nouveaux)
+        // depuis le journal, pour que le solde stocké reste égal au journal.
+        StockLedgerService.recomputeBalancesForProducts([
+          ...previousProductIds,
+          ...data.items.map(i => i.product_id),
+        ]);
       }
     });
 

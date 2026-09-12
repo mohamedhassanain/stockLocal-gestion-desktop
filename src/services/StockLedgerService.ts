@@ -459,6 +459,52 @@ export const StockLedgerService = {
   },
 
   /**
+   * §Intégrité — Recalcule `inventory_balances` UNIQUEMENT pour les produits
+   * fournis, à partir de la source de vérité `stock_movements` (tous dépôts).
+   *
+   * POURQUOI ce point d'entrée existe :
+   *   `inventory_balances` est maintenu de façon INCRÉMENTALE par
+   *   `recordMovement`. Toute opération qui retire des mouvements par SQL brut
+   *   (édition ou suppression d'un document — voir `DocumentRepository`) doit
+   *   donc RECALCULER le solde concerné, sinon le solde stocké diverge du
+   *   journal jusqu'au prochain redémarrage (le backfill global ne tourne
+   *   qu'au démarrage). Sans ce recalcul, une vente suivante pouvait être
+   *   refusée à tort (« stock insuffisant ») pendant la session courante.
+   *
+   * Idempotent et borné aux produits concernés : aucun rebuild global coûteux.
+   */
+  recomputeBalancesForProducts(productIds: string[]): void {
+    const ids = Array.from(new Set(
+      (productIds ?? []).filter(id => typeof id === 'string' && id.length > 0),
+    ));
+    if (ids.length === 0) return;
+
+    const placeholders = ids.map(() => '?').join(', ');
+
+    runInTransaction(() => {
+      db.prepare(`DELETE FROM inventory_balances WHERE product_id IN (${placeholders})`).run(...ids);
+      db.prepare(`
+        INSERT INTO inventory_balances
+          (product_id, warehouse_id, quantity, total_in_qty, total_in_value, average_cost, updated_at)
+        SELECT
+          product_id,
+          warehouse_id,
+          SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS quantity,
+          SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) AS total_in_qty,
+          SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END) AS total_in_value,
+          CASE WHEN SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) > 0
+               THEN SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END)
+                    / SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END)
+               ELSE 0 END AS average_cost,
+          CURRENT_TIMESTAMP
+        FROM stock_movements
+        WHERE product_id IN (${placeholders})
+        GROUP BY product_id, warehouse_id
+      `).run(...ids);
+    });
+  },
+
+  /**
    * Ajustement d'inventaire directionnel, pour UN dépôt précis.
    * @returns le mouvement créé, ou null si aucun écart
    */
