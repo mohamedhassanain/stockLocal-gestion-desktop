@@ -6,7 +6,7 @@ import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader, PageHeader }
 import { stockLevelClass } from '../components/ui/statusMaps';
 import { toLocalDateString } from '../utils/date';
 import { resolveDiscount, findApplicableDiscount, describeVolumeDiscount, type VolumeDiscountRule } from '../utils/volumeDiscount';
-import { resolveUnitFactor, toBaseQuantity, toBaseUnitPrice } from '../utils/unitSale';
+import { toBaseQuantity, toBaseUnitPrice } from '../utils/unitSale';
 
 interface CartItem {
   product_id: string;
@@ -136,33 +136,41 @@ export const POSPage: React.FC = () => {
     });
   }, []);
 
-  // Phase 6 : charge les unités alternatives d'un produit (conversions définies).
+  // Phase 6 : charge les unités alternatives d'un produit. Le FACTEUR de chaque
+  // unité est calculé par le BACKEND (`conversions.convert`), jamais côté front.
   const loadAltUnits = useCallback(async (product: Product) => {
     try {
       const convs = await window.api.conversions.getByProduct(product.id);
       const base = product.unit || 'PIÈCE';
-      const map = new Map<string, number>();
-      for (const c of (convs ?? []) as Array<{ from_unit: string; to_unit: string; factor: number; product_id: string | null }>) {
+      const candidates = new Set<string>();
+      for (const c of (convs ?? []) as Array<{ from_unit: string; to_unit: string; product_id: string | null }>) {
         if (c.product_id !== product.id) continue;
-        if (c.to_unit === base && c.from_unit !== base) map.set(c.from_unit, c.factor);
-        else if (c.from_unit === base && c.to_unit !== base && c.factor > 0) map.set(c.to_unit, 1 / c.factor);
+        if (c.from_unit !== base) candidates.add(c.from_unit);
+        if (c.to_unit !== base) candidates.add(c.to_unit);
       }
-      const list = Array.from(map.entries()).map(([unit, factor]) => ({ unit, factor }));
+      const list: { unit: string; factor: number }[] = [];
+      for (const unit of candidates) {
+        const factor = await window.api.conversions.convert(1, unit, base, product.id);
+        if (typeof factor === 'number' && factor > 0) list.push({ unit, factor });
+      }
       if (list.length > 0) {
         setCart(prev => prev.map(c => (c.product_id === product.id ? { ...c, alt_units: list } : c)));
       }
     } catch { /* aucune conversion disponible : comportement inchangé */ }
   }, []);
 
-  // Phase 6 : change l'unité de vente d'une ligne (conversion vers l'unité de base).
-  const updateCartUnit = (productId: string, unit: string) => {
+  // Phase 6 : change l'unité de vente d'une ligne. Le facteur vient du backend
+  // (`conversions.convert`) — la logique de conversion n'est pas dupliquée ici.
+  const updateCartUnit = async (productId: string, unit: string) => {
+    const item = cart.find(c => c.product_id === productId);
+    if (!item) return;
+    let factor = 1;
+    if (unit !== item.base_unit) {
+      const converted = await window.api.conversions.convert(1, unit, item.base_unit, productId);
+      factor = typeof converted === 'number' && converted > 0 ? converted : 1;
+    }
     setCart(prev => prev.map(c => {
       if (c.product_id !== productId) return c;
-      const factor = resolveUnitFactor(
-        c.base_unit,
-        unit,
-        c.alt_units.map(a => ({ from_unit: a.unit, to_unit: c.base_unit, factor: a.factor })),
-      );
       const maxQty = factor > 0 ? Math.max(1, Math.floor(c.current_stock / factor)) : c.quantity;
       return { ...c, sale_unit: unit, unit_factor: factor, quantity: Math.min(c.quantity, maxQty) };
     }));
@@ -351,7 +359,7 @@ export const POSPage: React.FC = () => {
                               className="input input-sm"
                               style={{ width: 'auto', padding: '2px 6px', fontSize: 12 }}
                               value={item.sale_unit}
-                              onChange={e => updateCartUnit(item.product_id, e.target.value)}
+                              onChange={e => { void updateCartUnit(item.product_id, e.target.value); }}
                               title="Unité de vente"
                             >
                               <option value={item.base_unit}>{item.base_unit}</option>

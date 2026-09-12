@@ -116,3 +116,46 @@ Détail complet dans **`docs/PHASE5_MULTI_DEPOTS.md`**.
 2. **Phase 4** : règles de remise globales par quantité (le schéma ne porte pas
    de `product_id`) ; remise manuelle prioritaire (non-cumul).
 3. **Phase 3** : les lots sont informatifs (pas d'affectation FIFO au stock).
+---
+
+## Suivi — finalisation UI des Phases 4 & 6 (itération 2)
+
+Constats d'audit vérifiés dans le code :
+- Les **écrans de gestion existaient déjà** : Paramètres → onglet « Remises volume »
+  (Phase 4) et Paramètres → « Conversions d'unités » + modale par produit dans
+  `ProductsPage.tsx` (Phase 6). L'application automatique était également câblée
+  dans `POSPage.tsx` / `InvoicePage.tsx`.
+- Deux manques réels ont été comblés :
+
+### Phase 4 — ajouts
+1. **Modification** d'une règle de remise : l'écran Paramètres → « Remises volume »
+   permet désormais créer / **modifier** / supprimer (bouton ✏️ par ligne →
+   `window.api.discounts.update`), avec confirmation avant suppression.
+2. Comportement **non-cumul** confirmé et documenté : une remise **manuelle**
+   saisie sur une ligne de vente est prioritaire ; sinon la meilleure règle de
+   palier s'applique. Le motif (« Remise quantité : -X% dès N unités ») est
+   affiché — jamais appliqué silencieusement.
+3. Tests ajoutés (`tests/volume-discount.test.ts`) : CRUD backend
+   (create/update/delete) et `getDiscountForQuantity` (bon palier, rien hors palier).
+
+### Phase 6 — ajouts
+1. POS **réutilise le backend** pour le facteur de conversion :
+   `window.api.conversions.convert(1, unitéVente, unitéBase, productId)` —
+   **aucune règle de conversion n'est dupliquée côté front**. `src/utils/unitSale.ts`
+   ne contient plus que l'arithmétique pure (`toBaseQuantity`, `toBaseUnitPrice`).
+2. Test **bout-en-bout** (`tests/unit-conversion-sale.test.ts`) : vendre 2 CARTONS
+   (×12) décrémente le stock de **24 PIÈCES** (100 → 76) et préserve le total de
+   ligne (2 × 300 MAD = 600 MAD HT) ; produit **sans** conversion → facteur 1,
+   stock décrémenté de la quantité exacte (comportement inchangé).
+
+### Résultats (itération 2)
+- `npx tsc --noEmit` : **PASS**
+- `npm test` : **PASS — 24 fichiers, 229 tests** (base 227 → +2)
+- `npx vite build` : **PASS** (client + main + preload)
+
+### Chaîne fonctionnelle vérifiée de bout en bout
+- **Phase 4** : Paramètres (créer/modifier/supprimer règles) → POS/Invoice
+  (application automatique visible + remise manuelle prioritaire).
+- **Phase 6** : Paramètres & fiche produit (définir 1 CARTON = 12 PIÈCES) → POS
+  (sélection d'unité à la vente) → facteur via backend `convert` → stock décrémenté
+  en unité de base du montant exact.

@@ -86,6 +86,7 @@ export const SettingsPage: React.FC = () => {
   const [newSubs, setNewSubs] = useState<Record<string, string>>({});
   const [discounts, setDiscounts] = useState<VolumeDiscount[]>([]);
   const [discountForm, setDiscountForm] = useState({ name: '', min_qty: 1, max_qty: '', discount_pct: 0 });
+  const [editingDiscount, setEditingDiscount] = useState<VolumeDiscount | null>(null);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [dataPath, setDataPath] = useState('');
   const [isChangingLocation, setIsChangingLocation] = useState(false);
@@ -257,17 +258,45 @@ export const SettingsPage: React.FC = () => {
 
   const addDiscount = async () => {
     if (!discountForm.name.trim()) return;
-    const result = await window.api.discounts.create({
+    const payload = {
       name: discountForm.name.trim(),
       min_qty: discountForm.min_qty,
       max_qty: discountForm.max_qty === '' ? null : Number(discountForm.max_qty),
       discount_pct: discountForm.discount_pct,
-    });
+    };
+
+    if (editingDiscount) {
+      const result = await window.api.discounts.update(editingDiscount.id, payload);
+      if (result.success) {
+        setEditingDiscount(null);
+        setDiscountForm({ name: '', min_qty: 1, max_qty: '', discount_pct: 0 });
+        loadAll();
+        notify('✅ Règle de remise mise à jour');
+      } else notify(`❌ ${result.error}`);
+      return;
+    }
+
+    const result = await window.api.discounts.create(payload);
     if (result.success) {
       setDiscountForm({ name: '', min_qty: 1, max_qty: '', discount_pct: 0 });
       loadAll();
       notify('✅ Règle de remise ajoutée');
     } else notify(`❌ ${result.error}`);
+  };
+
+  const editDiscount = (d: VolumeDiscount) => {
+    setEditingDiscount(d);
+    setDiscountForm({
+      name: d.name,
+      min_qty: d.min_qty,
+      max_qty: d.max_qty == null ? '' : String(d.max_qty),
+      discount_pct: d.discount_pct,
+    });
+  };
+
+  const cancelEditDiscount = () => {
+    setEditingDiscount(null);
+    setDiscountForm({ name: '', min_qty: 1, max_qty: '', discount_pct: 0 });
   };
 
   const doDeleteDiscount = async (id: string) => {
@@ -821,7 +850,14 @@ export const SettingsPage: React.FC = () => {
               <Input label="Qté max" type="number" placeholder="vide = ∞" value={discountForm.max_qty} onChange={e => setDiscountForm({ ...discountForm, max_qty: e.target.value })} />
               <Input label="Remise %" type="number" step="0.5" value={discountForm.discount_pct} onChange={e => setDiscountForm({ ...discountForm, discount_pct: Number(e.target.value) })} />
             </div>
-            <Button onClick={addDiscount}>+ Ajouter la règle</Button>
+            <div className="flex gap-2">
+              <Button onClick={addDiscount} style={editingDiscount ? { background: 'var(--warning)', borderColor: 'transparent' } : undefined}>
+                {editingDiscount ? '💾 Enregistrer' : '+ Ajouter la règle'}
+              </Button>
+              {editingDiscount && (
+                <Button variant="secondary" onClick={cancelEditDiscount}>Annuler</Button>
+              )}
+            </div>
 
             {discounts.length > 0 && (
               <table className="table mt-4">
@@ -842,7 +878,10 @@ export const SettingsPage: React.FC = () => {
                       <td>{d.max_qty ?? '∞'}</td>
                       <td className="text-success font-semibold">{d.discount_pct}%</td>
                       <td>
-                        <DeleteButton onClick={() => deleteDiscount(d.id)} />
+                        <div className="flex gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => editDiscount(d)} title="Modifier">✏️</Button>
+                          <DeleteButton onClick={() => deleteDiscount(d.id)} />
+                        </div>
                       </td>
                     </tr>
                   ))}
