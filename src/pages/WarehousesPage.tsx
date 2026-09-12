@@ -18,6 +18,7 @@ interface Warehouse {
 export const WarehousesPage: React.FC = () => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [warehouseSearch, setWarehouseSearch] = useState('');
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [isDefault, setIsDefault] = useState(false);
@@ -93,6 +94,12 @@ export const WarehousesPage: React.FC = () => {
     }
   };
 
+  const filteredWarehouses = warehouses.filter(w => {
+    const q = warehouseSearch.trim().toLowerCase();
+    if (!q) return true;
+    return w.name.toLowerCase().includes(q) || (w.address ?? '').toLowerCase().includes(q);
+  });
+
   return (
     <div className="page-shell">
       <PageHeader
@@ -122,14 +129,23 @@ export const WarehousesPage: React.FC = () => {
         </Card>
 
         <Card overflow className="flex-1">
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+            <Input
+              type="text"
+              placeholder="🔍 Rechercher un dépôt (nom ou adresse)…"
+              value={warehouseSearch}
+              onChange={e => setWarehouseSearch(e.target.value)}
+              inputSize="sm"
+            />
+          </div>
           {isLoading ? (
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
               {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton skeleton-row" />)}
             </div>
-          ) : warehouses.length === 0 ? (
+          ) : filteredWarehouses.length === 0 ? (
             <div className="state-box">
-              <div className="state-title">Aucun dépôt</div>
-              <div className="state-text">Créez votre premier dépôt avec le formulaire ci-contre.</div>
+              <div className="state-title">{warehouses.length === 0 ? 'Aucun dépôt' : 'Aucun résultat'}</div>
+              <div className="state-text">{warehouses.length === 0 ? 'Créez votre premier dépôt avec le formulaire ci-contre.' : 'Aucun dépôt ne correspond à votre recherche.'}</div>
             </div>
           ) : (
             <table className="table">
@@ -142,7 +158,7 @@ export const WarehousesPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {warehouses.map(w => (
+                {filteredWarehouses.map(w => (
                   <tr key={w.id}>
                     <td className="font-semibold">{w.name}</td>
                     <td className="text-sm text-secondary">{w.address || '—'}</td>
