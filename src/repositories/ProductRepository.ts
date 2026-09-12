@@ -16,6 +16,8 @@ export interface Product {
   wholesale_price: number;
   min_stock: number;
   status: 'ACTIVE' | 'ARCHIVED' | 'DISABLED';
+  // Phase 3 : produit géré par lots + date d'expiration (0/1). Défaut 0.
+  batch_managed?: number | null;
   // Calculé dynamiquement (niveau de stock actuel)
   current_stock?: number;
   // Taux TVA (lu sur la table products)
@@ -60,12 +62,12 @@ export class ProductRepository {
       LIMIT @limit OFFSET @offset
     `),
     insert: db.prepare(`
-      INSERT INTO products (id, reference, designation, description, category_id, subcategory_id, barcode, image_path, unit, purchase_price, selling_price, wholesale_price, min_stock, status)
-      VALUES (@id, @reference, @designation, @description, @category_id, @subcategory_id, @barcode, @image_path, @unit, @purchase_price, @selling_price, @wholesale_price, @min_stock, @status)
+      INSERT INTO products (id, reference, designation, description, category_id, subcategory_id, barcode, image_path, unit, purchase_price, selling_price, wholesale_price, min_stock, batch_managed, status)
+      VALUES (@id, @reference, @designation, @description, @category_id, @subcategory_id, @barcode, @image_path, @unit, @purchase_price, @selling_price, @wholesale_price, @min_stock, @batch_managed, @status)
     `),
     update: db.prepare(`
       UPDATE products 
-      SET reference = @reference, designation = @designation, description = @description, category_id = @category_id, subcategory_id = @subcategory_id, barcode = @barcode, image_path = @image_path, unit = @unit, purchase_price = @purchase_price, selling_price = @selling_price, wholesale_price = @wholesale_price, min_stock = @min_stock, status = @status, updated_at = CURRENT_TIMESTAMP
+      SET reference = @reference, designation = @designation, description = @description, category_id = @category_id, subcategory_id = @subcategory_id, barcode = @barcode, image_path = @image_path, unit = @unit, purchase_price = @purchase_price, selling_price = @selling_price, wholesale_price = @wholesale_price, min_stock = @min_stock, batch_managed = @batch_managed, status = @status, updated_at = CURRENT_TIMESTAMP
       WHERE id = @id
     `),
     archive: db.prepare('UPDATE products SET status = \'ARCHIVED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -92,11 +94,12 @@ export class ProductRepository {
   }
 
   static create(product: ProductWithId): void {
-    this.stmts.insert.run(product);
+    // batch_managed a un défaut sûr (0) si l'appelant ne le fournit pas.
+    this.stmts.insert.run({ batch_managed: 0, ...product });
   }
 
   static update(product: ProductWithId): void {
-    this.stmts.update.run(product);
+    this.stmts.update.run({ batch_managed: 0, ...product });
   }
 
   static archive(id: string): void {

@@ -19,6 +19,7 @@ const productSchema = z.object({
   selling_price: z.number().min(0, 'Le prix de vente doit être positif'),
   wholesale_price: z.number().min(0, 'Le prix de gros doit être positif'),
   min_stock: z.number().min(0, 'Le stock minimum doit être positif'),
+  batch_managed: z.number().int().min(0).max(1).optional(),
 }).refine(data => data.selling_price >= data.purchase_price, {
   message: "Le prix de vente ne peut pas être inférieur au prix d'achat",
   path: ['selling_price']
@@ -57,6 +58,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     selling_price: editingProduct?.selling_price ?? 0,
     wholesale_price: editingProduct?.wholesale_price ?? 0,
     min_stock: editingProduct?.min_stock ?? 5,
+    batch_managed: editingProduct?.batch_managed ? 1 : 0,
     initial_stock: 0,
   });
 
@@ -299,6 +301,16 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
               )}
             </div>
           </div>
+
+          <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary" style={{ marginBottom: 'var(--space-4)' }}>
+            <input
+              type="checkbox"
+              checked={formData.batch_managed === 1}
+              onChange={e => setFormData(pr => ({ ...pr, batch_managed: e.target.checked ? 1 : 0 }))}
+              style={{ width: 18, height: 18, accentColor: 'var(--primary)' }}
+            />
+            Ce produit est géré par lots avec date d'expiration
+          </label>
 
           {editingProduct ? (
             <div className="surface-muted" style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-md)' }}>

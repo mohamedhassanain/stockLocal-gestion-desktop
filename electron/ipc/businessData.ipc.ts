@@ -290,6 +290,24 @@ export function registerBusinessDataHandlers(): void {
     });
   });
 
+  ipcMain.handle('documents:convertQuoteToDeliveryNote', async (_, quoteId: unknown) => {
+    return run(() => {
+      const safeId = requireId(quoteId, 'id devis');
+      const doc = DocumentService.convertQuoteToDeliveryNote(safeId);
+      AuditService.log('QUOTE_TO_BL', 'document', safeId, `Devis converti en ${doc.document_number}`);
+      return { success: true, data: doc };
+    });
+  });
+
+  ipcMain.handle('documents:convertQuoteToInvoice', async (_, quoteId: unknown) => {
+    return run(() => {
+      const safeId = requireId(quoteId, 'id devis');
+      const doc = DocumentService.convertQuoteToInvoice(safeId);
+      AuditService.log('QUOTE_TO_INVOICE', 'document', safeId, `Devis converti en ${doc.document_number}`);
+      return { success: true, data: doc };
+    });
+  });
+
   ipcMain.handle('documents:createCreditNote', async (_, payload: unknown) => {
     return run(() => {
       const safe = safeParse(CreditNoteCreateSchema, payload, 'Création avoir');
@@ -316,6 +334,17 @@ export function registerBusinessDataHandlers(): void {
       const doc = DocumentService.getDocument(safeId);
       if (!doc) throw new Error('Document introuvable.');
       const filePath = await PDFService.generateDocument(doc);
+      shell.openPath(filePath);
+      return { success: true, filePath };
+    });
+  });
+
+  ipcMain.handle('documents:printReceipt', async (_, documentId: unknown) => {
+    return run(async () => {
+      const safeId = requireId(documentId, 'id document');
+      const doc = DocumentService.getDocument(safeId);
+      if (!doc) throw new Error('Document introuvable.');
+      const filePath = await PDFService.generateReceipt(doc);
       shell.openPath(filePath);
       return { success: true, filePath };
     });

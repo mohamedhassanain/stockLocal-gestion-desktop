@@ -714,5 +714,99 @@ export const PDFService = {
 
     fs.writeFileSync(filePath, pdfBytes);
     return filePath;
+  },
+
+  /**
+   * Génère un TICKET DE CAISSE au format thermique 80 mm (reçu court).
+   *
+   * Contenu compact :
+   *   - nom de l'entreprise UNIQUEMENT si `show_company_name_on_documents`
+   *     (réutilise le paramètre existant) ;
+   *   - numéro + date/heure ;
+   *   - lignes de vente (désignation, quantité × prix, total ligne) ;
+   *   - TOTAL TTC ;
+   *   - mode de paiement.
+   *
+   * AUCUNE mention légale (RC / IF / Patente / ICE / clause de litige) : celles-ci
+   * restent réservées à la facture A4 (`generateDocument`). La page mesure 80 mm
+   * de large ; sa hauteur est calculée selon le contenu (rouleau thermique continu).
+   */
+  async generateReceipt(doc: Document): Promise<string> {
+    const settings = CompanySettingsService.getAll();
+    const { DocumentRepository } = await import('../repositories/DocumentRepository');
+    const payments: Payment[] = DocumentRepository.getPayments(doc.id);
+
+    // 80 mm en points PDF (1 mm = 2.8346 pt) → ≈ 226.77 pt.
+    const MM = 2.8346;
+    const WIDTH = Math.round(80 * MM * 100) / 100;
+    const MARGIN = 6;
+    const LEFT = MARGIN;
+    const RIGHT = WIDTH - MARGIN;
+
+    const PAYMENT_LABELS: Record<string, string> = { CASH: 'Espèces', CHECK: 'Chèque', TRANSFER: 'Virement' };
+
+    type Row =
+      | { kind: 'text'; text: string; size: number; bold?: boolean; align?: 'left' | 'center' | 'right' }
+      | { kind: 'sep' };
+
+    const rows: Row[] = [];
+    if (settings.show_company_name_on_documents) {
+      rows.push({ kind: 'text', text: settings.name || 'StockLocal', size: 11, bold: true, align: 'center' });
+    }
+    rows.push({ kind: 'text', text: doc.document_number, size: 9, bold: true, align: 'center' });
+    rows.push({ kind: 'text', text: new Date(doc.date).toLocaleString('fr-MA'), size: 7.5, align: 'center' });
+    if (doc.customer_name) {
+      rows.push({ kind: 'text', text: `Client : ${truncate(doc.customer_name, 34)}`, size: 8, align: 'left' });
+    }
+
+    rows.push({ kind: 'sep' });
+    for (const item of (doc.items ?? [])) {
+      const name = item.product_name || item.product_ref || '—';
+      rows.push({ kind: 'text', text: truncate(name, 36), size: 8, align: 'left' });
+      const discountSuffix = item.discount ? ` (-${item.discount}%)` : '';
+      rows.push({ kind: 'text', text: `${item.quantity} × ${item.unit_price.toFixed(2)}${discountSuffix}`, size: 8, align: 'left' });
+      rows.push({ kind: 'text', text: `${item.total.toFixed(2)} MAD`, size: 8, align: 'right' });
+    }
+
+    rows.push({ kind: 'sep' });
+    rows.push({ kind: 'text', text: `TOTAL TTC : ${doc.total_incl_tax.toFixed(2)} MAD`, size: 11, bold: true, align: 'left' });
+    const lastPayment = payments[0];
+    const methodLabel = lastPayment ? (PAYMENT_LABELS[lastPayment.payment_method] || lastPayment.payment_method) : 'Non encaissé';
+    rows.push({ kind: 'text', text: `Paiement : ${methodLabel}`, size: 8, align: 'left' });
+    rows.push({ kind: 'sep' });
+    rows.push({ kind: 'text', text: 'Merci de votre visite', size: 8, align: 'center' });
+
+    const rowHeight = (r: Row): number => (r.kind === 'sep' ? 10 : r.size + 4);
+    const HEIGHT = rows.reduce((sum, r) => sum + rowHeight(r), 0) + MARGIN * 2;
+
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([WIDTH, HEIGHT]);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let y = HEIGHT - MARGIN;
+    for (const r of rows) {
+      if (r.kind === 'sep') {
+        y -= 5;
+        page.drawLine({ start: { x: LEFT, y }, end: { x: RIGHT, y }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+        y -= 5;
+        continue;
+      }
+      const f = r.bold ? boldFont : font;
+      const textWidth = f.widthOfTextAtSize(r.text, r.size);
+      let x = LEFT;
+      if (r.align === 'center') x = Math.max(LEFT, (WIDTH - textWidth) / 2);
+      else if (r.align === 'right') x = Math.max(LEFT, RIGHT - textWidth);
+      y -= r.size + 2;
+      page.drawText(r.text, { x, y, size: r.size, font: f, color: rgb(0.05, 0.05, 0.05) });
+      y -= 2;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    const documentsPath = app.getPath('documents');
+    const prefix = doc.document_number.replace(/[^a-z0-9]/gi, '_');
+    const filePath = path.join(documentsPath, `Ticket_${prefix}.pdf`);
+    fs.writeFileSync(filePath, pdfBytes);
+    return filePath;
   }
 };

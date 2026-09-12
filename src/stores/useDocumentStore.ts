@@ -24,6 +24,7 @@ interface DocumentState {
   createDocument: (data: SaleCreateInput) => Promise<Document>;
   addPayment: (documentId: string, amount: number, method: PaymentMethod, reference?: string) => Promise<void>;
   convertBL: (deliveryNoteId: string) => Promise<Document>;
+  convertQuote: (quoteId: string, target: 'DELIVERY_NOTE' | 'INVOICE') => Promise<Document>;
   deleteDocument: (id: string) => Promise<void>;
   updateNotes: (id: string, notes: string) => Promise<void>;
   updateDocument: (id: string, data: DocumentUpdateInput) => Promise<Document>;
@@ -134,6 +135,25 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const result = await window.api.documents.convertBL(deliveryNoteId);
       if (!result.success) throw new Error(result.error);
       set({ activeType: 'INVOICE' });
+      await get().loadDocuments();
+      set({ isLoading: false });
+      return result.data;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      set({ error: message, isLoading: false });
+      throw err;
+    }
+  },
+
+  convertQuote: async (quoteId, target) => {
+    set({ isLoading: true, error: null });
+    try {
+      const result = target === 'INVOICE'
+        ? await window.api.documents.convertQuoteToInvoice(quoteId)
+        : await window.api.documents.convertQuoteToDeliveryNote(quoteId);
+      if (!result.success) throw new Error(result.error);
+      // Bascule la liste sur le type du document produit (le devis est passé CONVERTED).
+      set({ activeType: target });
       await get().loadDocuments();
       set({ isLoading: false });
       return result.data;

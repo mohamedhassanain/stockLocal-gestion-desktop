@@ -10,6 +10,8 @@ import { StockMovementRepository } from '../../src/repositories/StockMovementRep
 import { CategoryRepository } from '../../src/repositories/CategoryRepository';
 import { VolumeDiscountRepository } from '../../src/repositories/VolumeDiscountRepository';
 import { UnitConversionRepository } from '../../src/repositories/UnitConversionRepository';
+import { ProductBatchRepository } from '../../src/repositories/ProductBatchRepository';
+import { WarehouseRepository } from '../../src/repositories/WarehouseRepository';
 import { PriceHistoryRepository } from '../../src/repositories/PriceHistoryRepository';
 import { CompanySettingsService } from '../../src/services/CompanySettingsService';
 import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
@@ -28,6 +30,8 @@ import {
   SubcategorySchema,
   VolumeDiscountSchema,
   UnitConversionSchema,
+  ProductBatchCreateSchema,
+  WarehouseSchema,
   CompanySettingsSchema,
   GlobalSettingsSchema,
 } from '../../src/validation/schemas';
@@ -68,6 +72,7 @@ function buildProductInput(
     selling_price: pick(patch.selling_price, current.selling_price),
     wholesale_price: pick(patch.wholesale_price, current.wholesale_price),
     min_stock: pick(patch.min_stock, current.min_stock),
+    batch_managed: pick(patch.batch_managed, current.batch_managed ?? 0),
     status: pick(patch.status, current.status),
   };
 }
@@ -317,6 +322,77 @@ export function registerReferenceDataHandlers(): void {
       throw new Error(`Aucune conversion trouvée de ${from} vers ${to}`);
     }
     return result;
+  });
+
+  // ─── Lots / dates d'expiration (Phase 3) ───────────────────────────────────
+  ipcMain.handle('batches:listByProduct', async (_, productId: unknown) => {
+    return ProductBatchRepository.listByProduct(requireId(productId, 'id produit'));
+  });
+
+  ipcMain.handle('batches:create', async (_, data: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(ProductBatchCreateSchema, data, 'Création de lot');
+      const batch = ProductBatchRepository.create({
+        product_id: safe.product_id,
+        lot_number: safe.lot_number,
+        quantity: safe.quantity,
+        expiry_date: safe.expiry_date ?? null,
+      });
+      AuditService.log('BATCH_CREATE', 'product', safe.product_id, `Lot ${batch.lot_number} (${batch.quantity})`);
+      return { success: true, data: batch };
+    });
+  });
+
+  ipcMain.handle('batches:delete', async (_, id: unknown) => {
+    return humanError(() => {
+      ProductBatchRepository.remove(requireId(id, 'id lot'));
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('batches:getExpiring', async (_, withinDays: unknown) => {
+    const days = Number(withinDays);
+    return ProductBatchRepository.getExpiringBatches(Number.isFinite(days) ? days : 30);
+  });
+
+  // ─── Dépôts (Phase 5) ──────────────────────────────────────────────────────
+  ipcMain.handle('warehouses:getAll', async () => {
+    return WarehouseRepository.getAll();
+  });
+
+  ipcMain.handle('warehouses:create', async (_, data: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(WarehouseSchema, data, 'Création dépôt');
+      const warehouse = WarehouseRepository.create({ name: safe.name, address: safe.address ?? null, is_default: safe.is_default });
+      AuditService.log('WAREHOUSE_CREATE', 'warehouse', warehouse.id, `Dépôt ${warehouse.name}`);
+      return { success: true, data: warehouse };
+    });
+  });
+
+  ipcMain.handle('warehouses:update', async (_, { id, data }: { id: unknown; data: unknown }) => {
+    return humanError(() => {
+      const safeId = requireId(id, 'id dépôt');
+      const safe = safeParse(WarehouseSchema, data, 'Modification dépôt');
+      const warehouse = WarehouseRepository.update(safeId, { name: safe.name, address: safe.address ?? null, is_default: safe.is_default });
+      AuditService.log('WAREHOUSE_UPDATE', 'warehouse', safeId, `Dépôt ${warehouse.name} modifié`);
+      return { success: true, data: warehouse };
+    });
+  });
+
+  ipcMain.handle('warehouses:setDefault', async (_, id: unknown) => {
+    return humanError(() => {
+      const safeId = requireId(id, 'id dépôt');
+      WarehouseRepository.setDefault(safeId);
+      AuditService.log('WAREHOUSE_DEFAULT', 'warehouse', safeId, 'Dépôt par défaut modifié');
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('warehouses:delete', async (_, id: unknown) => {
+    return humanError(() => {
+      WarehouseRepository.remove(requireId(id, 'id dépôt'));
+      return { success: true };
+    });
   });
 
   // ─── Price History ─────────────────────────────────────────────────────────

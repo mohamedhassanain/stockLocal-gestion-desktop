@@ -4,7 +4,16 @@ import { StockLedgerService } from '../services/StockLedgerService';
 import { nextSequence } from '../services/DocumentSequenceService';
 
 export type DocumentType = 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE';
-export type DocumentStatus = 'DRAFT' | 'PAID' | 'UNPAID' | 'PARTIAL' | 'CANCELLED';
+/**
+ * Statuts de document.
+ *
+ * `CONVERTED` (ajouté pour le workflow commercial) : un devis converti en
+ * Bon de livraison ou en Facture passe à ce statut afin d'empêcher toute
+ * double conversion. La colonne `documents.status` est un TEXT libre côté
+ * schéma (aucune contrainte CHECK) : ajouter ce statut ne nécessite donc
+ * AUCUNE migration de base. Il est documenté ici comme la source de vérité.
+ */
+export type DocumentStatus = 'DRAFT' | 'PAID' | 'UNPAID' | 'PARTIAL' | 'CANCELLED' | 'CONVERTED';
 export type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
 
 export interface DocumentItem {
@@ -672,5 +681,83 @@ export const DocumentRepository = {
     }
 
     return invoice;
+  },
+
+  /**
+   * Conversion Devis → Bon de livraison.
+   * Voir `convertQuote` pour la règle métier complète.
+   */
+  convertQuoteToDeliveryNote(quoteId: string): Document {
+    return this.convertQuote(quoteId, 'DELIVERY_NOTE');
+  },
+
+  /**
+   * Conversion Devis → Facture.
+   * Voir `convertQuote` pour la règle métier complète.
+   */
+  convertQuoteToInvoice(quoteId: string): Document {
+    return this.convertQuote(quoteId, 'INVOICE');
+  },
+
+  /**
+   * Convertit un devis (QUOTE) en Bon de livraison ou en Facture.
+   *
+   * RÈGLE MÉTIER DE STATUT (documentée) :
+   *   - Le devis d'origine passe au statut `CONVERTED` après succès. Ce statut
+   *     empêche toute double conversion (un devis ne peut produire qu'UN seul
+   *     document). Il est cohérent avec `documents.status` (TEXT libre, sans
+   *     contrainte CHECK) → aucune migration requise.
+   *   - Refus si le devis est déjà `CONVERTED` ou `CANCELLED` (message humain).
+   *
+   * ATOMICITÉ : la création du nouveau document, la liaison au devis
+   * (`original_document_id`) et le passage du devis à `CONVERTED` sont
+   * exécutés dans UNE SEULE transaction. Toute erreur (ex. stock insuffisant
+   * pour un BL) annule l'intégralité : aucun document partiel, aucun statut
+   * modifié (rollback complet).
+   *
+   * STOCK : un devis n'a jamais décrémenté le stock. La conversion vers BL ou
+   * Facture applique donc la décrémentation normale (manageStock=true), une
+   * seule fois, via le StockLedgerService.
+   */
+  convertQuote(quoteId: string, targetType: 'DELIVERY_NOTE' | 'INVOICE'): Document {
+    const quote = this.getById(quoteId);
+    if (!quote) throw new Error('Devis introuvable.');
+    if (quote.type !== 'QUOTE') throw new Error('Ce document n\'est pas un devis.');
+    if (quote.status === 'CONVERTED') throw new Error('Ce devis a déjà été converti.');
+    if (quote.status === 'CANCELLED') throw new Error('Ce devis est annulé : la conversion est impossible.');
+
+    const targetLabel = targetType === 'INVOICE' ? 'Facture' : 'Bon de livraison';
+    const items = (quote.items ?? []).map(i => ({
+      product_id: i.product_id,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      discount: i.discount,
+    }));
+    if (items.length === 0) throw new Error('Ce devis ne contient aucune ligne : conversion impossible.');
+
+    let createdId = '';
+    runInTransaction(() => {
+      const created = this.create({
+        type: targetType,
+        entity_id: quote.entity_id,
+        date: new Date().toISOString().split('T')[0],
+        due_date: targetType === 'INVOICE' ? (quote.due_date ?? undefined) : undefined,
+        items,
+        notes: `Converti depuis le devis ${quote.document_number}`,
+        manageStock: true, // le devis n'avait jamais décrémenté le stock
+      });
+      createdId = created.id;
+
+      // Lier le nouveau document au devis d'origine
+      db.prepare(`UPDATE documents SET original_document_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+        .run(quoteId, created.id);
+
+      // Marquer le devis comme converti (statut CONVERTED, cf. règle métier)
+      stmtUpdateStatus.run('CONVERTED', quoteId);
+    });
+
+    const result = this.getById(createdId);
+    if (!result) throw new Error(`${targetLabel} créé(e) mais introuvable : opération annulée.`);
+    return result;
   }
 };

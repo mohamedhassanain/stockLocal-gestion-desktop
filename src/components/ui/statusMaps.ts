@@ -15,6 +15,7 @@ export const DOCUMENT_STATUS_BADGE: Record<string, { label: string; variant: Bad
   PARTIAL: { label: 'Partielle', variant: 'warning' },
   DRAFT: { label: 'Brouillon', variant: 'muted' },
   CANCELLED: { label: 'Annulée', variant: 'muted' },
+  CONVERTED: { label: 'Converti', variant: 'info' },
 };
 
 export const PURCHASE_STATUS_BADGE: Record<string, { label: string; variant: BadgeVariant }> = {

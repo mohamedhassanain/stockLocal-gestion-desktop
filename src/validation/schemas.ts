@@ -24,6 +24,8 @@ export const ProductCreateSchema = z.object({
   min_stock: z.number().min(0),
   max_stock: z.number().min(0).optional(),
   vat_rate: z.number().min(0).max(100).optional(),
+  // Phase 3 : 0/1 — produit géré par lots + date d'expiration.
+  batch_managed: z.number().int().min(0).max(1).optional().default(0),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'DISABLED']).default('ACTIVE'),
 });
 
@@ -211,6 +213,23 @@ export const UnitConversionSchema = z.object({
   to_unit: z.string().min(1, "L'unité cible est obligatoire.").max(20),
   factor: z.number().positive('Le facteur doit être supérieur à 0.'),
   product_id: z.string().max(64).optional().nullable(),
+});
+
+// ─── Dépôts (Phase 5) ────────────────────────────────────────────────────────
+
+export const WarehouseSchema = z.object({
+  name: z.string().min(1, 'Le nom du dépôt est obligatoire.').max(100),
+  address: z.string().max(500).optional().nullable(),
+  is_default: z.boolean().optional().default(false),
+});
+
+// ─── Lots / dates d'expiration (Phase 3) ─────────────────────────────────────
+
+export const ProductBatchCreateSchema = z.object({
+  product_id: z.string().min(1).max(64),
+  lot_number: z.string().min(1, 'Le numéro de lot est obligatoire.').max(100),
+  quantity: z.number().min(0, 'La quantité du lot ne peut pas être négative.'),
+  expiry_date: z.string().max(50).optional().nullable(),
 });
 
 // ─── Paramètres ──────────────────────────────────────────────────────────────

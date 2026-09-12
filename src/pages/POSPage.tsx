@@ -5,6 +5,8 @@ import type { Product } from '../repositories/ProductRepository';
 import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader, PageHeader } from '../components/ui';
 import { stockLevelClass } from '../components/ui/statusMaps';
 import { toLocalDateString } from '../utils/date';
+import { resolveDiscount, findApplicableDiscount, describeVolumeDiscount, type VolumeDiscountRule } from '../utils/volumeDiscount';
+import { resolveUnitFactor, toBaseQuantity, toBaseUnitPrice } from '../utils/unitSale';
 
 interface CartItem {
   product_id: string;
@@ -15,6 +17,13 @@ interface CartItem {
   discount: number;
   current_stock: number;
   vat_rate: number;
+  // Phase 4 : true si la remise de la ligne a été saisie manuellement (prioritaire sur la remise quantité).
+  discountManual: boolean;
+  // Phase 6 : unité de vente alternative (conversion vers l'unité de base pour le stock).
+  base_unit: string;
+  sale_unit: string;
+  unit_factor: number;
+  alt_units: { unit: string; factor: number }[];
 }
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
@@ -44,11 +53,18 @@ export const POSPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [cashGiven, setCashGiven] = useState<number>(0);
   const [showReceipt, setShowReceipt] = useState(false);
+  // Document imprimé à la validation : ticket de caisse 80 mm (défaut POS) ou facture A4 complète.
+  const [printMode, setPrintMode] = useState<'receipt' | 'invoice'>('receipt');
   const [lastSale, setLastSale] = useState<{ docNumber: string; total: number; items: CartItem[] } | null>(null);
+  // Phase 4 : règles de remise par quantité (paliers), chargées une fois.
+  const [discountRules, setDiscountRules] = useState<VolumeDiscountRule[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadClients();
+    window.api.discounts.getAll()
+      .then((rules: VolumeDiscountRule[]) => setDiscountRules(rules ?? []))
+      .catch(() => {});
     searchRef.current?.focus();
   }, []);
 
@@ -111,21 +127,64 @@ export const POSPage: React.FC = () => {
         discount: 0,
         current_stock: stock,
         vat_rate: product.vat_rate ?? 20,
+        discountManual: false,
+        base_unit: product.unit || 'PIÈCE',
+        sale_unit: product.unit || 'PIÈCE',
+        unit_factor: 1,
+        alt_units: [],
       }];
     });
   }, []);
 
+  // Phase 6 : charge les unités alternatives d'un produit (conversions définies).
+  const loadAltUnits = useCallback(async (product: Product) => {
+    try {
+      const convs = await window.api.conversions.getByProduct(product.id);
+      const base = product.unit || 'PIÈCE';
+      const map = new Map<string, number>();
+      for (const c of (convs ?? []) as Array<{ from_unit: string; to_unit: string; factor: number; product_id: string | null }>) {
+        if (c.product_id !== product.id) continue;
+        if (c.to_unit === base && c.from_unit !== base) map.set(c.from_unit, c.factor);
+        else if (c.from_unit === base && c.to_unit !== base && c.factor > 0) map.set(c.to_unit, 1 / c.factor);
+      }
+      const list = Array.from(map.entries()).map(([unit, factor]) => ({ unit, factor }));
+      if (list.length > 0) {
+        setCart(prev => prev.map(c => (c.product_id === product.id ? { ...c, alt_units: list } : c)));
+      }
+    } catch { /* aucune conversion disponible : comportement inchangé */ }
+  }, []);
+
+  // Phase 6 : change l'unité de vente d'une ligne (conversion vers l'unité de base).
+  const updateCartUnit = (productId: string, unit: string) => {
+    setCart(prev => prev.map(c => {
+      if (c.product_id !== productId) return c;
+      const factor = resolveUnitFactor(
+        c.base_unit,
+        unit,
+        c.alt_units.map(a => ({ from_unit: a.unit, to_unit: c.base_unit, factor: a.factor })),
+      );
+      const maxQty = factor > 0 ? Math.max(1, Math.floor(c.current_stock / factor)) : c.quantity;
+      return { ...c, sale_unit: unit, unit_factor: factor, quantity: Math.min(c.quantity, maxQty) };
+    }));
+  };
+
   const updateCartQuantity = (productId: string, qty: number) => {
     setCart(prev => prev.map(c => {
       if (c.product_id !== productId) return c;
-      const newQty = Math.max(1, Math.min(qty, c.current_stock));
-      return { ...c, quantity: newQty };
+      const maxByStock = c.unit_factor > 0 ? Math.max(1, Math.floor(c.current_stock / c.unit_factor)) : c.current_stock;
+      const newQty = Math.max(1, Math.min(qty, maxByStock));
+      // Phase 4 : recalcul automatique de la remise quantité (sauf remise manuelle).
+      const resolved = resolveDiscount(discountRules, newQty, c.discountManual ? c.discount : null);
+      const newDiscount = resolved.source === 'manual' ? c.discount : resolved.pct;
+      return { ...c, quantity: newQty, discount: newDiscount };
     }));
   };
 
   const updateCartDiscount = (productId: string, discount: number) => {
     setCart(prev => prev.map(c =>
-      c.product_id === productId ? { ...c, discount: Math.max(0, Math.min(100, discount)) } : c
+      c.product_id === productId
+        ? { ...c, discount: Math.max(0, Math.min(100, discount)), discountManual: true }
+        : c
     ));
   };
 
@@ -158,12 +217,14 @@ export const POSPage: React.FC = () => {
       const byBarcode = await window.api.products.getByBarcode(code);
       if (byBarcode) {
         addToCart(byBarcode);
+        void loadAltUnits(byBarcode);
         setProductSearch('');
         return;
       }
       const byReference = await window.api.products.getByReference(code);
       if (byReference) {
         addToCart(byReference);
+        void loadAltUnits(byReference);
         setProductSearch('');
         return;
       }
@@ -184,8 +245,9 @@ export const POSPage: React.FC = () => {
         notes: `Vente caisse — ${paymentMethod}`,
         items: cart.map(c => ({
           product_id: c.product_id,
-          quantity: c.quantity,
-          unit_price: c.unit_price,
+          // Phase 6 : vente en unité alternative convertie en unité de base.
+          quantity: toBaseQuantity(c.quantity, c.unit_factor),
+          unit_price: toBaseUnitPrice(c.unit_price, c.unit_factor),
           discount: c.discount,
         })),
       });
@@ -204,6 +266,17 @@ export const POSPage: React.FC = () => {
           payment_method: paymentMethod,
         });
         if (!payResult.success) throw new Error(payResult.error);
+      }
+
+      // Impression : ticket de caisse 80 mm (défaut) ou facture A4 complète.
+      // Une erreur d'impression ne doit JAMAIS annuler la vente déjà enregistrée.
+      try {
+        const printed = printMode === 'receipt'
+          ? await window.api.documents.printReceipt(result.data.id)
+          : await window.api.documents.exportPdf(result.data.id);
+        if (!printed.success) toast.warning(`Document non imprimé : ${printed.error}`);
+      } catch (e: unknown) {
+        toast.warning(`Impression impossible : ${e instanceof Error ? e.message : String(e)}`);
       }
 
       setLastSale({
@@ -265,6 +338,30 @@ export const POSPage: React.FC = () => {
                       <div className="flex-1 item-info">
                         <div className="font-semibold">{item.reference}</div>
                         <div className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
+                        {(() => {
+                          const rule = !item.discountManual ? findApplicableDiscount(discountRules, item.quantity) : null;
+                          if (rule && rule.discount_pct > 0 && rule.discount_pct === item.discount) {
+                            return <div className="text-xs text-success">{describeVolumeDiscount(rule)}</div>;
+                          }
+                          return null;
+                        })()}
+                        {item.alt_units.length > 0 && (
+                          <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
+                            <select
+                              className="input input-sm"
+                              style={{ width: 'auto', padding: '2px 6px', fontSize: 12 }}
+                              value={item.sale_unit}
+                              onChange={e => updateCartUnit(item.product_id, e.target.value)}
+                              title="Unité de vente"
+                            >
+                              <option value={item.base_unit}>{item.base_unit}</option>
+                              {item.alt_units.map(a => <option key={a.unit} value={a.unit}>{a.unit}</option>)}
+                            </select>
+                            {item.unit_factor !== 1 && (
+                              <span className="text-xs text-muted">1 {item.sale_unit} = {item.unit_factor} {item.base_unit}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Button variant="secondary" icon onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)}>−</Button>
@@ -346,7 +443,7 @@ export const POSPage: React.FC = () => {
             {filteredProducts.slice(0, 50).map(p => {
               const stock = p.current_stock ?? 0;
               return (
-                <div key={p.id} className="list-item" onClick={() => addToCart(p)}>
+                <div key={p.id} className="list-item" onClick={() => { addToCart(p); void loadAltUnits(p); }}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1" style={{ minWidth: 0 }}>
                       <div className="font-semibold text-sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.designation}</div>
@@ -404,6 +501,26 @@ export const POSPage: React.FC = () => {
               </span>
             </div>
           )}
+
+          <div style={{ marginTop: 'var(--space-4)' }}>
+            <div className="text-sm text-muted" style={{ marginBottom: 6 }}>Document à imprimer</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button
+                variant={printMode === 'receipt' ? 'primary' : 'secondary'}
+                style={{ flex: 1 }}
+                onClick={() => setPrintMode('receipt')}
+              >
+                🧾 Ticket de caisse
+              </Button>
+              <Button
+                variant={printMode === 'invoice' ? 'primary' : 'secondary'}
+                style={{ flex: 1 }}
+                onClick={() => setPrintMode('invoice')}
+              >
+                📄 Facture complète
+              </Button>
+            </div>
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => { setShowPayment(false); setCashGiven(0); }}>Annuler</Button>

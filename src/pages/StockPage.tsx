@@ -160,6 +160,9 @@ export const StockPage: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [exitType, setExitType] = useState<ExitType>('VENTE');
   const [blRef, setBlRef] = useState('');
+  // Phase 3 : saisie de lot (uniquement pour les produits gérés par lots).
+  const [batchLot, setBatchLot] = useState('');
+  const [batchExpiry, setBatchExpiry] = useState('');
   // Types de sortie définis par l'utilisateur dans Paramètres (Vente, Casse, Perte, Don…).
   const [exitTypes, setExitTypes] = useState<string[]>(['VENTE', 'CASSE', 'PERTE', 'RETOUR']);
 
@@ -199,10 +202,26 @@ export const StockPage: React.FC = () => {
         reference_doc: blRef || undefined,
         notes: notes || undefined,
       });
+      // Phase 3 : si le produit est géré par lots et qu'un n° de lot a été saisi,
+      // on enregistre le lot (complément au mouvement de stock global, sans impact).
+      if (selectedProduct?.batch_managed === 1 && batchLot.trim()) {
+        try {
+          await window.api.batches.create({
+            product_id: selectedProductId,
+            lot_number: batchLot.trim(),
+            quantity: qty,
+            expiry_date: batchExpiry || null,
+          });
+        } catch (e: unknown) {
+          toast.warning(`Lot non enregistré : ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
       toast.success('Entrée de stock ajoutée avec succès.');
       setQty(1);
       setNotes('');
       setBlRef('');
+      setBatchLot('');
+      setBatchExpiry('');
       loadProductStock(selectedProductId);
       loadProducts();
     } catch (e: unknown) {
@@ -361,6 +380,25 @@ export const StockPage: React.FC = () => {
                     onChange={e => setNotes(e.target.value)}
                     placeholder="Notes (optionnel)"
                   />
+
+                  {selectedProduct?.batch_managed === 1 && (
+                    <div style={{ display: 'flex', gap: 10, padding: 10, background: 'var(--surface-2)', borderRadius: 'var(--radius-md)' }}>
+                      <input
+                        type="text"
+                        className="input flex-1"
+                        value={batchLot}
+                        onChange={e => setBatchLot(e.target.value)}
+                        placeholder="N° de lot (ex : LOT-2026-A)"
+                      />
+                      <input
+                        type="date"
+                        className="input flex-1"
+                        value={batchExpiry}
+                        onChange={e => setBatchExpiry(e.target.value)}
+                        title="Date d'expiration (optionnel)"
+                      />
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                     <Button variant="primary" size="lg" block onClick={handleAddEntry}>

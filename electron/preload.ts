@@ -143,6 +143,21 @@ export interface UnitConversionInput {
   product_id?: string | null;
 }
 
+// ── Lots / dates d'expiration (Phase 3) ──
+export interface ProductBatchInput {
+  product_id: string;
+  lot_number: string;
+  quantity: number;
+  expiry_date?: string | null;
+}
+
+// ── Dépôts (Phase 5) ──
+export interface WarehouseInput {
+  name: string;
+  address?: string | null;
+  is_default?: boolean;
+}
+
 // ── Commandes d'achat ──
 export interface PurchaseOrderItemInput {
   product_id: string;
@@ -346,6 +361,9 @@ export const api = {
     create: (data: SaleCreateInput) => ipcRenderer.invoke('documents:create', data),
     addPayment: (data: PaymentInput) => ipcRenderer.invoke('documents:addPayment', data),
     convertBL: (deliveryNoteId: string) => ipcRenderer.invoke('documents:convertBL', deliveryNoteId),
+    convertQuoteToDeliveryNote: (quoteId: string) => ipcRenderer.invoke('documents:convertQuoteToDeliveryNote', quoteId),
+    convertQuoteToInvoice: (quoteId: string) => ipcRenderer.invoke('documents:convertQuoteToInvoice', quoteId),
+    printReceipt: (documentId: string) => ipcRenderer.invoke('documents:printReceipt', documentId),
     createCreditNote: (invoiceId: string, returnItems?: Array<{ product_id: string; quantity: number }>, reason?: string) => ipcRenderer.invoke('documents:createCreditNote', { invoiceId, returnItems, reason }),
     getPayments: (documentId: string) => ipcRenderer.invoke('documents:getPayments', documentId),
     // Registre des paiements (Caisse / Paiements) — SQL paginé.
@@ -386,6 +404,23 @@ export const api = {
     delete: (id: string) => ipcRenderer.invoke('conversions:delete', id),
     convert: (quantity: number, fromUnit: string, toUnit: string, productId?: string) =>
       ipcRenderer.invoke('conversions:convert', { quantity, fromUnit, toUnit, productId }),
+  },
+
+  // ─── Lots / dates d'expiration (Phase 3) ───────────────────────────────────
+  batches: {
+    listByProduct: (productId: string) => ipcRenderer.invoke('batches:listByProduct', productId),
+    create: (data: ProductBatchInput) => ipcRenderer.invoke('batches:create', data),
+    delete: (id: string) => ipcRenderer.invoke('batches:delete', id),
+    getExpiring: (withinDays: number) => ipcRenderer.invoke('batches:getExpiring', withinDays),
+  },
+
+  // ─── Dépôts (Phase 5) ──────────────────────────────────────────────────────
+  warehouses: {
+    getAll: () => ipcRenderer.invoke('warehouses:getAll'),
+    create: (data: WarehouseInput) => ipcRenderer.invoke('warehouses:create', data),
+    update: (id: string, data: WarehouseInput) => ipcRenderer.invoke('warehouses:update', { id, data }),
+    setDefault: (id: string) => ipcRenderer.invoke('warehouses:setDefault', id),
+    delete: (id: string) => ipcRenderer.invoke('warehouses:delete', id),
   },
 
   // ─── Price History ─────────────────────────────────────────────────────────

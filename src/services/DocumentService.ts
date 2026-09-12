@@ -84,6 +84,16 @@ export const DocumentService = {
     return DocumentRepository.convertToInvoice(deliveryNoteId);
   },
 
+  /** Conversion Devis → Bon de livraison (workflow commercial). */
+  convertQuoteToDeliveryNote(quoteId: string): Document {
+    return DocumentRepository.convertQuoteToDeliveryNote(quoteId);
+  },
+
+  /** Conversion Devis → Facture (workflow commercial). */
+  convertQuoteToInvoice(quoteId: string): Document {
+    return DocumentRepository.convertQuoteToInvoice(quoteId);
+  },
+
   /**
    * Crée un avoir (partiel ou total) à partir d'une facture.
    *

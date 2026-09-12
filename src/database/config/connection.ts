@@ -252,6 +252,7 @@ function upgradeLegacyDatabase(): void {
   addColumnIfMissing('products', 'unit', "TEXT NOT NULL DEFAULT 'PIÈCE'");
   addColumnIfMissing('products', 'vat_rate', 'REAL DEFAULT 20.0');
   addColumnIfMissing('products', 'max_stock', 'INTEGER DEFAULT 0');
+  addColumnIfMissing('products', 'batch_managed', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing('products', 'location', 'TEXT');
   addColumnIfMissing('products', 'brand', 'TEXT');
   addColumnIfMissing('products', 'supplier_id', 'TEXT');

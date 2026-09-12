@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import type { Document, DocumentType } from '../repositories/DocumentRepository';
 import type { Product } from '../repositories/ProductRepository';
 import { toLocalDateString } from '../utils/date';
+import { resolveDiscount, findApplicableDiscount, describeVolumeDiscount, type VolumeDiscountRule } from '../utils/volumeDiscount';
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
 
@@ -43,6 +44,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
   PARTIAL:   { label: 'Partielle',  color: 'var(--warning)', bg: 'var(--warning-soft)' },
   DRAFT:     { label: 'Brouillon',  color: 'var(--text-secondary)', bg: 'var(--surface-2)' },
   CANCELLED: { label: 'Annulée',    color: 'var(--muted)', bg: 'var(--surface-2)' },
+  CONVERTED: { label: 'Converti',   color: 'var(--info)', bg: 'var(--info-soft)' },
 };
 
 // ─── Modal de Retour Partiel (Avoir) ────────────────────────────────────────
@@ -219,12 +221,15 @@ const NewDocumentModal: React.FC<{
   const [date, setDate] = useState(toLocalDateString());
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; discount: number; _name?: string }>>([]);
+  const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; discount: number; _name?: string; _manual?: boolean }>>([]);
   const [productSearch, setProductSearch] = useState('');
+  // Phase 4 : paliers de remise par quantité.
+  const [discountRules, setDiscountRules] = useState<VolumeDiscountRule[]>([]);
 
   useEffect(() => {
     loadClients();
     loadProducts();
+    window.api.discounts.getAll().then((r: VolumeDiscountRule[]) => setDiscountRules(r ?? [])).catch(() => {});
   }, []);
 
   const filteredProducts = products.filter(p =>
@@ -252,12 +257,18 @@ const NewDocumentModal: React.FC<{
 
   const total = items.reduce((sum, it) => sum + it.quantity * it.unit_price * (1 - it.discount / 100), 0);
 
-  // Application automatique des remises par volume (tarification §6)
-  const applyVolumeDiscount = (item: { product_id: string; quantity: number }, idx: number) => {
-    const product = products.find(p => p.id === item.product_id);
-    if (!product) return;
-    const volumePrice = item.quantity >= 10 ? product.wholesale_price : item.quantity >= 3 ? (product.selling_price * 0.95) : product.selling_price;
-    updateLine(idx, 'unit_price', Math.round(volumePrice * 100) / 100);
+  // Phase 4 : application automatique de la remise quantité (paliers).
+  // Non-cumul : une remise saisie manuellement sur la ligne est prioritaire.
+  const applyVolumeQuantity = (idx: number, quantity: number) => {
+    setItems(prev => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const resolved = resolveDiscount(discountRules, quantity, it._manual ? it.discount : null);
+      return { ...it, quantity, discount: resolved.source === 'manual' ? it.discount : resolved.pct };
+    }));
+  };
+
+  const setManualDiscount = (idx: number, discount: number) => {
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, discount: Math.max(0, Math.min(100, discount)), _manual: true } : it));
   };
 
   const handleSave = () => {
@@ -346,7 +357,7 @@ const NewDocumentModal: React.FC<{
                       <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '8px 10px' }}>{item._name}</td>
                         <td style={{ padding: '4px 8px' }}>
-                          <input type="number" min="1" value={item.quantity} onChange={e => { updateLine(idx, 'quantity', Number(e.target.value)); applyVolumeDiscount(item, idx); }}
+                          <input type="number" min="1" value={item.quantity} onChange={e => applyVolumeQuantity(idx, Number(e.target.value))}
                             className="input" />
                         </td>
                         <td style={{ padding: '4px 8px' }}>
@@ -354,8 +365,15 @@ const NewDocumentModal: React.FC<{
                             className="input" />
                         </td>
                         <td style={{ padding: '4px 8px' }}>
-                          <input type="number" min="0" max="100" value={item.discount} onChange={e => updateLine(idx, 'discount', Number(e.target.value))}
+                          <input type="number" min="0" max="100" value={item.discount} onChange={e => setManualDiscount(idx, Number(e.target.value))}
                             className="input" />
+                          {(() => {
+                            const rule = !item._manual ? findApplicableDiscount(discountRules, item.quantity) : null;
+                            if (rule && rule.discount_pct > 0 && rule.discount_pct === item.discount) {
+                              return <div className="text-xs text-success" style={{ marginTop: 2 }}>{describeVolumeDiscount(rule)}</div>;
+                            }
+                            return null;
+                          })()}
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '600' }}>{lineTotal.toFixed(2)}</td>
                         <td style={{ padding: '4px 8px', textAlign: 'center' }}>
@@ -552,11 +570,13 @@ const DocumentDetailPanel: React.FC<{
   doc: Document;
   onPayment: (amount: number, method: string) => void;
   onConvert?: () => void;
+  onConvertToBL?: () => void;
+  onConvertToInvoice?: () => void;
   onPrint: () => void;
   onCreditNote?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
-}> = ({ doc, onPayment, onConvert, onPrint, onCreditNote, onDelete, onEdit }) => {
+}> = ({ doc, onPayment, onConvert, onConvertToBL, onConvertToInvoice, onPrint, onCreditNote, onDelete, onEdit }) => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('CASH');
   const isCreditNote = doc.type === 'CREDIT_NOTE';
@@ -681,6 +701,18 @@ const DocumentDetailPanel: React.FC<{
             📄 Convertir en Facture
           </button>
         )}
+        {doc.type === 'QUOTE' && doc.status !== 'CONVERTED' && doc.status !== 'CANCELLED' && onConvertToBL && (
+          <button onClick={onConvertToBL}
+            className="btn btn-primary" style={{ flex: 1 }}>
+            🚚 Convertir en BL
+          </button>
+        )}
+        {doc.type === 'QUOTE' && doc.status !== 'CONVERTED' && doc.status !== 'CANCELLED' && onConvertToInvoice && (
+          <button onClick={onConvertToInvoice}
+            className="btn btn-primary" style={{ flex: 1 }}>
+            📄 Convertir en facture
+          </button>
+        )}
         {doc.type === 'INVOICE' && doc.status !== 'CANCELLED' && onCreditNote && (
           <button onClick={onCreditNote}
             className="btn btn-danger" style={{ flex: 1 }}>
@@ -695,10 +727,11 @@ const DocumentDetailPanel: React.FC<{
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
 export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFilter?: string }> = ({ initialType, initialStatusFilter }) => {
-  const { documents, selectedDocument, activeType, searchQuery, statusFilter, isLoading, setActiveType, setSearchQuery, setStatusFilter, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
+  const { documents, selectedDocument, activeType, searchQuery, statusFilter, isLoading, setActiveType, setSearchQuery, setStatusFilter, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, convertQuote, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
+  const [pendingConvert, setPendingConvert] = useState<{ doc: Document; target: 'DELIVERY_NOTE' | 'INVOICE' } | null>(null);
   const [editDoc, setEditDoc] = useState<Document | null>(null);
   const [editNotesDoc, setEditNotesDoc] = useState<Document | null>(null);
   const [editNotesValue, setEditNotesValue] = useState('');
@@ -739,6 +772,17 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
     try {
       await convertBL(selectedDocument.id);
       toast.success('Bon de livraison converti en facture avec succès.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(message);
+    }
+  };
+
+  const handleConvertQuote = async (target: 'DELIVERY_NOTE' | 'INVOICE') => {
+    if (!selectedDocument) return;
+    try {
+      const created = await convertQuote(selectedDocument.id, target);
+      toast.success(`${target === 'INVOICE' ? 'Facture' : 'Bon de livraison'} ${created.document_number} créé(e) à partir du devis.`);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       toast.error(message);
@@ -862,6 +906,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
           <option value="UNPAID">Impayée</option>
           <option value="PARTIAL">Partielle</option>
           <option value="CANCELLED">Annulée</option>
+          <option value="CONVERTED">Converti</option>
         </select>
       </div>
 
@@ -913,6 +958,8 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
               doc={selectedDocument}
               onPayment={handlePayment}
               onConvert={selectedDocument.type === 'DELIVERY_NOTE' ? handleConvert : undefined}
+              onConvertToBL={selectedDocument.type === 'QUOTE' ? () => setPendingConvert({ doc: selectedDocument, target: 'DELIVERY_NOTE' }) : undefined}
+              onConvertToInvoice={selectedDocument.type === 'QUOTE' ? () => setPendingConvert({ doc: selectedDocument, target: 'INVOICE' }) : undefined}
               onPrint={handlePrint}
               onCreditNote={selectedDocument.type === 'INVOICE' ? handleCreditNoteClick : undefined}
               onDelete={() => setPendingDelete(selectedDocument)}
@@ -931,6 +978,17 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
           doc={selectedDocument}
           onClose={() => setShowReturnModal(false)}
           onConfirm={handleReturnConfirm}
+        />
+      )}
+
+      {pendingConvert && (
+        <ConfirmDialog
+          open
+          title={pendingConvert.target === 'INVOICE' ? 'Convertir le devis en facture ?' : 'Convertir le devis en bon de livraison ?'}
+          message={<>Le devis <strong>{pendingConvert.doc.document_number}</strong> sera converti en {pendingConvert.target === 'INVOICE' ? 'facture' : 'bon de livraison'}.<br />Le devis passera au statut « Converti » et ne pourra plus être reconverti.</>}
+          confirmLabel={pendingConvert.target === 'INVOICE' ? 'Convertir en facture' : 'Convertir en BL'}
+          onConfirm={() => { const t = pendingConvert.target; setPendingConvert(null); void handleConvertQuote(t); }}
+          onCancel={() => setPendingConvert(null)}
         />
       )}
 

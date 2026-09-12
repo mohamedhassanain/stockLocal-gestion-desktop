@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, FileText, FileCheck2, Truck, Undo2,
   Package, ArrowLeftRight, ClipboardList, AlertTriangle, ShoppingBag,
   PackageCheck, Factory, Users, CreditCard, Wallet, BarChart3, Settings,
-  Boxes, Bot,
+  Boxes, Bot, Warehouse,
 } from 'lucide-react';
 import type { Page } from '../../App';
 
@@ -48,6 +48,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
       { page: 'stock', icon: ArrowLeftRight, label: 'Mouvements', shortcut: 'F3' },
       { page: 'inventory', icon: ClipboardList, label: 'Inventaire', shortcut: 'F10' },
       { page: 'stock-alerts', icon: AlertTriangle, label: 'Alertes stock' },
+      { page: 'warehouses', icon: Warehouse, label: 'Dépôts' },
     ],
   },
   {

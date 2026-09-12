@@ -17,12 +17,13 @@ import { CashRegisterPage } from './pages/CashRegisterPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { ClientCreditsPage } from './pages/ClientCreditsPage';
 import { AiAssistantPage } from './pages/AiAssistantPage';
+import { WarehousesPage } from './pages/WarehousesPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './stores/useToastStore';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant' | 'warehouses';
 
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
@@ -118,7 +119,7 @@ export const App: React.FC = () => {
       'dashboard', 'products', 'stock', 'clients', 'suppliers', 'invoices',
       'devis', 'delivery-notes', 'credit-notes', 'settings', 'pos',
       'purchases', 'inventory', 'reports', 'stock-alerts',
-      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant',
+      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant', 'warehouses',
     ]);
 
     const handleNavigate = (e: Event) => {
@@ -212,6 +213,7 @@ export const App: React.FC = () => {
       {currentPage === 'payments' && <PaymentsPage />}
       {currentPage === 'cash-register' && <CashRegisterPage />}
       {currentPage === 'ai-assistant' && <AiAssistantPage />}
+      {currentPage === 'warehouses' && <WarehousesPage />}
       <Toaster />
     </div>
   );

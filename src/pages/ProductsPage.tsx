@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { ProductForm } from '../components/products/ProductForm';
+import { ProductUnitConversionsModal } from '../components/products/ProductUnitConversionsModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button, Badge, Card, Input, Select, PageHeader, DeleteButton } from '../components/ui';
 import { PRODUCT_STATUS_BADGE, stockLevelClass } from '../components/ui/statusMaps';
@@ -22,6 +23,8 @@ export const ProductsPage: React.FC = () => {
   const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct, deleteProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  // Phase 6 : produit dont on gère les conversions d'unités.
+  const [conversionProduct, setConversionProduct] = useState<Product | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{
     title: string;
     message: React.ReactNode;
@@ -266,6 +269,7 @@ export const ProductsPage: React.FC = () => {
                         <div><Badge variant={statusBadge.variant}>{statusBadge.label}</Badge></div>
                         <div className="pdg-actions">
                           <div className="flex gap-2 items-center">
+                            <Button variant="secondary" size="sm" onClick={() => setConversionProduct(p)} title="Conversions d'unités">🔢</Button>
                             <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>
                             <button
                               className={`switch ${p.status === 'ACTIVE' ? 'on' : ''}`}
@@ -294,6 +298,10 @@ export const ProductsPage: React.FC = () => {
 
       {isFormOpen && (
         <ProductForm onClose={() => { setIsFormOpen(false); setEditingProduct(null); }} editingProduct={editingProduct ?? undefined} />
+      )}
+
+      {conversionProduct && (
+        <ProductUnitConversionsModal product={conversionProduct} onClose={() => setConversionProduct(null)} />
       )}
 
       {pendingConfirm && (

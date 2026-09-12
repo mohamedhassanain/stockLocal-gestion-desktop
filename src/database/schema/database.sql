@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS products (
     wholesale_price REAL NOT NULL DEFAULT 0.0,
     min_stock INTEGER NOT NULL DEFAULT 0,
     max_stock INTEGER NOT NULL DEFAULT 0,
+    -- Gestion par lots + date d'expiration (Phase 3). Désactivé par défaut :
+    -- aucun changement de comportement pour les produits existants.
+    batch_managed INTEGER NOT NULL DEFAULT 0,
     vat_rate REAL NOT NULL DEFAULT 20.0,
     location TEXT,
     brand TEXT,
