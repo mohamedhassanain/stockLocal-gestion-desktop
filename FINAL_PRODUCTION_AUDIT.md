@@ -163,6 +163,8 @@ recherche paginée ; 50 000 mouvements → historique paginé
 - Watcher Vite : données runtime exclues (`buildWatchIgnored`) ; `npm run dev`
   démarre sans **EBUSY** (vérifié sur Windows 11). Test dédié :
   `tests/vite-watch-ignored.test.ts`.
+- Démarrages répétés de `npm run dev` : plusieurs démarrages consécutifs propres,
+  **aucun EBUSY** (vérifié pendant l'audit).
 - Installeur NSIS produit et horodaté ; schéma embarqué via `extraResources`.
 
 ## 17. Known Limitations
@@ -183,7 +185,10 @@ recherche paginée ; 50 000 mouvements → historique paginé
 4. **Typage frontière IPC** : deux composants (`AccountStatementPanel`,
    `ExpensesPage`) déballent l'enveloppe IPC via `as unknown as` (sûr, mais
    typage perfectible).
-5. `DocumentRepository.cancelDocument` n'est pas référencé (API conservée).
+
+> Note dead code : `DocumentRepository.cancelDocument` a été vérifié — il est
+> **référencé** par `tests/quote-conversion.test.ts` (donc conservé ; pas du
+> code mort).
 
 ## 18. Release Recommendation
 
