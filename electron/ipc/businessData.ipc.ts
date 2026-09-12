@@ -9,6 +9,7 @@ import { SupplierService } from '../../src/services/SupplierService';
 import { SupplierRepository } from '../../src/repositories/SupplierRepository';
 import { DocumentService } from '../../src/services/DocumentService';
 import { DocumentRepository, type DocumentType } from '../../src/repositories/DocumentRepository';
+import { StatementRepository } from '../../src/repositories/StatementRepository';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
 import {
@@ -97,6 +98,39 @@ export function registerBusinessDataHandlers(): void {
     return StockLedgerService.getWarehouseBreakdown(safeId);
   });
 
+  // §Phase 3.1 — Audit de cohérence du stock (LECTURE SEULE : aucune écriture).
+  // Compare le solde stocké au solde attendu recalculé depuis les mouvements.
+  ipcMain.handle('stock:auditBalances', async () => {
+    return run(() => StockLedgerService.auditBalances());
+  });
+
+  // §Phase 3.1 — Réparation CONTRÔLÉE : ne touche que les couples (produit,
+  // dépôt) explicitement transmis, journalise chaque correction.
+  ipcMain.handle('stock:repairBalances', async (_, items: unknown) => {
+    return run(() => {
+      if (!Array.isArray(items)) throw new Error('Liste d\'éléments à réparer invalide.');
+      const safeItems = items
+        .slice(0, 5000)
+        .map(it => {
+          const row = (it ?? {}) as { product_id?: unknown; warehouse_id?: unknown };
+          return {
+            product_id: requireId(row.product_id, 'id produit'),
+            warehouse_id: requireId(row.warehouse_id, 'id dépôt'),
+          };
+        });
+      const result = StockLedgerService.repairBalances(safeItems);
+      AuditService.log(
+        'STOCK_REPAIR',
+        'stock',
+        'inventory_balances',
+        `Réparation de ${result.repaired} solde(s) depuis les mouvements`,
+        undefined,
+        result.details,
+      );
+      return { success: true, data: result };
+    });
+  });
+
   // ─── Clients ───────────────────────────────────────────────────────────────
   ipcMain.handle('clients:search', async (_, query: unknown) => {
     return ClientService.searchClients(typeof query === 'string' ? query.trim() : '');
@@ -152,6 +186,11 @@ export function registerBusinessDataHandlers(): void {
       AuditService.log('CLIENT_PAYMENT', 'client', safe.customerId, `Paiement ${safe.amount} MAD`);
       return { success: true, data: payment };
     });
+  });
+
+  // §Phase 8 — Relevé de compte client (lignes débit/crédit + solde + échéances).
+  ipcMain.handle('clients:getStatement', async (_, customerId: unknown) => {
+    return run(() => StatementRepository.getClientStatement(requireId(customerId, 'id client')));
   });
 
   ipcMain.handle('clients:exportStatement', async (_, customerId: unknown) => {
@@ -217,6 +256,11 @@ export function registerBusinessDataHandlers(): void {
       AuditService.log('SUPPLIER_PAYMENT', 'supplier', safe.supplierId, `Paiement ${safe.amount} MAD`);
       return { success: true, data: payment };
     });
+  });
+
+  // §Phase 9 — Relevé fournisseur (achats / règlements / solde / échéances).
+  ipcMain.handle('suppliers:getStatement', async (_, supplierId: unknown) => {
+    return run(() => StatementRepository.getSupplierStatement(requireId(supplierId, 'id fournisseur')));
   });
 
   ipcMain.handle('suppliers:exportStatement', async (_, supplierId: unknown) => {
@@ -328,6 +372,11 @@ export function registerBusinessDataHandlers(): void {
 
   ipcMain.handle('documents:getPayments', async (_, documentId: unknown) => {
     return DocumentService.getPayments(requireId(documentId, 'id document'));
+  });
+
+  // §Phase 7 — quantités retournables d'une facture (lecture seule).
+  ipcMain.handle('documents:getReturnableQuantities', async (_, invoiceId: unknown) => {
+    return DocumentService.getReturnableQuantities(requireId(invoiceId, 'id facture'));
   });
 
   ipcMain.handle('documents:getAllPayments', async (_, params?: unknown) => {

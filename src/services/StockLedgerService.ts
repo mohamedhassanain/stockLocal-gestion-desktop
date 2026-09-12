@@ -1,4 +1,5 @@
 import { db, runInTransaction } from '../database/config/connection';
+import { ProductBatchRepository, type FefoAllocation } from '../repositories/ProductBatchRepository';
 import { randomUUID } from 'crypto';
 
 /**
@@ -53,6 +54,12 @@ export interface StockMovementRow {
   document_id?: string;
   supplier_id?: string;
   notes?: string;
+  /**
+   * §Phase 13 — Lots réellement prélevés (FEFO) pour cette sortie.
+   * Information de traçabilité : NON persistée dans `stock_movements`, elle est
+   * renvoyée par `recordMovement` pour l'affichage et l'audit.
+   */
+  batch_allocations?: FefoAllocation[];
 }
 
 interface MovementInput {
@@ -130,6 +137,46 @@ const stmtInsertTransfer = db.prepare(`
   INSERT INTO stock_transfers (id, product_id, from_warehouse_id, to_warehouse_id, quantity, date, notes)
   VALUES (@id, @product_id, @from_warehouse_id, @to_warehouse_id, @quantity, @date, @notes)
 `);
+
+/** Une incohérence détectée entre le stock stocké et le stock attendu. */
+export interface StockDiscrepancy {
+  product_id: string;
+  warehouse_id: string;
+  product_ref?: string;
+  product_name?: string;
+  warehouse_name?: string;
+  stored_qty: number;
+  expected_qty: number;
+  stored_in_qty: number;
+  expected_in_qty: number;
+  stored_in_value: number;
+  expected_in_value: number;
+  /** stored_qty − expected_qty. */
+  difference: number;
+}
+
+/** Résultat d'un audit de stock (lecture seule). */
+export interface StockAuditResult {
+  /** Nombre de couples (produit, dépôt) examinés. */
+  checked: number;
+  /** Nombre d'écarts détectés. */
+  discrepancyCount: number;
+  discrepancies: StockDiscrepancy[];
+}
+
+/** Détail d'une ligne réparée. */
+export interface StockRepairDetail {
+  product_id: string;
+  warehouse_id: string;
+  before_qty: number;
+  after_qty: number;
+}
+
+/** Résultat d'une réparation de stock. */
+export interface StockRepairResult {
+  repaired: number;
+  details: StockRepairDetail[];
+}
 
 export interface WarehouseTransferRow {
   id: string;
@@ -313,6 +360,20 @@ export const StockLedgerService = {
         }
       }
 
+      // §Phase 13 — FEFO (« First Expired, First Out ») : toute SORTIE de stock
+      // consomme les lots par date d'expiration CROISSANTE, dans la MÊME
+      // transaction que le mouvement et le solde (unité atomique).
+      // Seuls les produits `batch_managed = 1` sont concernés : tous les autres
+      // sont ignorés (`skipped: true`), donc AUCUN changement de comportement
+      // pour les produits sans gestion de lots.
+      let batchAllocations: FefoAllocation[] | undefined;
+      if (direction === 'OUT') {
+        const consumption = ProductBatchRepository.consumeFefoInTransaction(input.product_id, quantity);
+        if (!consumption.skipped && consumption.allocations.length > 0) {
+          batchAllocations = consumption.allocations;
+        }
+      }
+
       const movement: StockMovementRow = {
         id: randomUUID(),
         product_id: input.product_id,
@@ -327,6 +388,7 @@ export const StockLedgerService = {
         supplier_id: input.supplier_id,
         notes: input.notes,
       };
+      if (batchAllocations) movement.batch_allocations = batchAllocations;
 
       stmtInsert.run({
         id: movement.id,
@@ -524,6 +586,127 @@ export const StockLedgerService = {
       ORDER BY t.date DESC
       LIMIT ? OFFSET ?
     `).all(limit, offset) as Array<WarehouseTransferRow & { product_ref?: string; product_name?: string; from_name?: string; to_name?: string }>;
+  },
+
+  /**
+   * §Phase 3.1 — AUDIT du stock (LECTURE SEULE, aucune écriture).
+   *
+   * Compare le solde STOCKÉ (`inventory_balances`) au solde ATTENDU recalculé
+   * depuis la source de vérité (`stock_movements`). Renvoie la liste des écarts
+   * sans jamais rien modifier : la réparation est une décision explicite de
+   * l'utilisateur (`repairBalances`).
+   */
+  auditBalances(): StockAuditResult {
+    const expectedRows = db.prepare(`
+      SELECT
+        product_id,
+        warehouse_id,
+        SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS expected_qty,
+        SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) AS expected_in_qty,
+        SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END) AS expected_in_value
+      FROM stock_movements
+      GROUP BY product_id, warehouse_id
+    `).all() as Array<{ product_id: string; warehouse_id: string; expected_qty: number; expected_in_qty: number; expected_in_value: number }>;
+
+    const storedRows = db.prepare(`
+      SELECT ib.product_id, ib.warehouse_id, ib.quantity AS stored_qty,
+             ib.total_in_qty AS stored_in_qty, ib.total_in_value AS stored_in_value,
+             p.reference AS product_ref, p.designation AS product_name,
+             w.name AS warehouse_name
+      FROM inventory_balances ib
+      LEFT JOIN products p ON p.id = ib.product_id
+      LEFT JOIN warehouses w ON w.id = ib.warehouse_id
+    `).all() as Array<{ product_id: string; warehouse_id: string; stored_qty: number; stored_in_qty: number; stored_in_value: number; product_ref?: string; product_name?: string; warehouse_name?: string }>;
+
+    const keyOf = (productId: string, warehouseId: string) => `${productId}|${warehouseId}`;
+    const expectedByKey = new Map(expectedRows.map(r => [keyOf(r.product_id, r.warehouse_id), r]));
+    const storedByKey = new Map(storedRows.map(r => [keyOf(r.product_id, r.warehouse_id), r]));
+    const allKeys = new Set<string>([...expectedByKey.keys(), ...storedByKey.keys()]);
+
+    const TOLERANCE = 0.0001; // quantités REAL : tolérance flottante
+    const discrepancies: StockDiscrepancy[] = [];
+
+    for (const key of allKeys) {
+      const expected = expectedByKey.get(key);
+      const stored = storedByKey.get(key);
+      const expectedQty = Number(expected?.expected_qty ?? 0);
+      const storedQty = Number(stored?.stored_qty ?? 0);
+      const difference = Number((storedQty - expectedQty).toFixed(4));
+      if (Math.abs(difference) <= TOLERANCE) continue;
+
+      const productId = expected?.product_id ?? stored!.product_id;
+      const warehouseId = expected?.warehouse_id ?? stored!.warehouse_id;
+      discrepancies.push({
+        product_id: productId,
+        warehouse_id: warehouseId,
+        product_ref: stored?.product_ref,
+        product_name: stored?.product_name,
+        warehouse_name: stored?.warehouse_name,
+        stored_qty: storedQty,
+        expected_qty: expectedQty,
+        stored_in_qty: Number(stored?.stored_in_qty ?? 0),
+        expected_in_qty: Number(expected?.expected_in_qty ?? 0),
+        stored_in_value: Number(stored?.stored_in_value ?? 0),
+        expected_in_value: Number(expected?.expected_in_value ?? 0),
+        difference,
+      });
+    }
+
+    return {
+      checked: allKeys.size,
+      discrepancyCount: discrepancies.length,
+      discrepancies: discrepancies.sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference)),
+    };
+  },
+
+  /**
+   * §Phase 3.1 — RÉPARATION contrôlée du stock.
+   *
+   * Ne répare QUE les couples (produit, dépôt) explicitement fournis : le solde
+   * est recalculé depuis `stock_movements` puis réécrit. Aucun écrasement
+   * silencieux — la fonction renvoie le détail avant/après pour l'audit.
+   */
+  repairBalances(items: Array<{ product_id: string; warehouse_id: string }>): StockRepairResult {
+    if (!Array.isArray(items) || items.length === 0) {
+      return { repaired: 0, details: [] };
+    }
+
+    return runInTransaction(() => {
+      const details: StockRepairDetail[] = [];
+
+      for (const item of items) {
+        const productId = String(item.product_id ?? '');
+        const warehouseId = String(item.warehouse_id ?? '');
+        if (!productId || !warehouseId) continue;
+
+        const agg = db.prepare(`
+          SELECT
+            COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END), 0) AS qty,
+            COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END), 0) AS in_qty,
+            COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END), 0) AS in_value
+          FROM stock_movements WHERE product_id = ? AND warehouse_id = ?
+        `).get(productId, warehouseId) as { qty: number; in_qty: number; in_value: number };
+
+        const before = stmtGetBalanceAt.get(productId, warehouseId) as { quantity: number } | undefined;
+        const beforeQty = Number(before?.quantity ?? 0);
+        const newQty = Number(agg.qty ?? 0);
+        const newInQty = Number(agg.in_qty ?? 0);
+        const newInValue = Number(agg.in_value ?? 0);
+
+        stmtUpsertBalance.run({
+          product_id: productId,
+          warehouse_id: warehouseId,
+          quantity: newQty,
+          total_in_qty: newInQty,
+          total_in_value: newInValue,
+          average_cost: newInQty > 0 ? newInValue / newInQty : 0,
+        });
+
+        details.push({ product_id: productId, warehouse_id: warehouseId, before_qty: beforeQty, after_qty: newQty });
+      }
+
+      return { repaired: details.length, details };
+    });
   },
 
   /**

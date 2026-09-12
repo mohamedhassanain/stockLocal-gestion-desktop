@@ -1,4 +1,9 @@
 import { db } from '../database/config/connection';
+// §Phase 2.2 — « aujourd'hui » et « ce mois » sont des dates MÉTIER locales.
+// `date('now')` / `strftime('%Y-%m','now')` sont en UTC : à UTC+1, les premières
+// heures de la journée faisaient tomber le CA du jour à 0 et pouvaient faire
+// basculer le mois. On passe désormais la date locale en PARAMÈTRE lié.
+import { todayDateOnly, daysBetweenDateOnly } from '../utils/date';
 
 export interface DashboardStats {
   revenue_today: number;
@@ -63,27 +68,40 @@ export interface AlertSummary {
   expiring_soon_count: number;
 }
 
+/** §Phase 18 — produit actif sans aucune vente sur la période analysée. */
+export interface DeadProduct {
+  id: string;
+  reference: string;
+  designation: string;
+  current_stock: number;
+}
+
 // ─── Requêtes SQL ultra-optimisées pour le Dashboard ─────────────────────────
 
-const stmtRevenue = db.prepare<[]>(`
+const stmtRevenue = db.prepare<[string, string, string, string, string]>(`
   SELECT
-    COALESCE(SUM(CASE WHEN date(d.date) = date('now') THEN d.total_incl_tax ELSE 0 END), 0) AS revenue_today,
-    COALESCE(SUM(CASE WHEN d.date >= date('now', '-7 days') THEN d.total_incl_tax ELSE 0 END), 0) AS revenue_week,
-    COALESCE(SUM(CASE WHEN strftime('%Y-%m', d.date) = strftime('%Y-%m', 'now') THEN d.total_incl_tax ELSE 0 END), 0) AS revenue_month,
-    COUNT(CASE WHEN date(d.date) = date('now') THEN 1 END) AS sales_count_today,
-    COUNT(CASE WHEN strftime('%Y-%m', d.date) = strftime('%Y-%m', 'now') THEN 1 END) AS sales_count_month
+    COALESCE(SUM(CASE WHEN date(d.date) = date(?) THEN d.total_incl_tax ELSE 0 END), 0) AS revenue_today,
+    COALESCE(SUM(CASE WHEN d.date >= date(?, '-7 days') THEN d.total_incl_tax ELSE 0 END), 0) AS revenue_week,
+    COALESCE(SUM(CASE WHEN strftime('%Y-%m', d.date) = ? THEN d.total_incl_tax ELSE 0 END), 0) AS revenue_month,
+    COUNT(CASE WHEN date(d.date) = date(?) THEN 1 END) AS sales_count_today,
+    COUNT(CASE WHEN strftime('%Y-%m', d.date) = ? THEN 1 END) AS sales_count_month
   FROM documents d
   WHERE d.type = 'INVOICE' AND d.status != 'CANCELLED'
 `);
 
-const stmtMargin = db.prepare<[]>(`
+/** Mois courant au format `YYYY-MM`, calendrier LOCAL. */
+function currentLocalMonth(): string {
+  return todayDateOnly().slice(0, 7);
+}
+
+const stmtMargin = db.prepare<[string]>(`
   SELECT COALESCE(SUM((di.unit_price - p.purchase_price) * di.quantity * (1 - di.discount/100.0)), 0) AS gross_margin_month
   FROM document_items di
   JOIN documents d ON d.id = di.document_id
   JOIN products p ON p.id = di.product_id
   WHERE d.type = 'INVOICE'
     AND d.status != 'CANCELLED'
-    AND strftime('%Y-%m', d.date) = strftime('%Y-%m', 'now')
+    AND strftime('%Y-%m', d.date) = ?
 `);
 
 // §14/§16 : valeur du stock au CMUP (inventory_balances.average_cost), alignée
@@ -121,7 +139,7 @@ const stmtSupplierDebt = db.prepare<[]>(`
   FROM supplier_credits sc
 `);
 
-const stmtTopProducts = db.prepare<[]>(`
+const stmtTopProducts = db.prepare<[string]>(`
   SELECT di.product_id, p.designation, p.reference,
     SUM(di.quantity) AS total_qty,
     SUM(di.total) AS total_revenue
@@ -130,13 +148,13 @@ const stmtTopProducts = db.prepare<[]>(`
   JOIN products p ON p.id = di.product_id
   WHERE d.type = 'INVOICE'
     AND d.status != 'CANCELLED'
-    AND strftime('%Y-%m', d.date) = strftime('%Y-%m', 'now')
+    AND strftime('%Y-%m', d.date) = ?
   GROUP BY di.product_id
   ORDER BY total_qty DESC
   LIMIT 5
 `);
 
-const stmtTopClients = db.prepare<[]>(`
+const stmtTopClients = db.prepare<[string]>(`
   SELECT d.entity_id AS customer_id, c.name,
     SUM(d.total_incl_tax) AS total_revenue,
     COUNT(*) AS invoice_count
@@ -144,19 +162,19 @@ const stmtTopClients = db.prepare<[]>(`
   JOIN customers c ON c.id = d.entity_id
   WHERE d.type = 'INVOICE'
     AND d.status != 'CANCELLED'
-    AND strftime('%Y-%m', d.date) = strftime('%Y-%m', 'now')
+    AND strftime('%Y-%m', d.date) = ?
   GROUP BY d.entity_id
   ORDER BY total_revenue DESC
   LIMIT 5
 `);
 
 // Répartition des encaissements du mois courant par mode de paiement — SQL agrégé.
-const stmtPaymentsByMethod = db.prepare<[]>(`
+const stmtPaymentsByMethod = db.prepare<[string]>(`
   SELECT py.payment_method,
     COALESCE(SUM(py.amount), 0) AS total
   FROM payments py
   JOIN documents d ON d.id = py.document_id
-  WHERE strftime('%Y-%m', py.date) = strftime('%Y-%m', 'now')
+  WHERE strftime('%Y-%m', py.date) = ?
     AND d.status != 'CANCELLED'
   GROUP BY py.payment_method
   ORDER BY total DESC
@@ -200,19 +218,31 @@ const stmtLowStockCountByWarehouse = db.prepare<[string]>(`
   )
 `);
 
-const stmtUpcomingDue = db.prepare<[number]>(`
+// §Phase 2 — le SQL ne calcule PLUS `days_left` : `julianday('now')` est en UTC
+// et la troncature `CAST(... AS INTEGER)` décalait le compte à rebours d'un jour
+// (incohérent avec `evaluateCredit`). On ne filtre ici que sur le CALENDRIER
+// (date d'échéance ≤ aujourd'hui local + N jours) ; `days_left` est calculé
+// ensuite par le même moteur de dates que le reste de l'application.
+const stmtUpcomingDue = db.prepare<[string, string]>(`
   SELECT d.id, d.document_number, c.name AS customer_name, d.due_date,
-    (d.total_incl_tax - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0)) AS remaining,
-    CAST(julianday(d.due_date) - julianday('now') AS INTEGER) AS days_left
+    (d.total_incl_tax - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0)) AS remaining
   FROM documents d
   JOIN customers c ON c.id = d.entity_id
   WHERE d.type = 'INVOICE'
     AND d.status IN ('UNPAID', 'PARTIAL')
     AND d.due_date IS NOT NULL
-    AND julianday(d.due_date) - julianday('now') <= ?
+    AND date(d.due_date) <= date(?, ?)
   ORDER BY d.due_date ASC
   LIMIT 10
 `);
+
+interface UpcomingDueRow {
+  id: string;
+  document_number: string;
+  customer_name: string;
+  due_date: string;
+  remaining: number;
+}
 
 // ─── Repository ───────────────────────────────────────────────────────────────
 
@@ -229,8 +259,12 @@ export const DashboardRepository = {
    *   (tous dépôts), comportement identique à avant le multi-dépôts.
    */
   getStats(warehouseId?: string): DashboardStats {
-    const revenue = stmtRevenue.get() as RevenueRow | undefined;
-    const margin = stmtMargin.get() as MarginRow | undefined;
+    // §Phase 2.2 — « aujourd'hui »/« ce mois » = calendrier LOCAL, passé en
+    // paramètre (plus aucun `date('now')` UTC dans les agrégats).
+    const today = todayDateOnly();
+    const month = currentLocalMonth();
+    const revenue = stmtRevenue.get(today, today, month, today, month) as RevenueRow | undefined;
+    const margin = stmtMargin.get(month) as MarginRow | undefined;
     const stockVal = (warehouseId
       ? stmtStockValueByWarehouse.get(warehouseId)
       : stmtStockValue.get()) as StockValueRow | undefined;
@@ -251,15 +285,43 @@ export const DashboardRepository = {
   },
 
   getTopProducts(): TopProduct[] {
-    return stmtTopProducts.all() as TopProduct[];
+    return stmtTopProducts.all(currentLocalMonth()) as TopProduct[];
+  },
+
+  /**
+   * §Phase 18 — Produits ACTIFS n'ayant fait l'objet d'AUCUNE facture sur les
+   * `days` derniers jours. Lecture seule, limitée : sert à repérer le stock qui
+   * dort. Les avoirs ne comptent pas comme une vente.
+   */
+  getProductsWithoutSales(days: number = 90, limit: number = 15): DeadProduct[] {
+    // Même règle : seuls NaN retombent sur les valeurs par défaut (jamais 0).
+    const requestedDays = Number(days);
+    const requestedLimit = Number(limit);
+    const safeDays = Number.isFinite(requestedDays) ? Math.max(1, Math.min(3650, Math.trunc(requestedDays))) : 90;
+    const safeLimit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(100, Math.trunc(requestedLimit))) : 15;
+    return db.prepare(`
+      SELECT p.id, p.reference, p.designation, COALESCE(ib.quantity, 0) AS current_stock
+      FROM products p
+      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      WHERE p.status = 'ACTIVE'
+        AND p.id NOT IN (
+          SELECT DISTINCT di.product_id
+          FROM document_items di
+          JOIN documents d ON d.id = di.document_id
+          WHERE d.type = 'INVOICE' AND d.status != 'CANCELLED'
+            AND date(d.date) >= date(?, ?)
+        )
+      ORDER BY p.designation ASC
+      LIMIT ?
+    `).all(todayDateOnly(), `-${safeDays} days`, safeLimit) as DeadProduct[];
   },
 
   getTopClients(): TopClient[] {
-    return stmtTopClients.all() as TopClient[];
+    return stmtTopClients.all(currentLocalMonth()) as TopClient[];
   },
 
   getPaymentsByMethod(): PaymentMethodTotal[] {
-    return stmtPaymentsByMethod.all() as PaymentMethodTotal[];
+    return stmtPaymentsByMethod.all(currentLocalMonth()) as PaymentMethodTotal[];
   },
 
   /** Alertes de stock bas. @param warehouseId Filtre optionnel (sinon consolidé). */
@@ -270,7 +332,21 @@ export const DashboardRepository = {
   },
 
   getUpcomingDues(daysAhead: number = 30): UpcomingDue[] {
-    return stmtUpcomingDue.all(daysAhead) as UpcomingDue[];
+    // ATTENTION : `Number(x) || 30` serait FAUX pour x = 0 (0 est falsy -> 30).
+    // « Jusqu'à aujourd'hui » (0 jour) doit rester 0 ; seul NaN retombe sur 30.
+    const requestedDays = Number(daysAhead);
+    const safeDays = Number.isFinite(requestedDays) ? Math.max(0, Math.min(3650, Math.trunc(requestedDays))) : 30;
+    const today = todayDateOnly();
+    const rows = stmtUpcomingDue.all(today, `+${safeDays} days`) as UpcomingDueRow[];
+    return rows.map(row => ({
+      id: row.id,
+      document_number: row.document_number,
+      customer_name: row.customer_name,
+      due_date: row.due_date,
+      remaining: Number(row.remaining ?? 0),
+      // §Phase 2 — même moteur de dates que `evaluateCredit` (calendrier local).
+      days_left: daysBetweenDateOnly(today, row.due_date) ?? 0,
+    }));
   },
 
   getRevenue(period: string = '6months'): RevenuePoint[] {
@@ -289,10 +365,10 @@ export const DashboardRepository = {
         COUNT(*) AS invoice_count
       FROM documents d
       WHERE d.type = 'INVOICE' AND d.status != 'CANCELLED'
-        AND d.date >= date('now', ?)
+        AND date(d.date) >= date(?, ?)
       GROUP BY ${group}
       ORDER BY label ASC
-    `).all(offset) as RevenuePoint[];
+    `).all(todayDateOnly(), offset) as RevenuePoint[];
   },
 
   /** Résumé des alertes. @param warehouseId Filtre optionnel sur le stock bas. */
@@ -301,11 +377,15 @@ export const DashboardRepository = {
       ? stmtLowStockCountByWarehouse.get(warehouseId)
       : stmtLowStockCount.get()) as { cnt: number };
 
+    // §Phase 2 — « en retard » et « échéance dans 7 jours » suivent le CALENDRIER
+    // LOCAL (donc `evaluateCredit`), jamais `julianday('now')` qui est en UTC.
+    const today = todayDateOnly();
+
     const overdue = db.prepare(`
       SELECT COUNT(*) AS cnt FROM documents d
       WHERE d.type = 'INVOICE' AND d.status IN ('UNPAID', 'PARTIAL')
-        AND d.due_date IS NOT NULL AND julianday(d.due_date) < julianday('now')
-    `).get() as { cnt: number };
+        AND d.due_date IS NOT NULL AND date(d.due_date) < date(?)
+    `).get(today) as { cnt: number };
 
     const unpaid = db.prepare(`
       SELECT COUNT(*) AS cnt FROM documents d
@@ -316,8 +396,8 @@ export const DashboardRepository = {
       SELECT COUNT(*) AS cnt FROM documents d
       WHERE d.type = 'INVOICE' AND d.status IN ('UNPAID', 'PARTIAL')
         AND d.due_date IS NOT NULL
-        AND julianday(d.due_date) - julianday('now') BETWEEN 0 AND 7
-    `).get() as { cnt: number };
+        AND date(d.due_date) BETWEEN date(?) AND date(?, '+7 days')
+    `).get(today, today) as { cnt: number };
 
     return {
       low_stock_count: lowStock.cnt,
@@ -325,5 +405,58 @@ export const DashboardRepository = {
       unpaid_count: unpaid.cnt,
       expiring_soon_count: expiringSoon.cnt,
     };
-  }
+  },
+
+  /**
+   * §Phase 12 — Chiffre d'affaires et coût des marchandises sur une période.
+   *
+   * RÈGLES (documentées, nettes des retours) :
+   *   - Les lignes d'AVOIR (`CREDIT_NOTE`) sont INCLUSES et soustraites :
+   *     `document_items.total` y est déjà stocké en négatif, et le coût est
+   *     pondéré par un facteur −1 → un retour annule bien la vente et sa marge.
+   *   - Les documents `CANCELLED` sont exclus (déjà neutralisés par l'avoir).
+   *   - `costOfGoods` utilise le prix d'achat ACTUEL du produit (`products.purchase_price`),
+   *     faute de coût figé par ligne : c'est une estimation, jamais une écriture comptable.
+   */
+  getRevenueAndCost(from: string, to: string): {
+    revenueInclTax: number;
+    revenueExclTax: number;
+    costOfGoods: number;
+    salesCount: number;
+  } {
+    const revenue = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN d.type = 'CREDIT_NOTE' THEN -d.total_incl_tax ELSE d.total_incl_tax END), 0) AS revenue_incl_tax,
+        COUNT(*) AS sales_count
+      FROM documents d
+      WHERE d.type IN ('INVOICE', 'DELIVERY_NOTE') AND d.status != 'CANCELLED'
+        AND date(d.date) BETWEEN date(?) AND date(?)
+    `).get(from, to) as { revenue_incl_tax: number; sales_count: number };
+
+    const exclTax = db.prepare(`
+      SELECT COALESCE(SUM(di.total), 0) AS revenue_excl_tax
+      FROM document_items di
+      JOIN documents d ON d.id = di.document_id
+      WHERE d.type IN ('INVOICE', 'DELIVERY_NOTE', 'CREDIT_NOTE') AND d.status != 'CANCELLED'
+        AND date(d.date) BETWEEN date(?) AND date(?)
+    `).get(from, to) as { revenue_excl_tax: number };
+
+    const cost = db.prepare(`
+      SELECT COALESCE(SUM(
+        p.purchase_price * di.quantity * (CASE WHEN d.type = 'CREDIT_NOTE' THEN -1 ELSE 1 END)
+      ), 0) AS cost_of_goods
+      FROM document_items di
+      JOIN documents d ON d.id = di.document_id
+      JOIN products p ON p.id = di.product_id
+      WHERE d.type IN ('INVOICE', 'DELIVERY_NOTE', 'CREDIT_NOTE') AND d.status != 'CANCELLED'
+        AND date(d.date) BETWEEN date(?) AND date(?)
+    `).get(from, to) as { cost_of_goods: number };
+
+    return {
+      revenueInclTax: Number(revenue.revenue_incl_tax ?? 0),
+      revenueExclTax: Number(exclTax.revenue_excl_tax ?? 0),
+      costOfGoods: Number(cost.cost_of_goods ?? 0),
+      salesCount: Number(revenue.sales_count ?? 0),
+    };
+  },
 };

@@ -30,6 +30,9 @@ export interface ProductCreateInput {
 export type ProductUpdateInput = Partial<ProductCreateInput>;
 
 // ── Import CSV produits ──
+/** §Phase 17 — stratégie explicite face aux références déjà présentes. */
+export type ImportDuplicateStrategy = 'CREATE' | 'UPDATE' | 'SKIP';
+
 export interface ProductImportRow {
   reference: string;
   designation: string;
@@ -157,6 +160,13 @@ export interface ProductBatchInput {
   expiry_date?: string | null;
 }
 
+// ── §Phase 13 — FEFO ──
+/** Entrée du PLAN FEFO (lecture seule) : quels lots SERAIENT prélevés. */
+export interface FefoPlanInput {
+  productId: string;
+  quantity: number;
+}
+
 // ── Dépôts (Phase 5) ──
 export interface WarehouseInput {
   name: string;
@@ -235,6 +245,27 @@ export interface ReportCsvData {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Caisse (§Phase 10) ──
+export interface CashMovementInput {
+  sessionId?: string;
+  movementType: 'SALE_CASH' | 'PAYMENT_IN' | 'EXPENSE' | 'WITHDRAWAL' | 'MANUAL_IN' | 'MANUAL_OUT';
+  direction: 'IN' | 'OUT';
+  amount: number;
+  paymentMethod?: 'CASH' | 'CHECK' | 'TRANSFER';
+  description?: string;
+  referenceId?: string;
+}
+
+// ── Dépenses (§Phase 11) ──
+export interface ExpenseCreateInput {
+  category: string;
+  amount: number;
+  description?: string;
+  paymentMethod?: 'CASH' | 'CHECK' | 'TRANSFER';
+  date?: string;
+  warehouseId?: string;
+}
+
 export const api = {
   // ─── Data Storage ──────────────────────────────────────────────────────────
   storage: {
@@ -286,7 +317,10 @@ export const api = {
     pickCsv: () => ipcRenderer.invoke('products:pickCsv'),
     importCsv: (filePath: string) => ipcRenderer.invoke('products:importCsv', filePath),
     previewImportCsv: (filePath: string) => ipcRenderer.invoke('products:previewImportCsv', filePath),
-    confirmImport: (products: ProductImportRow[]) => ipcRenderer.invoke('products:confirmImport', products),
+    // §Phase 17 — la stratégie est obligatoire et explicite : « Créer »,
+    // « Mettre à jour » ou « Ignorer » les références déjà existantes.
+    confirmImport: (products: ProductImportRow[], strategy: ImportDuplicateStrategy) =>
+      ipcRenderer.invoke('products:confirmImport', { products, strategy }),
     printLabels: (productIds: string[]) => ipcRenderer.invoke('products:printLabels', productIds),
     pickImage: () => ipcRenderer.invoke('products:pickImage'),
     getImageBase64: (path: string) => ipcRenderer.invoke('products:getImageBase64', path),
@@ -301,9 +335,15 @@ export const api = {
     getLevel: (productId: string) => ipcRenderer.invoke('stock:getLevel', productId),
     // Multi-dépôts : répartition du stock d'un produit par dépôt.
     getWarehouseBreakdown: (productId: string) => ipcRenderer.invoke('stock:getWarehouseBreakdown', productId),
+    // §Phase 3.1 — Audit de cohérence du stock (lecture seule) + réparation contrôlée.
+    auditBalances: () => ipcRenderer.invoke('stock:auditBalances'),
+    repairBalances: (items: Array<{ product_id: string; warehouse_id: string }>) =>
+      ipcRenderer.invoke('stock:repairBalances', items),
     addEntry: (data: StockEntryInput) => ipcRenderer.invoke('stock:addEntry', data),
     addExit: (data: StockExitInput) => ipcRenderer.invoke('stock:addExit', data),
     addInventory: (data: StockInventoryInput, actualCount: number) => ipcRenderer.invoke('stock:addInventory', { data, actualCount }),
+    // §Phase 15 — Rupture / critique / normal / surstock + suggestion de commande.
+    getStatus: (warehouseId?: string) => ipcRenderer.invoke('stock:getStatus', warehouseId),
   },
 
   // ─── Catégories ────────────────────────────────────────────────────────────
@@ -332,6 +372,38 @@ export const api = {
     pickLogo: () => ipcRenderer.invoke('company:pickLogo'),
   },
 
+  // ─── Recherche globale (§Phase 5, Ctrl+K) ──────────────────────────────────
+  search: {
+    global: (query: string, perGroup?: number) => ipcRenderer.invoke('search:global', query, perGroup),
+  },
+
+  // Caisse : sessions (§Phase 10)
+  cash: {
+    getOpenSession: () => ipcRenderer.invoke('cash:getOpenSession'),
+    open: (openingFloat: number, notes?: string, warehouseId?: string) =>
+      ipcRenderer.invoke('cash:open', { openingFloat, notes, warehouseId }),
+    addMovement: (data: CashMovementInput) => ipcRenderer.invoke('cash:addMovement', data),
+    getSessionDetail: (sessionId: string) => ipcRenderer.invoke('cash:getSessionDetail', sessionId),
+    close: (sessionId: string, countedAmount: number, closedBy?: string) =>
+      ipcRenderer.invoke('cash:close', { sessionId, countedAmount, closedBy }),
+    getAll: (limit?: number) => ipcRenderer.invoke('cash:getAll', limit),
+  },
+
+  // Dépenses (§Phase 11)
+  expenses: {
+    categories: () => ipcRenderer.invoke('expenses:categories'),
+    create: (data: ExpenseCreateInput) => ipcRenderer.invoke('expenses:create', data),
+    getAll: (params?: { limit?: number; offset?: number }) => ipcRenderer.invoke('expenses:getAll', params),
+    getInRange: (from: string, to: string) => ipcRenderer.invoke('expenses:getInRange', { from, to }),
+    getTotals: (from: string, to: string) => ipcRenderer.invoke('expenses:getTotals', { from, to }),
+    delete: (id: string) => ipcRenderer.invoke('expenses:delete', id),
+  },
+
+  // Marge brute / Résultat estimé (§Phase 12)
+  profit: {
+    getSummary: (from: string, to: string) => ipcRenderer.invoke('profit:getSummary', { from, to }),
+  },
+
   // ─── Audit ─────────────────────────────────────────────────────────────────
   audit: {
     getLogs: (limit?: number) => ipcRenderer.invoke('audit:getLogs', limit),
@@ -351,6 +423,8 @@ export const api = {
     delete: (id: string) => ipcRenderer.invoke('clients:delete', id),
     getHistory: (customerId: string) => ipcRenderer.invoke('clients:getHistory', customerId),
     getDocuments: (customerId: string) => ipcRenderer.invoke('clients:getDocuments', customerId),
+    // §Phase 8 — relevé de compte : lignes débit/crédit, solde, échéances.
+    getStatement: (customerId: string) => ipcRenderer.invoke('clients:getStatement', customerId),
     addDebt: (customerId: string, amount: number, description: string) =>
       ipcRenderer.invoke('clients:addDebt', { customerId, amount, description }),
     addPayment: (customerId: string, amount: number, description: string) =>
@@ -365,6 +439,8 @@ export const api = {
     update: (id: string, data: SupplierUpdateInput) => ipcRenderer.invoke('suppliers:update', { id, data }),
     delete: (id: string) => ipcRenderer.invoke('suppliers:delete', id),
     getHistory: (supplierId: string) => ipcRenderer.invoke('suppliers:getHistory', supplierId),
+    // §Phase 9 — relevé fournisseur : achats, règlements, solde, échéances.
+    getStatement: (supplierId: string) => ipcRenderer.invoke('suppliers:getStatement', supplierId),
     addDebt: (supplierId: string, amount: number, description: string) =>
       ipcRenderer.invoke('suppliers:addDebt', { supplierId, amount, description }),
     addPayment: (supplierId: string, amount: number, description: string) =>
@@ -385,6 +461,8 @@ export const api = {
     printReceipt: (documentId: string) => ipcRenderer.invoke('documents:printReceipt', documentId),
     createCreditNote: (invoiceId: string, returnItems?: Array<{ product_id: string; quantity: number }>, reason?: string) => ipcRenderer.invoke('documents:createCreditNote', { invoiceId, returnItems, reason }),
     getPayments: (documentId: string) => ipcRenderer.invoke('documents:getPayments', documentId),
+    // §Phase 7 — « déjà retourné » / « reste retournable » pour une facture.
+    getReturnableQuantities: (invoiceId: string) => ipcRenderer.invoke('documents:getReturnableQuantities', invoiceId),
     // Registre des paiements (Caisse / Paiements) — SQL paginé.
     getAllPayments: (params?: { limit?: number; offset?: number }) => ipcRenderer.invoke('documents:getAllPayments', params),
     exportPdf: (documentId: string) => ipcRenderer.invoke('documents:exportPdf', documentId),
@@ -405,6 +483,8 @@ export const api = {
     getUpcomingDues: (days: number) => ipcRenderer.invoke('dashboard:getUpcomingDues', days),
     getRevenue: (period?: string) => ipcRenderer.invoke('dashboard:getRevenue', period),
     getAlertSummary: (warehouseId?: string) => ipcRenderer.invoke('dashboard:getAlertSummary', warehouseId),
+    // §Phase 18 — produits actifs sans aucune vente sur la période analysée.
+    getDeadProducts: (days: number) => ipcRenderer.invoke('dashboard:getDeadProducts', days),
   },
 
   // ─── Backup ────────────────────────────────────────────────────────────────
@@ -414,6 +494,8 @@ export const api = {
     restore: (backupPath: string) => ipcRenderer.invoke('backup:restore', backupPath),
     delete: (backupPath: string) => ipcRenderer.invoke('backup:delete', backupPath),
     validate: (backupPath: string) => ipcRenderer.invoke('backup:validate', backupPath),
+    // §Phase 4.1 — Aperçu détaillé d'une sauvegarde avant restauration.
+    inspect: (backupPath: string) => ipcRenderer.invoke('backup:inspect', backupPath),
   },
 
   // ─── Unit Conversions ──────────────────────────────────────────────────────
@@ -433,6 +515,10 @@ export const api = {
     create: (data: ProductBatchInput) => ipcRenderer.invoke('batches:create', data),
     delete: (id: string) => ipcRenderer.invoke('batches:delete', id),
     getExpiring: (withinDays: number) => ipcRenderer.invoke('batches:getExpiring', withinDays),
+    // §Phase 13 — FEFO : lots dans l'ordre de consommation (expiration croissante).
+    listFefo: (productId: string) => ipcRenderer.invoke('batches:listFefo', productId),
+    // §Phase 13 — PLAN FEFO (lecture seule) : lots qui SERAIENT prélevés.
+    getFefoPlan: (data: FefoPlanInput) => ipcRenderer.invoke('batches:getFefoPlan', data),
   },
 
   // ─── Dépôts (Phase 5) ──────────────────────────────────────────────────────

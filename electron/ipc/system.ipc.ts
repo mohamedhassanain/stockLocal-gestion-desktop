@@ -281,6 +281,18 @@ export function registerSystemHandlers(context: IpcContext): void {
     }
   });
 
+  // §Phase 4.1 — Aperçu AVANT restauration : date, taille, intégrité et
+  // volumes de données de la sauvegarde. Chemin confiné à dataDir/backups/.
+  ipcMain.handle('backup:inspect', async (_, backupPath: unknown) => {
+    try {
+      const safeBackupPath = safeParse(BackupPathSchema, backupPath, 'Chemin du backup');
+      const safePath = validatePathWithinSubDir(safeBackupPath, DataStorageService.getConfig().dataPath, DataStorageService.BACKUPS_DIR, 'chemin backup');
+      return await BackupService.inspectBackup(safePath);
+    } catch (error: unknown) {
+      return { success: false, error: toHumanError(error) };
+    }
+  });
+
   // ─── Migration (§35) ──────────────────────────────────────────────────────
   ipcMain.handle('migration:scanOldDatabases', async () => MigrationService.scanForOldDatabases());
   ipcMain.handle('migration:autoMigrate', async () => MigrationService.autoMigrate());

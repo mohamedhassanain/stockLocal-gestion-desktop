@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AccountStatementPanel } from './AccountStatementPanel';
 import { toast } from '../stores/useToastStore';
 import type { Supplier, SupplierCredit } from '../repositories/SupplierRepository';
 import type { PurchaseOrder } from '../repositories/PurchaseOrderRepository';
@@ -24,7 +25,7 @@ export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayme
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
   const [amount, setAmount] = useState(0);
   const [desc, setDesc] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'purchases'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'purchases' | 'statement'>('overview');
 
   const loadData = async () => {
     try {
@@ -113,6 +114,7 @@ export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayme
           { key: 'overview' as const, label: '📋 Vue d\'ensemble' },
           { key: 'purchases' as const, label: `🛒 Commandes (${purchases.length})` },
           { key: 'history' as const, label: '📜 Historique' },
+          { key: 'statement' as const, label: 'Relevé de compte' },
         ]).map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
             style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: activeTab === tab.key ? 'bold' : '600', background: activeTab === tab.key ? 'white' : 'transparent', color: activeTab === tab.key ? '#0f172a' : '#6b7280', cursor: 'pointer', boxShadow: activeTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
@@ -165,6 +167,13 @@ export const SupplierDetailPanel: React.FC<Props> = ({ supplier, onDebt, onPayme
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* §Phase 9 — Relevé fournisseur (achats / règlements / solde / échéances). */}
+      {activeTab === 'statement' && (
+        <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <AccountStatementPanel entityKind="supplier" entityId={supplier.id} />
         </div>
       )}
 

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../src/database/config/connection';
 import { ProductRepository, type Product } from '../src/repositories/ProductRepository';
 import { ProductBatchRepository } from '../src/repositories/ProductBatchRepository';
+import { todayDateOnly, addDaysDateOnly, daysBetweenDateOnly } from '../src/utils/date';
 
 /**
  * Phase 3 — Lots / dates d'expiration.
@@ -109,5 +110,80 @@ describe('Phase 3 — Lots / dates d\'expiration + alertes', () => {
 
     const expiring = ProductBatchRepository.getExpiringBatches(30);
     expect(expiring.some(b => b.product_id === plain.id)).toBe(false);
+  });
+});
+/**
+ * §Phase 2.2 / §Phase 13 — `days_left` est un nombre de JOURS CALENDAIRES.
+ *
+ * L'ancien calcul SQL (`CAST(julianday(expiry) - julianday('now') AS INTEGER)`)
+ * était en UTC et tronquait : un lot expirant « demain » pouvait remonter à 0,
+ * et un lot expirant dans 7 jours être exclu du seuil 7. Ces tests verrouillent
+ * des valeurs EXACTES, alignées sur le moteur de dates commun.
+ */
+describe('§Phase 13 — days_left calendaire exact (pas d’UTC, pas de troncature)', () => {
+  beforeEach(() => cleanup());
+  afterEach(() => cleanup());
+
+  const today = todayDateOnly;
+
+  it('expire aujourd’hui → 0 jour, présent au seuil 0', () => {
+    const p = seedProduct('BATCH-D0', 1);
+    ProductBatchRepository.create({ product_id: p.id, lot_number: 'D0', quantity: 1, expiry_date: today() });
+
+    const within0 = ProductBatchRepository.getExpiringBatches(0);
+    const lot = within0.find(b => b.lot_number === 'D0');
+    expect(lot).toBeDefined();
+    expect(lot!.days_left).toBe(0);
+  });
+
+  it('expire demain → 1 jour, ABSENT du seuil 0 et PRÉSENT au seuil 1', () => {
+    const p = seedProduct('BATCH-D1', 1);
+    const tomorrow = addDaysDateOnly(today(), 1)!;
+    ProductBatchRepository.create({ product_id: p.id, lot_number: 'D1', quantity: 1, expiry_date: tomorrow });
+
+    const within0 = ProductBatchRepository.getExpiringBatches(0).map(b => b.lot_number);
+    const within1 = ProductBatchRepository.getExpiringBatches(1).map(b => b.lot_number);
+    expect(within0).not.toContain('D1');
+    expect(within1).toContain('D1');
+
+    const lot = ProductBatchRepository.getExpiringBatches(1).find(b => b.lot_number === 'D1');
+    expect(lot!.days_left).toBe(1);
+  });
+
+  it('expire dans exactement 7 jours → 7 jours, présent au seuil 7 (borne incluse)', () => {
+    const p = seedProduct('BATCH-D7', 1);
+    const in7 = addDaysDateOnly(today(), 7)!;
+    ProductBatchRepository.create({ product_id: p.id, lot_number: 'D7', quantity: 1, expiry_date: in7 });
+
+    const within6 = ProductBatchRepository.getExpiringBatches(6).map(b => b.lot_number);
+    const within7 = ProductBatchRepository.getExpiringBatches(7).map(b => b.lot_number);
+    expect(within6).not.toContain('D7');
+    expect(within7).toContain('D7');
+
+    const lot = ProductBatchRepository.getExpiringBatches(7).find(b => b.lot_number === 'D7');
+    expect(lot!.days_left).toBe(7);
+  });
+
+  it('expiré hier → -1 jour (et non 0 par troncature)', () => {
+    const p = seedProduct('BATCH-DM1', 1);
+    const yesterday = addDaysDateOnly(today(), -1)!;
+    ProductBatchRepository.create({ product_id: p.id, lot_number: 'DM1', quantity: 1, expiry_date: yesterday });
+
+    const lot = ProductBatchRepository.getExpiringBatches(0).find(b => b.lot_number === 'DM1');
+    expect(lot).toBeDefined();
+    expect(lot!.days_left).toBe(-1);
+  });
+
+  it('days_left correspond EXACTEMENT à daysBetweenDateOnly (source unique)', () => {
+    const p = seedProduct('BATCH-CONSIST', 1);
+    const expiries = [addDaysDateOnly(today(), -3)!, today(), addDaysDateOnly(today(), 5)!, addDaysDateOnly(today(), 40)!];
+    expiries.forEach((date, i) =>
+      ProductBatchRepository.create({ product_id: p.id, lot_number: `C${i}`, quantity: 2, expiry_date: date }));
+
+    // Seuil large pour tout ramener, puis comparer chaque valeur au moteur commun.
+    const lots = ProductBatchRepository.getExpiringBatches(60);
+    for (const lot of lots) {
+      expect(lot.days_left).toBe(daysBetweenDateOnly(today(), lot.expiry_date));
+    }
   });
 });

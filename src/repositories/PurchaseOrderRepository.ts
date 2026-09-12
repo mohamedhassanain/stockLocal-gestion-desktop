@@ -2,6 +2,8 @@ import { db, runInTransaction } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { StockLedgerService } from '../services/StockLedgerService';
 import { nextSequence } from '../services/DocumentSequenceService';
+// §Phase 2 — dates « calendaires » : jamais de conversion UTC sur une date métier.
+import { toLocalDateString, toDateOnly } from '../utils/date';
 
 export interface PurchaseOrder {
   id: string;
@@ -170,7 +172,7 @@ export const PurchaseOrderRepository = {
   }): PurchaseOrder {
     const id = randomUUID();
     const order_number = this.generateNumber();
-    const date = new Date().toISOString();
+    const date = toLocalDateString();
 
     let total = 0;
     for (const item of data.items) {
@@ -222,7 +224,9 @@ export const PurchaseOrderRepository = {
       total += qty * Number(item.unit_price);
     }
 
-    const date = data.date ? new Date(data.date).toISOString() : order.date;
+    // §Phase 2.2 — on stocke la date métier telle quelle (YYYY-MM-DD) : aucune
+    // conversion UTC qui pourrait décaler d'un jour selon le fuseau.
+    const date = data.date ? (toDateOnly(data.date) ?? order.date) : order.date;
 
     const updateAll = db.transaction(() => {
       stmtUpdateOrderFull.run(

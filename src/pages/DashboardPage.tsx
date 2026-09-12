@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, CardBody, CardHeader, PageHeader, StatCard } from '../components/ui';
-import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, RevenuePoint, AlertSummary } from '../repositories/DashboardRepository';
+import { ProfitSummaryPanel } from '../components/dashboard/ProfitSummaryPanel';
+import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, RevenuePoint, AlertSummary, DeadProduct } from '../repositories/DashboardRepository';
 import { formatAxisValue } from '../utils/chartFormat';
 import { useWarehouseStore } from '../stores/useWarehouseStore';
 
@@ -62,6 +63,8 @@ export const DashboardPage: React.FC = () => {
   const [dues, setDues] = useState<UpcomingDue[]>([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState<RevenuePoint[]>([]);
   const [alertSummary, setAlertSummary] = useState<AlertSummary | null>(null);
+  // §Phase 18 — produits actifs sans aucune vente (stock dormant).
+  const [deadProducts, setDeadProducts] = useState<DeadProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [dueDays, setDueDays] = useState(30);
@@ -74,7 +77,7 @@ export const DashboardPage: React.FC = () => {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [s, tp, tc, ls, d, backups, mr, alerts] = await Promise.all([
+      const [s, tp, tc, ls, d, backups, mr, alerts, dead] = await Promise.all([
         window.api.dashboard.getStats(warehouseFilter || undefined),
         window.api.dashboard.getTopProducts(),
         window.api.dashboard.getTopClients(),
@@ -83,6 +86,7 @@ export const DashboardPage: React.FC = () => {
         window.api.backup.list(),
         window.api.dashboard.getRevenue(revenuePeriod),
         window.api.dashboard.getAlertSummary(warehouseFilter || undefined),
+        window.api.dashboard.getDeadProducts(90),
       ]);
       setStats(s);
       setTopProducts(tp);
@@ -91,6 +95,7 @@ export const DashboardPage: React.FC = () => {
       setDues(d);
       setMonthlyRevenue(mr);
       setAlertSummary(alerts);
+      setDeadProducts((dead ?? []) as DeadProduct[]);
       if (backups.length > 0) setLastBackup(backups[0].date);
     } catch (e) {
       console.error(e);
@@ -196,6 +201,9 @@ export const DashboardPage: React.FC = () => {
       />
 
       <div className="page-content">
+        {/* §Phase 12 — Marge brute, CA HT, coût marchandises, dépenses, résultat estimé. */}
+        <ProfitSummaryPanel />
+
         {/* KPI Cards */}
         <div className="flex gap-3" style={{ flexWrap: 'wrap' }}>
           <StatCard icon="💰" label="CA Aujourd'hui" value={`${stats?.revenue_today.toFixed(2) ?? '0.00'} MAD`} sub={`${stats?.sales_count_today ?? 0} facture(s)`} tone="primary" onClick={() => navigate('invoices')} />
@@ -504,6 +512,28 @@ export const DashboardPage: React.FC = () => {
             </CardBody>
           </Card>
         </div>
+
+        {/* §Phase 18 — produits sans aucune vente depuis 90 jours (stock dormant) */}
+        {deadProducts.length > 0 && (
+          <Card padding>
+            <h3 className="section-title mb-3">
+              <span>🧊</span>Produits sans ventes (90 derniers jours)
+            </h3>
+            {deadProducts.map((p, i) => (
+              <div
+                key={p.id}
+                className="flex justify-between items-center"
+                style={{ padding: '9px 0', borderBottom: i < deadProducts.length - 1 ? '1px solid var(--border)' : 'none' }}
+              >
+                <div>
+                  <div className="text-sm font-semibold">{p.designation}</div>
+                  <div className="text-xs text-muted">{p.reference}</div>
+                </div>
+                <span className="badge badge-muted">En stock : {p.current_stock}</span>
+              </div>
+            ))}
+          </Card>
+        )}
       </div>
     </div>
   );

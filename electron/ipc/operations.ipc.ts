@@ -6,6 +6,11 @@ import { requireId, toHumanError } from '../ipcValidation';
 import { DashboardRepository } from '../../src/repositories/DashboardRepository';
 import { PurchaseOrderRepository } from '../../src/repositories/PurchaseOrderRepository';
 import { InventorySessionRepository } from '../../src/repositories/InventorySessionRepository';
+import { GlobalSearchRepository } from '../../src/repositories/GlobalSearchRepository';
+import { CashSessionRepository, type CashMovementType, type CashDirection, type CashMethod } from '../../src/repositories/CashSessionRepository';
+import { ExpenseRepository } from '../../src/repositories/ExpenseRepository';
+import { ProfitService } from '../../src/services/ProfitService';
+import { StockAlertService } from '../../src/services/StockAlertService';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
 import { DataStorageService } from '../../src/services/DataStorageService';
@@ -43,6 +48,16 @@ export function registerOperationsHandlers(): void {
   });
   ipcMain.handle('dashboard:getAlertSummary', async (_, warehouseId: unknown) =>
     DashboardRepository.getAlertSummary(safeWarehouseFilter(warehouseId)));
+
+  // §Phase 15 — Rupture / critique / normal / surstock + suggestion de commande.
+  ipcMain.handle('stock:getStatus', async (_, warehouseId: unknown) =>
+    StockAlertService.getStatus(safeWarehouseFilter(warehouseId)));
+
+  // §Phase 18 — Produits actifs sans aucune vente sur la période analysée.
+  ipcMain.handle('dashboard:getDeadProducts', async (_, days: unknown) => {
+    const d = Math.min(Math.max(Number(days) || 90, 1), 3650);
+    return DashboardRepository.getProductsWithoutSales(d, 15);
+  });
 
   // ─── Purchase Orders ───────────────────────────────────────────────────────
   ipcMain.handle('purchases:getAll', async () => PurchaseOrderRepository.getAll());
@@ -238,6 +253,171 @@ export function registerOperationsHandlers(): void {
       InventorySessionRepository.correctValidatedInventoryBatch(safe.sessionId, safe.corrections);
       AuditService.log('INVENTORY_CORRECT', 'inventory', safe.sessionId, `Correction post-validation : ${Object.keys(safe.corrections).length} article(s)`);
       return { success: true };
+    });
+  });
+
+  // ─── Recherche globale (§Phase 5, Ctrl+K) ──────────────────────────────────
+  // Lecture seule, paginée par groupe : la requête est nettoyée et bornée ici.
+  ipcMain.handle('search:global', async (_, query: unknown, perGroup?: unknown) => {
+    const q = typeof query === 'string' ? query.slice(0, 100) : '';
+    const limit = Math.min(Math.max(Number(perGroup) || 8, 1), 25);
+    return GlobalSearchRepository.search(q, limit);
+  });
+
+  // ─── Caisse : sessions (§Phase 10) ─────────────────────────────────────────
+  const CASH_MOVEMENT_TYPES: readonly CashMovementType[] = [
+    'SALE_CASH', 'PAYMENT_IN', 'EXPENSE', 'WITHDRAWAL', 'MANUAL_IN', 'MANUAL_OUT',
+  ];
+  const CASH_METHODS: readonly CashMethod[] = ['CASH', 'CHECK', 'TRANSFER'];
+
+  const safeMovementType = (value: unknown): CashMovementType =>
+    typeof value === 'string' && (CASH_MOVEMENT_TYPES as readonly string[]).includes(value)
+      ? (value as CashMovementType)
+      : 'MANUAL_IN';
+
+  const safeDirection = (value: unknown): CashDirection => (value === 'OUT' ? 'OUT' : 'IN');
+
+  const safeMethod = (value: unknown): CashMethod =>
+    typeof value === 'string' && (CASH_METHODS as readonly string[]).includes(value)
+      ? (value as CashMethod)
+      : 'CASH';
+
+  const safeAmount = (value: unknown, label: string): number => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) throw new Error(`${label} invalide.`);
+    return amount;
+  };
+
+  ipcMain.handle('cash:getOpenSession', async () => CashSessionRepository.getOpenSession() ?? null);
+
+  ipcMain.handle('cash:open', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { openingFloat?: unknown; notes?: unknown; warehouseId?: unknown };
+      const notes = typeof p.notes === 'string' ? p.notes.trim().slice(0, 500) : undefined;
+      const warehouseId = typeof p.warehouseId === 'string' && p.warehouseId.trim() ? p.warehouseId.trim() : undefined;
+      const session = CashSessionRepository.openSession(safeAmount(p.openingFloat ?? 0, 'Fond de caisse'), notes, warehouseId);
+      AuditService.log('CASH_OPEN', 'cash_session', session.id, `Caisse ouverte — fond ${session.opening_float} MAD`);
+      return { success: true, data: session };
+    });
+  });
+
+  ipcMain.handle('cash:addMovement', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as {
+        sessionId?: unknown; movementType?: unknown; direction?: unknown;
+        amount?: unknown; paymentMethod?: unknown; description?: unknown; referenceId?: unknown;
+      };
+      const amount = Number(p.amount);
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('Le montant doit être supérieur à 0.');
+      const movement = CashSessionRepository.addMovement({
+        sessionId: typeof p.sessionId === 'string' && p.sessionId.trim() ? p.sessionId.trim() : undefined,
+        movementType: safeMovementType(p.movementType),
+        direction: safeDirection(p.direction),
+        amount,
+        paymentMethod: safeMethod(p.paymentMethod),
+        description: typeof p.description === 'string' ? p.description.trim().slice(0, 500) : undefined,
+        referenceId: typeof p.referenceId === 'string' && p.referenceId.trim() ? p.referenceId.trim() : undefined,
+      });
+      return { success: true, data: movement };
+    });
+  });
+
+  ipcMain.handle('cash:getSessionDetail', async (_, sessionId: unknown) => {
+    return run(() => CashSessionRepository.getSessionDetail(requireId(sessionId, 'id session de caisse')));
+  });
+
+  ipcMain.handle('cash:close', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { sessionId?: unknown; countedAmount?: unknown; closedBy?: unknown };
+      const sessionId = requireId(p.sessionId, 'id session de caisse');
+      const counted = Number(p.countedAmount);
+      if (!Number.isFinite(counted) || counted < 0) throw new Error('Le solde compté est invalide.');
+      const closedBy = typeof p.closedBy === 'string' ? p.closedBy.trim().slice(0, 120) : undefined;
+      const session = CashSessionRepository.closeSession(sessionId, counted, closedBy);
+      AuditService.log(
+        'CASH_CLOSE', 'cash_session', session.id,
+        `Caisse fermée — théorique ${session.theoretical_amount} MAD, compté ${session.counted_amount} MAD, écart ${session.difference} MAD`,
+      );
+      return { success: true, data: session };
+    });
+  });
+
+  ipcMain.handle('cash:getAll', async (_, limit?: unknown) => {
+    const l = Math.min(Math.max(Number(limit) || 100, 1), 500);
+    return CashSessionRepository.getAll(l);
+  });
+
+  // ─── Dépenses (§Phase 11) ──────────────────────────────────────────────────
+  ipcMain.handle('expenses:categories', async () => ExpenseRepository.categories());
+
+  ipcMain.handle('expenses:create', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as {
+        category?: unknown; amount?: unknown; description?: unknown;
+        paymentMethod?: unknown; date?: unknown; warehouseId?: unknown;
+      };
+      const category = typeof p.category === 'string' ? p.category.trim().slice(0, 80) : '';
+      const amount = Number(p.amount);
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('Le montant de la dépense doit être supérieur à 0.');
+      const expense = ExpenseRepository.create({
+        category,
+        amount,
+        description: typeof p.description === 'string' ? p.description.trim().slice(0, 500) : undefined,
+        paymentMethod: safeMethod(p.paymentMethod),
+        date: typeof p.date === 'string' && p.date.trim() ? p.date.trim().slice(0, 20) : undefined,
+        warehouseId: typeof p.warehouseId === 'string' && p.warehouseId.trim() ? p.warehouseId.trim() : undefined,
+      });
+      AuditService.log('EXPENSE_CREATE', 'expense', expense.id, `Dépense ${category} — ${expense.amount} MAD (${expense.payment_method})`);
+      return { success: true, data: expense };
+    });
+  });
+
+  ipcMain.handle('expenses:getAll', async (_, params?: unknown) => {
+    const p = (params ?? {}) as { limit?: unknown; offset?: unknown };
+    const limit = Math.min(Math.max(Number(p.limit ?? 100) || 100, 1), 500);
+    const offset = Math.max(Number(p.offset ?? 0) || 0, 0);
+    return ExpenseRepository.getAll(limit, offset);
+  });
+
+  ipcMain.handle('expenses:getInRange', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { from?: unknown; to?: unknown };
+      const from = typeof p.from === 'string' ? p.from.trim().slice(0, 20) : '';
+      const to = typeof p.to === 'string' ? p.to.trim().slice(0, 20) : '';
+      if (!from || !to) throw new Error('Intervalle de dates incomplet.');
+      return ExpenseRepository.getInRange(from, to);
+    });
+  });
+
+  ipcMain.handle('expenses:getTotals', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { from?: unknown; to?: unknown };
+      const from = typeof p.from === 'string' ? p.from.trim().slice(0, 20) : '';
+      const to = typeof p.to === 'string' ? p.to.trim().slice(0, 20) : '';
+      if (!from || !to) throw new Error('Intervalle de dates incomplet.');
+      return {
+        total: ExpenseRepository.getTotalInRange(from, to),
+        byCategory: ExpenseRepository.getTotalsByCategory(from, to),
+      };
+    });
+  });
+
+  ipcMain.handle('expenses:delete', async (_, id: unknown) => {
+    return run(() => {
+      const safeId = requireId(id, 'id dépense');
+      ExpenseRepository.remove(safeId);
+      AuditService.log('EXPENSE_DELETE', 'expense', safeId, 'Dépense supprimée');
+      return { success: true };
+    });
+  });
+
+  // ─── Marge brute / Résultat estimé (§Phase 12) ─────────────────────────────
+  ipcMain.handle('profit:getSummary', async (_, payload: unknown) => {
+    return run(() => {
+      const p = (payload ?? {}) as { from?: unknown; to?: unknown };
+      const from = typeof p.from === 'string' ? p.from.trim().slice(0, 20) : '';
+      const to = typeof p.to === 'string' ? p.to.trim().slice(0, 20) : '';
+      return ProfitService.getSummary(from, to);
     });
   });
 

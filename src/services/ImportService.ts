@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { ProductService } from './ProductService';
+import { ProductRepository } from '../repositories/ProductRepository';
 import type { ProductInput } from '../repositories/ProductRepository';
 
 /**
@@ -113,15 +114,45 @@ function buildProductFromRow(
 }
 
 /**
- * Résultat de l'aperçu d'import CSV (validation sans insertion).
+ * §Phase 17 — Stratégie explicite face aux références déjà présentes en base.
+ * Aucun produit n'est JAMAIS écrasé sans que l'utilisateur l'ait choisi.
  */
+export type ImportDuplicateStrategy = 'CREATE' | 'UPDATE' | 'SKIP';
+
+/** Une ligne CSV validée, accompagnée de son statut face à la base. */
+export interface ImportPreviewRow {
+  product: ProductInput;
+  /** true si la référence existe déjà en base (doublon). */
+  isDuplicate: boolean;
+}
+
+/** Compteurs affichés dans l'aperçu d'import. */
+export interface ImportPreviewSummary {
+  total: number;
+  valid: number;
+  duplicates: number;
+  invalid: number;
+}
+
+/** Résultat de l'aperçu d'import CSV (validation SANS insertion). */
 export interface PreviewResult {
-  /** Produits validés prêts à être importés */
-  products: ProductInput[];
+  /** Lignes valides (nouvelles + doublons), prêtes à être confirmées. */
+  rows: ImportPreviewRow[];
   /** Erreurs de validation par ligne */
   errors: { row: number; message: string }[];
   /** Noms des colonnes détectées dans le CSV */
   headers: string[];
+  /** Synthèse chiffrée pour l'écran d'aperçu. */
+  summary: ImportPreviewSummary;
+}
+
+/** Résultat d'un import confirmé. */
+export interface ImportOutcome {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: number;
+  messages: string[];
 }
 
 /**
@@ -168,7 +199,7 @@ export const ImportService = {
       return isNaN(n) ? 0 : n;
     };
 
-    const products: ProductInput[] = [];
+    const previewRows: ImportPreviewRow[] = [];
     const errors: { row: number; message: string }[] = [];
 
     for (let i = 0; i < rows.length; i++) {
@@ -195,52 +226,87 @@ export const ImportService = {
         continue;
       }
 
-      products.push(product);
+      // §Phase 17 — détection des doublons : la référence existe-t-elle déjà ?
+      // LECTURE SEULE : l'aperçu n'écrit ni ne modifie jamais la base.
+      const isDuplicate = ProductRepository.findByReference(product.reference) !== undefined;
+      previewRows.push({ product, isDuplicate });
     }
 
-    return { products, errors, headers };
+    const duplicates = previewRows.filter(r => r.isDuplicate).length;
+    const summary: ImportPreviewSummary = {
+      total: rows.length,
+      valid: previewRows.length - duplicates,
+      duplicates,
+      invalid: errors.length,
+    };
+
+    return { rows: previewRows, errors, headers, summary };
   },
 
   /**
-   * Importe un tableau de produits validés en base via ProductService.createProduct.
-   * Destiné à être appelé après previewProductsFromCsv pour confirmer l'import.
+   * §Phase 17 — Importe les lignes de l'aperçu en appliquant une stratégie
+   * EXPLICITE pour les doublons. Rien n'est jamais écrasé sans choix explicite.
+   *
+   *   CREATE → les doublons sont signalés en erreur (jamais écrasés)
+   *   UPDATE → le produit existant (même référence) est mis à jour
+   *   SKIP   → les doublons sont ignorés
    */
-  confirmImport(products: ProductInput[]): { imported: number; errors: number; messages: string[] } {
+  confirmImport(rows: ImportPreviewRow[], strategy: ImportDuplicateStrategy): ImportOutcome {
     const messages: string[] = [];
-    let imported = 0;
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
     let errors = 0;
 
-    for (let i = 0; i < products.length; i++) {
-      const product = products[i];
+    for (const row of rows) {
+      const { product, isDuplicate } = row;
       try {
+        if (isDuplicate) {
+          if (strategy === 'SKIP') {
+            skipped++;
+            continue;
+          }
+          if (strategy === 'UPDATE') {
+            const existing = ProductRepository.findByReference(product.reference);
+            if (!existing) {
+              // La référence a disparu entre l'aperçu et la confirmation : on crée.
+              ProductService.createProduct(product);
+              created++;
+              continue;
+            }
+            ProductService.updateProduct(existing.id, product);
+            updated++;
+            continue;
+          }
+          // CREATE : une référence existante ne peut pas être créée en double.
+          errors++;
+          messages.push(`« ${product.reference} » existe déjà — choisissez « Mettre à jour » ou « Ignorer ».`);
+          continue;
+        }
         ProductService.createProduct(product);
-        imported++;
+        created++;
       } catch (e: unknown) {
         errors++;
-        messages.push(`Produit ${product.reference} (ligne ${i + 1}) : ${e instanceof Error ? e.message : String(e)}`);
+        messages.push(`Produit ${product.reference} : ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    return { imported, errors, messages };
+    return { created, updated, skipped, errors, messages };
   },
 
   /**
    * Import direct depuis un fichier CSV (ancienne API, conservée pour rétrocompatibilité).
-   * Parse + valide + importe en une seule opération.
+   * Les doublons ne sont JAMAIS écrasés : la stratégie CREATE les signale en erreur.
    */
   importProductsFromCsv(filePath: string): { imported: number; errors: number; messages: string[] } {
-    const { products, errors: previewErrors } = this.previewProductsFromCsv(filePath);
-
-    // Ajouter les erreurs de parsing/validateur au résultat
-    const messages: string[] = previewErrors.map(e => `Ligne ${e.row} : ${e.message}`);
-
-    // Importer les produits validés
-    const result = this.confirmImport(products);
+    const preview = this.previewProductsFromCsv(filePath);
+    const messages: string[] = preview.errors.map(e => `Ligne ${e.row} : ${e.message}`);
+    const outcome = this.confirmImport(preview.rows, 'CREATE');
 
     return {
-      imported: result.imported,
-      errors: result.errors + previewErrors.length,
-      messages: [...messages, ...result.messages],
+      imported: outcome.created,
+      errors: outcome.errors + preview.errors.length,
+      messages: [...messages, ...outcome.messages],
     };
   },
 };

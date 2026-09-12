@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, FileText, FileCheck2, Truck, Undo2,
   Package, ArrowLeftRight, ClipboardList, AlertTriangle, ShoppingBag,
   PackageCheck, Factory, Users, CreditCard, Wallet, BarChart3, Settings,
-  Boxes, Bot, Warehouse,
+  Boxes, Bot, Warehouse, Receipt,
 } from 'lucide-react';
 import type { Page } from '../../App';
 import { WarehouseSelector } from './WarehouseSelector';
@@ -72,6 +72,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
     items: [
       { page: 'payments', icon: Wallet, label: 'Paiements' },
       { page: 'cash-register', icon: Wallet, label: 'Caisse' },
+      { page: 'expenses', icon: Receipt, label: 'Dépenses' },
     ],
   },
 

@@ -46,3 +46,10 @@ desktop.ini
 # Packager
 *.pem
 !.env.example
+
+# Fichiers de vérification / temporaires (scratch de développement)
+build_*.txt
+tsc_*.txt
+test_*.txt
+tmp_*
+audit_after.json

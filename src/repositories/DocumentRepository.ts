@@ -2,6 +2,10 @@ import { db, runInTransaction } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { StockLedgerService } from '../services/StockLedgerService';
 import { nextSequence } from '../services/DocumentSequenceService';
+// §Phase 1 — moteur monétaire central : plus aucun arrondi flottant local.
+import { roundMoney as round2, calculateLineAmounts } from '../utils/money';
+// §Phase 2 — dates « calendaires » : jamais de conversion UTC (new Date().toISOString()).
+import { toLocalDateString } from '../utils/date';
 
 export type DocumentType = 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE';
 /**
@@ -193,16 +197,18 @@ const stmtGetAllPayments = db.prepare<[number, number]>(`
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
-/** Calcule les totaux d'une ligne (TVA incluse dans total_incl_tax). */
+/**
+ * Calcule les totaux d'une ligne (TVA incluse dans total_incl_tax).
+ * Délègue au moteur monétaire central (montants identiques à l'historique).
+ */
 function computeLineTotals(item: ItemInput, vatRate: number): { lineExclTax: number; lineTax: number; lineInclTax: number } {
-  const base = item.quantity * item.unit_price * (1 - item.discount / 100);
-  const lineExclTax = round2(base);
-  const lineTax = round2(base * vatRate / 100);
-  return { lineExclTax, lineTax, lineInclTax: round2(lineExclTax + lineTax) };
+  const amounts = calculateLineAmounts({
+    quantity: item.quantity,
+    unitPrice: item.unit_price,
+    discountPct: item.discount,
+    vatRate,
+  });
+  return { lineExclTax: amounts.exclTax, lineTax: amounts.tax, lineInclTax: amounts.inclTax };
 }
 
 // ─── Repository ───────────────────────────────────────────────────────────────
@@ -326,6 +332,62 @@ export const DocumentRepository = {
 
     insertAll();
     return this.getById(id)!;
+  },
+
+  /**
+   * §Phase 7 — Quantités RETOURNABLES d'une facture.
+   * Source de vérité UNIQUE : vendu (document_items) − déjà retourné
+   * (credit_note_refs, cumulé sur tous les avoirs). L'UI ne recalcule jamais
+   * ces valeurs : elle les affiche telles quelles.
+   */
+  getReturnableQuantities(invoiceId: string): Array<{
+    product_id: string;
+    reference: string;
+    designation: string;
+    sold: number;
+    returned: number;
+    returnable: number;
+    unit_price: number;
+    discount: number;
+  }> {
+    const rows = db.prepare(`
+      SELECT di.product_id,
+             di.quantity AS sold,
+             di.unit_price,
+             di.discount,
+             p.reference,
+             p.designation,
+             COALESCE((
+               SELECT SUM(cnr.quantity) FROM credit_note_refs cnr
+               WHERE cnr.original_document_id = ? AND cnr.product_id = di.product_id
+             ), 0) AS returned
+      FROM document_items di
+      LEFT JOIN products p ON p.id = di.product_id
+      WHERE di.document_id = ?
+    `).all(invoiceId, invoiceId) as Array<{
+      product_id: string;
+      sold: number;
+      unit_price: number;
+      discount: number;
+      reference: string | null;
+      designation: string | null;
+      returned: number;
+    }>;
+
+    return rows.map(r => {
+      const sold = Number(r.sold ?? 0);
+      const returned = Number(r.returned ?? 0);
+      return {
+        product_id: r.product_id,
+        reference: r.reference ?? '',
+        designation: r.designation ?? '',
+        sold,
+        returned,
+        returnable: Math.max(0, round2(sold - returned)),
+        unit_price: Number(r.unit_price ?? 0),
+        discount: Number(r.discount ?? 0),
+      };
+    });
   },
 
   /**
@@ -646,7 +708,7 @@ export const DocumentRepository = {
     const invoice = this.create({
       type: 'INVOICE',
       entity_id: bl.entity_id,
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalDateString(),
       items: (bl.items ?? []).map(i => ({
         product_id: i.product_id,
         quantity: i.quantity,
@@ -740,7 +802,7 @@ export const DocumentRepository = {
       const created = this.create({
         type: targetType,
         entity_id: quote.entity_id,
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateString(),
         due_date: targetType === 'INVOICE' ? (quote.due_date ?? undefined) : undefined,
         items,
         notes: `Converti depuis le devis ${quote.document_number}`,

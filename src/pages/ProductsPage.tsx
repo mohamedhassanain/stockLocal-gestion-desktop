@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useProductStore } from '../stores/useProductStore';
 import { ProductForm } from '../components/products/ProductForm';
 import { ProductUnitConversionsModal } from '../components/products/ProductUnitConversionsModal';
+import { ProductHistoryModal } from '../components/products/ProductHistoryModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Button, Badge, Card, Input, Select, PageHeader, DeleteButton } from '../components/ui';
 import { PRODUCT_STATUS_BADGE, stockLevelClass } from '../components/ui/statusMaps';
@@ -23,6 +24,8 @@ export const ProductsPage: React.FC = () => {
   const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct, deleteProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  // §Phase 6 — code-barres scanné au POS introuvable : pré-remplit la création.
+  const [initialBarcode, setInitialBarcode] = useState('');
   // Phase 6 : produit dont on gère les conversions d'unités.
   const [conversionProduct, setConversionProduct] = useState<Product | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{
@@ -33,6 +36,20 @@ export const ProductsPage: React.FC = () => {
     action: () => void;
   } | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // §Phase 6 — le POS demande la création d'un produit depuis un scan inconnu :
+  // on ouvre le formulaire de création avec le code scanné pré-rempli.
+  useEffect(() => {
+    const handleNavigate = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { page?: string; createFromBarcode?: string } | undefined;
+      if (!detail || detail.page !== 'products' || !detail.createFromBarcode) return;
+      setEditingProduct(null);
+      setInitialBarcode(detail.createFromBarcode);
+      setIsFormOpen(true);
+    };
+    window.addEventListener('navigate', handleNavigate);
+    return () => window.removeEventListener('navigate', handleNavigate);
+  }, []);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [imageCache, setImageCache] = useState<Record<string, string>>({});
@@ -81,6 +98,7 @@ export const ProductsPage: React.FC = () => {
         e.preventDefault();
         setIsFormOpen(true);
         setEditingProduct(null);
+        setInitialBarcode('');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -170,9 +188,13 @@ export const ProductsPage: React.FC = () => {
     }
   };
 
+  // §Phase 14 — produit dont l'historique complet est ouvert.
+  const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
+
   const openNewProductForm = () => {
     setIsFormOpen(true);
     setEditingProduct(null);
+    setInitialBarcode('');
   };
 
   return (
@@ -269,6 +291,7 @@ export const ProductsPage: React.FC = () => {
                         <div><Badge variant={statusBadge.variant}>{statusBadge.label}</Badge></div>
                         <div className="pdg-actions">
                           <div className="flex gap-2 items-center">
+                            <Button variant="secondary" size="sm" onClick={() => setHistoryProduct(p)} title="Historique du produit">📊</Button>
                             <Button variant="secondary" size="sm" onClick={() => setConversionProduct(p)} title="Conversions d'unités">🔢</Button>
                             <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>
                             <button
@@ -297,11 +320,20 @@ export const ProductsPage: React.FC = () => {
       </div>
 
       {isFormOpen && (
-        <ProductForm onClose={() => { setIsFormOpen(false); setEditingProduct(null); }} editingProduct={editingProduct ?? undefined} />
+        <ProductForm
+          onClose={() => { setIsFormOpen(false); setEditingProduct(null); setInitialBarcode(''); }}
+          editingProduct={editingProduct ?? undefined}
+          initialBarcode={initialBarcode || undefined}
+        />
       )}
 
       {conversionProduct && (
         <ProductUnitConversionsModal product={conversionProduct} onClose={() => setConversionProduct(null)} />
+      )}
+
+      {/* §Phase 14 — historique complet du produit (mouvements, prix, lots). */}
+      {historyProduct && (
+        <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />
       )}
 
       {pendingConfirm && (

@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+// §Phase 2 — date « calendaire » locale (jamais toISOString / UTC).
+import { toLocalDateString } from '../utils/date';
 import { usePurchaseStore } from '../stores/usePurchaseStore';
 import { useSupplierStore } from '../stores/useSupplierStore';
 import { useProductStore } from '../stores/useProductStore';
@@ -40,7 +42,7 @@ const NewOrderModal: React.FC<{
   const { suppliers, loadSuppliers } = useSupplierStore();
   const { products, loadProducts } = useProductStore();
   const [supplierId, setSupplierId] = useState(initial?.supplier_id ?? '');
-  const [date, setDate] = useState(initial?.date ? initial.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(initial?.date ? initial.date.split('T')[0] : toLocalDateString());
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [items, setItems] = useState<Array<{ product_id: string; quantity: number; unit_price: number; _name?: string }>>(
     (initial?.items ?? []).map(it => ({

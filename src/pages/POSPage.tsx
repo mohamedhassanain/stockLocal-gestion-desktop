@@ -7,6 +7,9 @@ import { stockLevelClass } from '../components/ui/statusMaps';
 import { toLocalDateString } from '../utils/date';
 import { resolveDiscount, findApplicableDiscount, describeVolumeDiscount, type VolumeDiscountRule } from '../utils/volumeDiscount';
 import { toBaseQuantity, toBaseUnitPrice } from '../utils/unitSale';
+import { useHeldCartsStore } from '../stores/useHeldCartsStore';
+// §Phase 1 — moteur monétaire central : même calcul que la facture (DocumentRepository).
+import { roundMoney, calculateLineAmounts } from '../utils/money';
 
 interface CartItem {
   product_id: string;
@@ -28,18 +31,15 @@ interface CartItem {
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
 
-// Réplication EXACTE du calcul TTC du DocumentRepository (arrondis identiques) :
-// ✓ le total affiché/payé au POS correspond au total_incl_tax de la facture.
-function round2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
+// Le total TTC affiché/payé au POS est calculé par le MÊME moteur monétaire
+// que la facture (money.ts) : le montant affiché = le montant facturé, au centime.
 function lineTotalTTC(item: CartItem): number {
-  const vatRate = item.vat_rate || 20;
-  const base = item.quantity * item.unit_price * (1 - item.discount / 100);
-  const excl = round2(base);
-  const tax = round2(base * vatRate / 100);
-  return round2(excl + tax);
+  return calculateLineAmounts({
+    quantity: item.quantity,
+    unitPrice: item.unit_price,
+    discountPct: item.discount,
+    vatRate: item.vat_rate || 20,
+  }).inclTax;
 }
 
 export const POSPage: React.FC = () => {
@@ -56,9 +56,16 @@ export const POSPage: React.FC = () => {
   // Document imprimé à la validation : ticket de caisse 80 mm (défaut POS) ou facture A4 complète.
   const [printMode, setPrintMode] = useState<'receipt' | 'invoice'>('receipt');
   const [lastSale, setLastSale] = useState<{ docNumber: string; total: number; items: CartItem[] } | null>(null);
+  // §Phase 6 — code scanné INTROUVABLE : on propose explicitement de créer le produit.
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
   // Phase 4 : règles de remise par quantité (paliers), chargées une fois.
   const [discountRules, setDiscountRules] = useState<VolumeDiscountRule[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
+  // §Phase 6 — ventes en attente : store en mémoire, hors arbre React,
+  // donc conservé lors de la navigation entre pages.
+  const heldCarts = useHeldCartsStore((s) => s.held);
+  const holdCart = useHeldCartsStore((s) => s.hold);
+  const releaseHeldCart = useHeldCartsStore((s) => s.release);
 
   useEffect(() => {
     loadClients();
@@ -88,13 +95,13 @@ export const POSPage: React.FC = () => {
         target.tagName === 'SELECT' ||
         target.isContentEditable
       );
-      if (!showPayment && !showReceipt && !isTyping && e.key !== 'Tab' && e.key !== 'F2' && e.key !== 'Escape') {
+      if (!showPayment && !showReceipt && !unknownCode && !isTyping && e.key !== 'Tab' && e.key !== 'F2' && e.key !== 'Escape') {
         searchRef.current?.focus();
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showPayment, showReceipt]);
+  }, [showPayment, showReceipt, unknownCode]);
 
   const addToCart = useCallback((product: Product) => {
     if (product.status !== 'ACTIVE') {
@@ -212,9 +219,34 @@ export const POSPage: React.FC = () => {
     setCashGiven(0);
   };
 
-  const subtotal = cart.reduce((sum, it) => sum + lineTotalTTC(it), 0);
+  const subtotal = roundMoney(cart.reduce((sum, it) => sum + lineTotalTTC(it), 0));
   const change = paymentMethod === 'CASH' ? Math.max(0, cashGiven - subtotal) : 0;
   const canValidate = cart.length > 0;
+
+  // §Phase 6 — mise en attente / reprise d'une vente (multi-clients au comptoir).
+  // Le panier courant n'est JAMAIS perdu : s'il est non vide au moment de la
+  // reprise, il repart automatiquement en attente.
+  const currentClientLabel = clients.find(c => c.id === selectedClientId)?.name ?? 'Client comptoir';
+
+  const holdCurrentCart = () => {
+    if (cart.length === 0) return;
+    holdCart(cart, selectedClientId, currentClientLabel, subtotal);
+    clearCart();
+    toast.success('Vente mise en attente');
+  };
+
+  const resumeHeldCart = (heldId: string) => {
+    const target = heldCarts.find(h => h.id === heldId);
+    if (!target) return;
+    if (cart.length > 0) {
+      holdCart(cart, selectedClientId, currentClientLabel, subtotal);
+    }
+    setCart(target.items.map(i => ({ ...i })));
+    setSelectedClientId(target.clientId);
+    setCashGiven(0);
+    releaseHeldCart(heldId);
+    toast.success('Vente reprise');
+  };
   const filteredProducts = products.filter((product) => product.status === 'ACTIVE');
 
   const handleBarcodeSubmit = async () => {
@@ -236,10 +268,26 @@ export const POSPage: React.FC = () => {
         setProductSearch('');
         return;
       }
-      // Non trouvé par code-barres/référence exacte : la recherche live reste active.
+      // §Phase 6 — code inconnu : on propose explicitement de créer le produit
+      // (la recherche live reste active par ailleurs).
+      setUnknownCode(code);
     } catch {
       toast.error('La recherche du produit a échoué. Réessayez.');
     }
+  };
+
+  /**
+   * §Phase 6 — « Créer le produit » depuis un scan inconnu.
+   * Navigue vers la page Produits en transmettant le code scanné : le
+   * formulaire de création (validé côté main) s'ouvre pré-rempli.
+   */
+  const createProductFromScan = () => {
+    const code = unknownCode;
+    setUnknownCode(null);
+    setProductSearch('');
+    window.dispatchEvent(new CustomEvent('navigate', {
+      detail: { page: 'products', createFromBarcode: code ?? undefined },
+    }));
   };
 
   const handleValidateSale = async () => {
@@ -317,6 +365,22 @@ export const POSPage: React.FC = () => {
               <option value="">Client comptoir</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {heldCarts.length > 0 && (
+              <select
+                className="input"
+                style={{ width: 250 }}
+                value=""
+                onChange={e => { if (e.target.value) resumeHeldCart(e.target.value); }}
+                title="Reprendre une vente mise en attente"
+              >
+                <option value="">Ventes en attente ({heldCarts.length})</option>
+                {heldCarts.map(h => (
+                  <option key={h.id} value={h.id}>
+                    {h.clientName} — {h.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </>
         }
       />
@@ -427,6 +491,9 @@ export const POSPage: React.FC = () => {
                   <div className="text-xs text-muted">TOTAL</div>
                   <div className="pos-total-amount money">{subtotal.toFixed(2)} <span style={{ fontSize: 18 }}>MAD</span></div>
                 </div>
+                <Button variant="secondary" size="lg" onClick={holdCurrentCart} title="Mettre la vente en attente et servir un autre client">
+                  Mettre en attente
+                </Button>
                 <Button variant="success" size="lg" onClick={() => setShowPayment(true)} disabled={!canValidate}>
                   💳 Encaisser
                 </Button>
@@ -564,6 +631,28 @@ export const POSPage: React.FC = () => {
             Nouvelle vente
           </Button>
         </ModalBody>
+      </Modal>
+
+      {/* §Phase 6 — code-barres scanné INTROUVABLE : proposer de créer le produit. */}
+      <Modal open={!!unknownCode} onClose={() => setUnknownCode(null)} width={420}>
+        <ModalHeader icon="❓" title="Produit introuvable" />
+        <ModalBody>
+          <div className="text-center">
+            <div className="text-sm text-muted" style={{ marginBottom: 6 }}>
+              Aucun produit ne correspond au code scanné :
+            </div>
+            <div className="font-semibold" style={{ fontFamily: 'var(--font-mono)', fontSize: 20 }}>
+              {unknownCode}
+            </div>
+            <div className="text-xs text-muted" style={{ marginTop: 10 }}>
+              Vous pouvez créer ce produit maintenant : le code scanné sera utilisé comme code-barres.
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setUnknownCode(null)}>Annuler</Button>
+          <Button variant="primary" onClick={createProductFromScan}>Créer le produit</Button>
+        </ModalFooter>
       </Modal>
     </div>
   );

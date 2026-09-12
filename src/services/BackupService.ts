@@ -6,6 +6,31 @@ import { GlobalSettingsService } from './GlobalSettingsService';
 
 let autoBackupTimer: NodeJS.Timeout | null = null;
 
+/** §Phase 4.1 — Contenu d'une sauvegarde, affiché avant restauration. */
+export interface BackupInspectionInfo {
+  name: string;
+  path: string;
+  date: string;
+  dateIso: string;
+  sizeKB: number;
+  integrity: string;
+  integrityOk: boolean;
+  /** `null` si aucun fichier .sha256 n'accompagne la sauvegarde. */
+  checksumMatches: boolean | null;
+  products: number;
+  customers: number;
+  suppliers: number;
+  documents: number;
+  payments: number;
+  stockMovements: number;
+}
+
+export interface BackupInspectionResult {
+  success: boolean;
+  error?: string;
+  info?: BackupInspectionInfo;
+}
+
 export interface BackupInfo {
   name: string;
   path: string;
@@ -226,6 +251,73 @@ export const BackupService = {
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return { valid: false, error: `Validation échouée : ${message}` };
+    }
+  },
+
+  /**
+   * §Phase 4.1 — Inspection d'une sauvegarde AVANT restauration.
+   *
+   * Ouvre le fichier en LECTURE SEULE (jamais la base courante) et renvoie :
+   * date, taille, intégrité SQLite, et les volumes de données (produits,
+   * clients, documents, paiements) pour que l'utilisateur sache exactement
+   * ce qu'il va restaurer. Aucune écriture, aucun effet de bord.
+   */
+  async inspectBackup(backupPath: string): Promise<BackupInspectionResult> {
+    if (!fs.existsSync(backupPath)) {
+      return { success: false, error: 'Le fichier de sauvegarde est introuvable.' };
+    }
+    const stats = fs.statSync(backupPath);
+    if (stats.size === 0) {
+      return { success: false, error: 'Le fichier de sauvegarde est vide.' };
+    }
+
+    try {
+      const Database = (await import('better-sqlite3')).default;
+      const probe = new Database(backupPath, { readonly: true, fileMustExist: true });
+      try {
+        const integrityRow = probe.pragma('integrity_check') as Array<{ integrity_check: string }>;
+        const integrity = integrityRow[0]?.integrity_check ?? 'inconnu';
+
+        const countOf = (table: string): number => {
+          try {
+            const row = probe.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number } | undefined;
+            return Number(row?.n ?? 0);
+          } catch {
+            return 0; // table absente d'une ancienne sauvegarde → 0
+          }
+        };
+
+        const checksumPath = backupPath + '.sha256';
+        const expectedChecksum = fs.existsSync(checksumPath)
+          ? fs.readFileSync(checksumPath, 'utf8').trim()
+          : null;
+        const actualChecksum = this.computeChecksum(backupPath);
+
+        return {
+          success: true,
+          info: {
+            name: path.basename(backupPath),
+            path: backupPath,
+            date: stats.mtime.toLocaleString('fr-MA'),
+            dateIso: stats.mtime.toISOString(),
+            sizeKB: Math.round(stats.size / 1024),
+            integrity,
+            integrityOk: integrity === 'ok',
+            checksumMatches: expectedChecksum === null ? null : expectedChecksum === actualChecksum,
+            products: countOf('products'),
+            customers: countOf('customers'),
+            suppliers: countOf('suppliers'),
+            documents: countOf('documents'),
+            payments: countOf('payments'),
+            stockMovements: countOf('stock_movements'),
+          },
+        };
+      } finally {
+        probe.close();
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { success: false, error: `Sauvegarde illisible : ${message}` };
     }
   },
 

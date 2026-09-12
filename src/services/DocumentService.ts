@@ -1,6 +1,9 @@
 import { DocumentRepository, type Document, type DocumentType, type PaymentMethod } from '../repositories/DocumentRepository';
 import { db } from '../database/config/connection';
 import { AuditService } from './AuditService';
+// §Phase 2 — date « calendaire » : jamais new Date().toISOString() (fuseau UTC).
+import { toLocalDateString } from '../utils/date';
+import { isValidDueDate, DUE_DATE_BEFORE_INVOICE_MESSAGE } from '../domain/credit/CreditStatus';
 
 export const DocumentService = {
 
@@ -23,6 +26,11 @@ export const DocumentService = {
       if (item.quantity <= 0) throw new Error('La quantité doit être supérieure à 0.');
       if (item.unit_price < 0) throw new Error('Le prix unitaire ne peut pas être négatif.');
       if (item.discount < 0 || item.discount > 100) throw new Error('La remise doit être comprise entre 0 et 100%.');
+    }
+
+    // §Phase 2.1 — échéance >= date de facture (règle métier par défaut).
+    if (!isValidDueDate(data.date, data.due_date)) {
+      throw new Error(DUE_DATE_BEFORE_INVOICE_MESSAGE);
     }
 
     // Gérer le stock automatiquement pour factures et BL
@@ -48,6 +56,11 @@ export const DocumentService = {
       if (item.quantity <= 0) throw new Error('La quantité doit être supérieure à 0.');
       if (item.unit_price < 0) throw new Error('Le prix unitaire ne peut pas être négatif.');
       if (item.discount < 0 || item.discount > 100) throw new Error('La remise doit être comprise entre 0 et 100%.');
+    }
+
+    // §Phase 2.1 — échéance >= date de facture (règle métier par défaut).
+    if (!isValidDueDate(data.date, data.due_date)) {
+      throw new Error(DUE_DATE_BEFORE_INVOICE_MESSAGE);
     }
 
     return DocumentRepository.updateDocument(id, data);
@@ -163,7 +176,7 @@ export const DocumentService = {
     const creditNote = DocumentRepository.createCreditNote({
       original_invoice_id: invoiceId,
       entity_id: invoice.entity_id,
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalDateString(),
       return_items: itemsToReturn,
       reason,
     });
@@ -176,6 +189,14 @@ export const DocumentService = {
     );
 
     return creditNote;
+  },
+
+  /**
+   * §Phase 7 — Quantités RETOURNABLES d'une facture : « déjà retourné » et
+   * « reste retournable », calculés par le dépôt (source de vérité unique).
+   */
+  getReturnableQuantities(invoiceId: string) {
+    return DocumentRepository.getReturnableQuantities(invoiceId);
   },
 
   getPayments(documentId: string) {

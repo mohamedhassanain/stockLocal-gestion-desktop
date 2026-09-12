@@ -456,3 +456,79 @@ CREATE INDEX IF NOT EXISTS idx_stock_transfers_date ON stock_transfers (date);
 CREATE INDEX IF NOT EXISTS idx_inventory_versions_session ON inventory_versions (session_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_item_versions_version ON inventory_item_versions (version_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_item_versions_product ON inventory_item_versions (product_id);
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §Phase 10 — CAISSE (sessions) & §Phase 11 — DÉPENSES
+--
+-- Ces tables sont ajoutées par simple AJOUT au schéma : le fichier est exécuté
+-- avec `CREATE TABLE IF NOT EXISTS`, ce qui les crée aussi bien sur une base
+-- NEUVE que sur une base EXISTANTE, sans migration destructive (cf. Rule C).
+-- Aucune donnée n'est supprimée, aucune colonne existante n'est modifiée.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Session de caisse : ouverture (fond initial) → mouvements → fermeture
+-- (solde théorique, solde compté, écart). Une session FERMÉE est figée :
+-- theoretical_amount et difference sont enregistrés au moment de la fermeture
+-- et ne sont JAMAIS recalculés (traçabilité historique, §Phase 10).
+CREATE TABLE IF NOT EXISTS cash_sessions (
+    id TEXT PRIMARY KEY,
+    opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME,
+    -- Fond de caisse initial (espèces présentes à l'ouverture).
+    opening_float REAL NOT NULL DEFAULT 0,
+    -- Montant réellement compté à la fermeture (NULL tant que la caisse est ouverte).
+    counted_amount REAL,
+    -- Solde théorique figé à la fermeture.
+    theoretical_amount REAL,
+    -- Écart = counted_amount − theoretical_amount, figé à la fermeture.
+    difference REAL,
+    status TEXT NOT NULL DEFAULT 'OPEN' -- OPEN | CLOSED
+        ,
+    notes TEXT,
+    closed_by TEXT,
+    -- Dépôt auquel la session est rattachée (multi-dépôts), optionnel.
+    warehouse_id TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Mouvement de caisse : entrée ou sortie rattachée à une session.
+-- direction IN  : vente espèces, encaissement, apport manuel
+-- direction OUT : dépense payée en espèces, retrait, sortie manuelle
+CREATE TABLE IF NOT EXISTS cash_movements (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    -- SALE_CASH | PAYMENT_IN | EXPENSE | WITHDRAWAL | MANUAL_IN | MANUAL_OUT
+    movement_type TEXT NOT NULL,
+    direction TEXT NOT NULL,               -- IN | OUT
+    amount REAL NOT NULL,
+    payment_method TEXT NOT NULL DEFAULT 'CASH', -- CASH | CHECK | TRANSFER
+    description TEXT,
+    -- Identifiant du document / de la dépense à l'origine du mouvement.
+    reference_id TEXT,
+    date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES cash_sessions(id) ON DELETE CASCADE
+);
+
+-- Dépense d'exploitation (transport, loyer, électricité, salaires…).
+CREATE TABLE IF NOT EXISTS expenses (
+    id TEXT PRIMARY KEY,
+    date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    category TEXT NOT NULL,
+    amount REAL NOT NULL,
+    description TEXT,
+    payment_method TEXT NOT NULL DEFAULT 'CASH', -- CASH | CHECK | TRANSFER
+    -- Session de caisse associée (NULL si réglée hors espèces).
+    cash_session_id TEXT,
+    warehouse_id TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cash_session_id) REFERENCES cash_sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cash_sessions_status ON cash_sessions (status);
+CREATE INDEX IF NOT EXISTS idx_cash_sessions_opened ON cash_sessions (opened_at);
+CREATE INDEX IF NOT EXISTS idx_cash_movements_session ON cash_movements (session_id);
+CREATE INDEX IF NOT EXISTS idx_cash_movements_date ON cash_movements (date);
+CREATE INDEX IF NOT EXISTS idx_cash_movements_type ON cash_movements (movement_type);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (date);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category);
+CREATE INDEX IF NOT EXISTS idx_expenses_session ON expenses (cash_session_id);

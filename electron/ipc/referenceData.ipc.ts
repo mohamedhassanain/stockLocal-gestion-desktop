@@ -16,7 +16,7 @@ import { StockLedgerService } from '../../src/services/StockLedgerService';
 import { PriceHistoryRepository } from '../../src/repositories/PriceHistoryRepository';
 import { CompanySettingsService } from '../../src/services/CompanySettingsService';
 import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
-import { ImportService } from '../../src/services/ImportService';
+import { ImportService, type ImportDuplicateStrategy } from '../../src/services/ImportService';
 import { ExportService } from '../../src/services/ExportService';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
@@ -357,6 +357,25 @@ export function registerReferenceDataHandlers(): void {
     return ProductBatchRepository.getExpiringBatches(Number.isFinite(days) ? days : 30);
   });
 
+  // §Phase 13 — FEFO : lots d'un produit dans l'ORDRE DE CONSOMMATION
+  // (expiration croissante, lots sans date en dernier).
+  ipcMain.handle('batches:listFefo', async (_, productId: unknown) => {
+    return ProductBatchRepository.listFefo(requireId(productId, 'id produit'));
+  });
+
+  // §Phase 13 — PLAN FEFO (LECTURE SEULE) : quels lots SERAIENT prélevés pour
+  // une quantité donnée. N'écrit jamais rien.
+  ipcMain.handle('batches:getFefoPlan', async (_, { productId, quantity }: { productId: unknown; quantity: unknown }) => {
+    return humanError(() => {
+      const id = requireId(productId, 'id produit');
+      const qty = Number(quantity);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        throw new Error('Quantité invalide : elle doit être supérieure à 0.');
+      }
+      return ProductBatchRepository.getFefoPlan(id, qty);
+    });
+  });
+
   // ─── Dépôts (Phase 5) ──────────────────────────────────────────────────────
   ipcMain.handle('warehouses:getAll', async () => {
     return WarehouseRepository.getAll();
@@ -534,18 +553,34 @@ export function registerReferenceDataHandlers(): void {
     });
   });
 
-  ipcMain.handle('products:confirmImport', async (_, products: unknown) => {
+  // §Phase 17 — Confirmation de l'import avec stratégie de doublons EXPLICITE.
+  // Le statut « doublon » n'est JAMAIS repris du renderer : il est recalculé ici
+  // depuis la base (SQLite = source de vérité), sinon un renderer compromis
+  // pourrait forcer un écrasement en se déclarant « non doublon ».
+  ipcMain.handle('products:confirmImport', async (_, payload: unknown) => {
     return humanError(() => {
-      if (!Array.isArray(products)) throw new Error('Liste de produits invalide.');
-      const safe = products
+      const body = (payload ?? {}) as { products?: unknown; strategy?: unknown };
+      if (!Array.isArray(body.products)) throw new Error('Liste de produits invalide.');
+
+      const strategy: ImportDuplicateStrategy =
+        body.strategy === 'UPDATE' || body.strategy === 'SKIP' ? body.strategy : 'CREATE';
+
+      const safe = body.products
         .slice(0, 50_000)
         .map(p => {
           try { return nullToUndefined(safeParse(ProductCreateSchema, p, 'Import produit')); }
           catch { return null; }
         })
         .filter((p): p is NonNullable<typeof p> => p !== null);
-      const result = ImportService.confirmImport(safe);
-      AuditService.log('PRODUCT_IMPORT', 'product', 'bulk', `Import confirmé : ${result.imported} produits, ${result.errors} erreurs`);
+
+      const rows = safe.map(product => ({
+        product,
+        isDuplicate: ProductRepository.findByReference(product.reference) !== undefined,
+      }));
+
+      const result = ImportService.confirmImport(rows, strategy);
+      AuditService.log('PRODUCT_IMPORT', 'product', 'bulk',
+        `Import confirmé (${strategy}) : ${result.created} créés, ${result.updated} mis à jour, ${result.skipped} ignorés, ${result.errors} erreurs`);
       return { success: true, data: result };
     });
   });

@@ -34,9 +34,14 @@ interface Category {
 interface ProductFormProps {
   onClose: () => void;
   editingProduct?: Product;
+  /**
+   * §Phase 6 — code scanné au POS introuvable : le formulaire s'ouvre pré-rempli
+   * (référence + code-barres) pour créer le produit sans le retaper.
+   */
+  initialBarcode?: string;
 }
 
-export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduct }) => {
+export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduct, initialBarcode }) => {
   const addProductWithStock = useProductStore(state => state.addProductWithStock);
   const updateProductWithStock = useProductStore(state => state.updateProductWithStock);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -46,11 +51,11 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
   const [currentStock, setCurrentStock] = useState<number | null>(null);
   const [newStock, setNewStock] = useState<number>(0);
   const [formData, setFormData] = useState({
-    reference: editingProduct?.reference ?? '',
+    reference: editingProduct?.reference ?? initialBarcode ?? '',
     designation: editingProduct?.designation ?? '',
     description: editingProduct?.description ?? '',
     image_path: editingProduct?.image_path ?? '',
-    barcode: editingProduct?.barcode ?? '',
+    barcode: editingProduct?.barcode ?? initialBarcode ?? '',
     unit: editingProduct?.unit ?? 'PIÈCE',
     category_id: editingProduct?.category_id ?? '',
     subcategory_id: editingProduct?.subcategory_id ?? '',

@@ -192,10 +192,12 @@ describe('Échéance — QA end-to-end (SQLite réel)', () => {
     expect(doc.due_date).toBe('2026-09-08');
   });
 
-  it('Case C — due_date antérieure à la date facture : ACTUELLEMENT accepté (aucune validation)', () => {
-    // Comportement observé : le projet n'implémente PAS de rejet due_date < date.
-    const { doc } = makeCreditInvoice({ date: '2026-09-15', due_date: '2026-09-08' });
-    expect(doc.due_date).toBe('2026-09-08');
+  it('Case C — due_date antérieure à la date facture : REJETÉ (règle §Phase 2.1)', () => {
+    // §Phase 2.1 — Changement de comportement INTENTIONNEL et documenté :
+    // l'ancien code acceptait silencieusement une échéance antérieure à la
+    // facture. Désormais le service (source de vérité unique) la refuse.
+    expect(() => makeCreditInvoice({ date: '2026-09-15', due_date: '2026-09-08' }))
+      .toThrow(/échéance ne peut pas être antérieure/);
   });
 
   it('Case D — due_date vide : optionnel et stocké NULL', () => {
@@ -214,7 +216,8 @@ describe('Échéance — QA end-to-end (SQLite réel)', () => {
   });
 
   it('échéance passée + impayée → overdue (days_left < 0, remaining > 0)', () => {
-    const { doc } = makeCreditInvoice({ due_date: '2000-01-01' });
+    // Facture ancienne ET échéance passée, mais échéance > date de facture (§2.1).
+    const { doc } = makeCreditInvoice({ date: '2000-01-01', due_date: '2000-01-02' });
     const dues = DashboardRepository.getUpcomingDues(3650);
     const found = dues.find(d => d.id === doc.id)!;
     expect(found.days_left).toBeLessThan(0);
@@ -222,7 +225,7 @@ describe('Échéance — QA end-to-end (SQLite réel)', () => {
   });
 
   it('échéance passée + intégralement payée → PAS affichée comme overdue (status PAID exclu)', () => {
-    const { doc } = makeCreditInvoice({ due_date: '2000-01-01', qty: 1, unit_price: 100 });
+    const { doc } = makeCreditInvoice({ date: '2000-01-01', due_date: '2000-01-02', qty: 1, unit_price: 100 });
     DocumentService.addPayment({ document_id: doc.id, amount: 120, payment_method: 'CASH' }); // PAID
     const dues = DashboardRepository.getUpcomingDues(3650);
     const found = dues.find(d => d.id === doc.id);
@@ -231,7 +234,7 @@ describe('Échéance — QA end-to-end (SQLite réel)', () => {
   });
 
   it('échéance passée + partiellement payée → overdue avec remaining > 0', () => {
-    const { doc } = makeCreditInvoice({ due_date: '2000-01-01', qty: 10, unit_price: 100 });
+    const { doc } = makeCreditInvoice({ date: '2000-01-01', due_date: '2000-01-02', qty: 10, unit_price: 100 });
     DocumentService.addPayment({ document_id: doc.id, amount: 300, payment_method: 'CASH' }); // PARTIAL
     const dues = DashboardRepository.getUpcomingDues(3650);
     const found = dues.find(d => d.id === doc.id)!;

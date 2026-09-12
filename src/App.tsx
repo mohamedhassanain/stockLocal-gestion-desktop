@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { GlobalSearchModal } from './components/search/GlobalSearchModal';
 import { Sidebar } from './components/layout/Sidebar';
 import { DashboardPage } from './pages/DashboardPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -14,6 +15,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { StockAlertsPage } from './pages/StockAlertsPage';
 import { ReceivingsPage } from './pages/ReceivingsPage';
 import { CashRegisterPage } from './pages/CashRegisterPage';
+import { ExpensesPage } from './pages/ExpensesPage';
 import { PaymentsPage } from './pages/PaymentsPage';
 import { ClientCreditsPage } from './pages/ClientCreditsPage';
 import { AiAssistantPage } from './pages/AiAssistantPage';
@@ -24,7 +26,7 @@ import { Toaster } from './components/ui/Toaster';
 import { toast } from './stores/useToastStore';
 import { useWarehouseStore } from './stores/useWarehouseStore';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant' | 'warehouses';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant' | 'warehouses' | 'expenses';
 
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
@@ -128,7 +130,7 @@ export const App: React.FC = () => {
       'dashboard', 'products', 'stock', 'clients', 'suppliers', 'invoices',
       'devis', 'delivery-notes', 'credit-notes', 'settings', 'pos',
       'purchases', 'inventory', 'reports', 'stock-alerts',
-      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant', 'warehouses',
+      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant', 'warehouses', 'expenses',
     ]);
 
     const handleNavigate = (e: Event) => {
@@ -202,6 +204,8 @@ export const App: React.FC = () => {
   return (
     <div style={{ display: 'flex', fontFamily: '"Inter", "Segoe UI", sans-serif', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+      {/* §Phase 5 — palette de recherche globale (Ctrl+K), montée en permanence. */}
+      <GlobalSearchModal />
       {currentPage === 'dashboard' && <DashboardPage />}
       {currentPage === 'products' && <ProductsPage />}
       {currentPage === 'stock' && <StockPage />}
@@ -223,6 +227,7 @@ export const App: React.FC = () => {
       {currentPage === 'cash-register' && <CashRegisterPage />}
       {currentPage === 'ai-assistant' && <AiAssistantPage />}
       {currentPage === 'warehouses' && <WarehousesPage />}
+      {currentPage === 'expenses' && <ExpensesPage />}
       <Toaster />
     </div>
   );

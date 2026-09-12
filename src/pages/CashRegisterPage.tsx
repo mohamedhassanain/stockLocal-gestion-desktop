@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from '../stores/useToastStore';
+import { CashSessionPanel } from '../components/cash/CashSessionPanel';
 import { Button, Card, CardFooter, CardHeader, PageHeader, StatCard } from '../components/ui';
 import type { PaymentRecord } from '../repositories/DocumentRepository';
 
@@ -69,6 +70,9 @@ export const CashRegisterPage: React.FC = () => {
       />
 
       <div className="page-content">
+        {/* §Phase 10 — Session de caisse : ouverture, mouvements, fermeture (écart). */}
+        <CashSessionPanel />
+
         <div className="stat-grid">
           <StatCard label="Espèces" value={`${totals.cash.toFixed(2)} MAD`} tone="success" />
           <StatCard label="Chèques" value={`${totals.check.toFixed(2)} MAD`} tone="warning" />

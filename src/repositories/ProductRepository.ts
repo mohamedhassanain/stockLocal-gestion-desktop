@@ -15,6 +15,9 @@ export interface Product {
   selling_price: number;
   wholesale_price: number;
   min_stock: number;
+  // §Phase 15 : seuil haut de réapprovisionnement (0 = non défini). Colonne
+  // NOT NULL avec défaut 0 — jamais null, pour rester aligné sur le contrat IPC.
+  max_stock?: number;
   status: 'ACTIVE' | 'ARCHIVED' | 'DISABLED';
   // Phase 3 : produit géré par lots + date d'expiration (0/1). Défaut 0.
   batch_managed?: number | null;
@@ -62,12 +65,12 @@ export class ProductRepository {
       LIMIT @limit OFFSET @offset
     `),
     insert: db.prepare(`
-      INSERT INTO products (id, reference, designation, description, category_id, subcategory_id, barcode, image_path, unit, purchase_price, selling_price, wholesale_price, min_stock, batch_managed, status)
-      VALUES (@id, @reference, @designation, @description, @category_id, @subcategory_id, @barcode, @image_path, @unit, @purchase_price, @selling_price, @wholesale_price, @min_stock, @batch_managed, @status)
+      INSERT INTO products (id, reference, designation, description, category_id, subcategory_id, barcode, image_path, unit, purchase_price, selling_price, wholesale_price, min_stock, max_stock, batch_managed, status)
+      VALUES (@id, @reference, @designation, @description, @category_id, @subcategory_id, @barcode, @image_path, @unit, @purchase_price, @selling_price, @wholesale_price, @min_stock, @max_stock, @batch_managed, @status)
     `),
     update: db.prepare(`
       UPDATE products 
-      SET reference = @reference, designation = @designation, description = @description, category_id = @category_id, subcategory_id = @subcategory_id, barcode = @barcode, image_path = @image_path, unit = @unit, purchase_price = @purchase_price, selling_price = @selling_price, wholesale_price = @wholesale_price, min_stock = @min_stock, batch_managed = @batch_managed, status = @status, updated_at = CURRENT_TIMESTAMP
+      SET reference = @reference, designation = @designation, description = @description, category_id = @category_id, subcategory_id = @subcategory_id, barcode = @barcode, image_path = @image_path, unit = @unit, purchase_price = @purchase_price, selling_price = @selling_price, wholesale_price = @wholesale_price, min_stock = @min_stock, max_stock = @max_stock, batch_managed = @batch_managed, status = @status, updated_at = CURRENT_TIMESTAMP
       WHERE id = @id
     `),
     archive: db.prepare('UPDATE products SET status = \'ARCHIVED\', updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
@@ -94,12 +97,14 @@ export class ProductRepository {
   }
 
   static create(product: ProductWithId): void {
-    // batch_managed a un défaut sûr (0) si l'appelant ne le fournit pas.
-    this.stmts.insert.run({ batch_managed: 0, ...product });
+    // Défauts sûrs si l'appelant ne les fournit pas : les colonnes sont NOT NULL.
+    const maxStock = Number(product.max_stock ?? 0);
+    this.stmts.insert.run({ batch_managed: 0, ...product, max_stock: Number.isFinite(maxStock) ? maxStock : 0 });
   }
 
   static update(product: ProductWithId): void {
-    this.stmts.update.run({ batch_managed: 0, ...product });
+    const maxStock = Number(product.max_stock ?? 0);
+    this.stmts.update.run({ batch_managed: 0, ...product, max_stock: Number.isFinite(maxStock) ? maxStock : 0 });
   }
 
   static archive(id: string): void {

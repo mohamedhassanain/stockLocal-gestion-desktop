@@ -3,6 +3,10 @@ import { toast } from '../stores/useToastStore';
 import { Button, Card, PageHeader, StatCard } from '../components/ui';
 import type { DashboardStats, TopProduct, TopClient, PaymentMethodTotal } from '../repositories/DashboardRepository';
 import { useWarehouseStore } from '../stores/useWarehouseStore';
+// §Phase 2.2 — date « calendaire » locale : `toISOString()` renvoie la date en
+// UTC et, à UTC+1, ferait porter le rapport sur le MOIS PRÉCÉDENT les premières
+// heures du 1er du mois. On utilise le helper de date locale.
+import { todayDateOnly } from '../utils/date';
 
 const RankBadge: React.FC<{ rank: number; variant?: 'primary' | 'accent' }> = ({ rank, variant = 'primary' }) => (
   <span
@@ -89,7 +93,8 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
-  const month = new Date().toISOString().slice(0, 7);
+  // §Phase 2.2 — le mois du rapport est une date MÉTIER : jamais via UTC.
+  const month = todayDateOnly().slice(0, 7);
 
   // ─── Donut (Répartition des encaissements par mode de paiement) ────────────
   const donutChart = (() => {

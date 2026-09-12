@@ -23,7 +23,7 @@ import renderer from 'vite-plugin-electron-renderer';
  * fonction reçoit le chemin ABSOLU, normalise les séparateurs, et cible
  * précisément les données runtime — c'est le correctif robuste demandé.
  */
-function buildWatchIgnored() {
+export function buildWatchIgnored() {
   const runtimeDirs = new Set<string>();
   const cwd = process.cwd();
 

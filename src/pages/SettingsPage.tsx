@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { ProductImportModal } from '../components/products/ProductImportModal';
 import type { Product } from '../repositories/ProductRepository';
 import { Button, Card, Input, Select, PageHeader, DeleteButton, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
 // ─── Onglets ────────────────────────────────────────────────────────────────
@@ -93,7 +94,8 @@ export const SettingsPage: React.FC = () => {
   const [integrityResult, setIntegrityResult] = useState<{ valid: boolean; message: string } | null>(null);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [backupLoading, setBackupLoading] = useState(false);
-  const [importResult, setImportResult] = useState<{ imported: number; errors: number; messages: string[] } | null>(null);
+  // §Phase 17 — l'import CSV passe par une fenêtre d'aperçu (stratégie explicite).
+  const [importOpen, setImportOpen] = useState(false);
   const [conversions, setConversions] = useState<UnitConversion[]>([]);
   const [conversionForm, setConversionForm] = useState({ from_unit: '', to_unit: '', factor: 1, product_id: '' });
   const [editingConversion, setEditingConversion] = useState<UnitConversion | null>(null);
@@ -411,6 +413,21 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // §Phase 4.1 — « Vérifier la sauvegarde » : fichier présent + SQLite ouvrable
+  // + PRAGMA integrity_check=ok + checksum SHA-256 concordant (si présent).
+  const handleValidateBackup = async (backupPath: string) => {
+    try {
+      const result = await window.api.backup.validate(backupPath);
+      if (result.valid) {
+        notify('Sauvegarde valide : fichier intact, intégrité OK.');
+      } else {
+        notify(`Sauvegarde invalide : ${result.error ?? 'vérification échouée.'}`);
+      }
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : 'Vérification impossible.');
+    }
+  };
+
   const doRestoreBackup = async (backupPath: string) => {
     try {
       const result = await window.api.backup.restore(backupPath);
@@ -426,10 +443,39 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleRestoreBackup = async (backupPath: string, backupName: string) => {
+    // §Phase 4.1 — APERÇU AVANT RESTAURATION : inspection LECTURE SEULE de la
+    // sauvegarde (date, taille, intégrité, volumes de données). On n'ouvre
+    // jamais la base courante et rien n'est écrit à ce stade.
+    let backupPreview: React.ReactNode = null;
+    try {
+      const inspection = await window.api.backup.inspect(backupPath);
+      if (!inspection.success || !inspection.info) {
+        notify(inspection.error ?? 'Sauvegarde illisible.');
+        return;
+      }
+      const info = inspection.info;
+      backupPreview = (
+        <>
+          <strong>Contenu de la sauvegarde</strong>
+          <br />Date : {info.date}
+          <br />Taille : {info.sizeKB} Ko — Intégrité : {info.integrityOk ? 'OK' : info.integrity}
+          <br />{info.products} produit(s) · {info.customers} client(s) · {info.suppliers} fournisseur(s)
+          <br />{info.documents} document(s) · {info.payments} paiement(s)
+          <br />
+          <span className="text-danger font-semibold">Cette opération remplacera les données actuelles.</span>
+          <br />
+        </>
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : 'Impossible de lire la sauvegarde.');
+      return;
+    }
+
     setPendingConfirm({
       title: 'Restaurer cette sauvegarde ?',
       message: (
         <>
+          {backupPreview}
           <strong>{backupName}</strong> sera restaurée.
           <br />L'état actuel sera sauvegardé avant la restauration.
           <br /><span className="text-danger font-semibold">L'application devra être redémarrée.</span>
@@ -466,27 +512,6 @@ export const SettingsPage: React.FC = () => {
         }
       },
     });
-  };
-
-  const [csvFilePath, setCsvFilePath] = useState('');
-
-  const handlePickCsv = async () => {
-    const result = await window.api.products.pickCsv();
-    if (!result.canceled && result.path) {
-      setCsvFilePath(result.path);
-    }
-  };
-
-  const importCsv = async () => {
-    const path = csvFilePath || ((document.getElementById('csv-path') as HTMLInputElement)?.value ?? '');
-    if (!path.trim()) { notify('Veuillez sélectionner un fichier CSV'); return; }
-    const result = await window.api.products.importCsv(path.trim());
-    if (result.success) {
-      setImportResult({ imported: result.imported, errors: result.errors, messages: result.messages ?? [] });
-      notify(`✅ Import terminé : ${result.imported} produits, ${result.errors} erreurs`);
-    } else {
-      notify(`❌ ${result.error}`);
-    }
   };
 
   const addConversion = async () => {
@@ -787,21 +812,14 @@ export const SettingsPage: React.FC = () => {
               <p className="text-sm text-secondary" style={{ marginTop: 0 }}>
                 Colonnes : reference;designation;purchase_price;selling_price;wholesale_price;min_stock;barcode;unit
               </p>
-              <div className="flex gap-2">
-                <Input id="csv-path" value={csvFilePath} onChange={e => setCsvFilePath(e.target.value)} placeholder="Chemin du fichier CSV..." className="flex-1" />
-                <Button onClick={handlePickCsv}>📂 Parcourir</Button>
-                <Button variant="success" onClick={importCsv} disabled={!csvFilePath}>📥 Importer</Button>
-              </div>
-              {importResult && (
-                <div className="text-sm mt-3">
-                  <strong>Importés : {importResult.imported}</strong> · Erreurs : {importResult.errors}
-                  {importResult.messages.length > 0 && (
-                    <div className="surface-danger" style={{ maxHeight: 120, overflowY: 'auto', marginTop: 6, padding: 10 }}>
-                      {importResult.messages.slice(0, 10).map((m, i) => <div key={i}>{m}</div>)}
-                    </div>
-                  )}
-                </div>
-              )}
+              <p className="text-sm text-secondary" style={{ marginTop: 0 }}>
+                L’import affiche d’abord un aperçu (lignes valides / doublons / invalides) et
+                demande explicitement quoi faire des références déjà existantes —
+                aucun produit n’est écrasé silencieusement.
+              </p>
+              <Button variant="success" onClick={() => setImportOpen(true)}>
+                📥 Importer un fichier CSV…
+              </Button>
             </Card>
 
             <Card padding>
@@ -1178,6 +1196,7 @@ export const SettingsPage: React.FC = () => {
                       <div className="text-sm text-secondary" style={{ whiteSpace: 'nowrap' }}>{b.date}</div>
                       <div className="text-sm text-secondary">{b.sizeKB} KB</div>
                       <div className="flex gap-2">
+                        <Button variant="secondary" size="sm" onClick={() => handleValidateBackup(b.path)}>Vérifier</Button>
                         <Button size="sm" onClick={() => handleRestoreBackup(b.path, b.name)}>Restaurer</Button>
                         <DeleteButton onClick={() => handleDeleteBackup(b.path)} />
                       </div>
@@ -1272,6 +1291,14 @@ export const SettingsPage: React.FC = () => {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* §Phase 17 — import CSV : aperçu obligatoire + stratégie de doublons. */}
+      {importOpen && (
+        <ProductImportModal
+          onClose={() => setImportOpen(false)}
+          onImported={() => loadAll()}
+        />
+      )}
 
       {pendingConfirm && (
         <ConfirmDialog
