@@ -42,14 +42,18 @@ function insertProducts(count: number) {
   }
 }
 
+// Multi-dépôts : un dépôt par défaut est garanti à l'initialisation ; les
+// mouvements de volumétrie y sont rattachés (aucune donnée globale perdue).
+const defaultWarehouseId = (db.prepare('SELECT id FROM warehouses WHERE is_default = 1 LIMIT 1').get() as { id: string } | undefined)?.id ?? 'depot-principal';
+
 let movementCounter = 0;
 function insertMovements(count: number) {
   const stmt = db.prepare(`
-    INSERT INTO stock_movements (id, product_id, type, movement_type, quantity, unit_price, date)
-    VALUES (?, ?, 'IN', 'PURCHASE_IN', 1, 10, datetime('now', '-' || ? || ' days'))
+    INSERT INTO stock_movements (id, product_id, warehouse_id, type, movement_type, quantity, unit_price, date)
+    VALUES (?, ?, ?, 'IN', 'PURCHASE_IN', 1, 10, datetime('now', '-' || ? || ' days'))
   `);
   for (let i = 0; i < count; i++) {
-    stmt.run(`mvt-vol-${String(movementCounter++).padStart(8, '0')}`, `prod-vol-${String(i % PRODUCT_COUNT).padStart(5, '0')}`, i % 30);
+    stmt.run(`mvt-vol-${String(movementCounter++).padStart(8, '0')}`, `prod-vol-${String(i % PRODUCT_COUNT).padStart(5, '0')}`, defaultWarehouseId, i % 30);
   }
 }
 

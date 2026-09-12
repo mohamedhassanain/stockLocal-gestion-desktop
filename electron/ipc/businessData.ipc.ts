@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { requireId, toHumanError } from '../ipcValidation';
 import { StockService } from '../../src/services/StockService';
+import { StockLedgerService } from '../../src/services/StockLedgerService';
 import { StockMovementRepository } from '../../src/repositories/StockMovementRepository';
 import { ClientService } from '../../src/services/ClientService';
 import { ClientRepository } from '../../src/repositories/ClientRepository';
@@ -80,12 +81,20 @@ export function registerBusinessDataHandlers(): void {
       if (!Number.isFinite(count)) throw new Error('Quantité comptée invalide.');
       const mvt = StockService.addInventory({
         product_id: safe.product_id,
+        warehouse_id: safe.warehouse_id ?? undefined,
         unit_price: safe.unit_price ?? 0,
         notes: safe.notes ?? undefined,
       }, count);
       AuditService.log('STOCK_INVENTORY', 'stock', safe.product_id, `Inventaire : compté ${count}`);
       return { success: true, data: mvt };
     });
+  });
+
+  // Multi-dépôts : répartition du stock d'un produit par dépôt (avec le nom du
+  // dépôt), pour l'affichage détaillé de la page Stock.
+  ipcMain.handle('stock:getWarehouseBreakdown', async (_, productId: unknown) => {
+    const safeId = requireId(productId, 'id produit');
+    return StockLedgerService.getWarehouseBreakdown(safeId);
   });
 
   // ─── Clients ───────────────────────────────────────────────────────────────

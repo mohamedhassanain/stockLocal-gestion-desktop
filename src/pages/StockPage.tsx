@@ -7,6 +7,7 @@ import { DataTable } from '../components/ui/DataTable';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, CardHeader, Badge, Select, PageHeader } from '../components/ui';
 import { stockLevelClass } from '../components/ui/statusMaps';
+import { useWarehouseStore } from '../stores/useWarehouseStore';
 
 // Type de sortie : défini par l'utilisateur dans Paramètres (Vente, Casse, Perte, Don…).
 export type ExitType = string;
@@ -145,6 +146,10 @@ const GlobalHistoryTab: React.FC = () => {
 
 export const StockPage: React.FC = () => {
   const { currentProductStock, stockHistory, loadProductStock, addEntry, addExit, addInventory } = useStockStore();
+  // Multi-dépôts : les opérations s'appliquent à UN dépôt (dépôt actif par défaut).
+  const { warehouses, activeId } = useWarehouseStore();
+  const [opsWarehouseId, setOpsWarehouseId] = useState('');
+  const [breakdown, setBreakdown] = useState<Array<{ warehouse_id: string; warehouse_name: string; quantity: number }>>([]);
   const { products, searchQuery, setSearchQuery, loadProducts } = useProductStore((state) => ({
     products: state.products,
     searchQuery: state.searchQuery,
@@ -179,6 +184,11 @@ export const StockPage: React.FC = () => {
       .catch(() => { /* silencieux : on garde les types par défaut */ });
   }, []);
 
+  // Initialise le dépôt des opérations sur le dépôt actif dès qu'il est connu.
+  useEffect(() => {
+    if (!opsWarehouseId && activeId) setOpsWarehouseId(activeId);
+  }, [activeId, opsWarehouseId]);
+
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       loadProducts();
@@ -190,6 +200,10 @@ export const StockPage: React.FC = () => {
     loadProductStock(productId);
     const p = products.find(pr => pr.id === productId);
     if (p) setActualCount(p.current_stock ?? 0);
+    // Répartition par dépôt (multi-dépôts).
+    window.api.stock.getWarehouseBreakdown(productId)
+      .then(rows => setBreakdown((rows ?? []) as Array<{ warehouse_id: string; warehouse_name: string; quantity: number }>))
+      .catch(() => setBreakdown([]));
   };
 
   const handleAddEntry = async () => {
@@ -197,6 +211,7 @@ export const StockPage: React.FC = () => {
     try {
       await addEntry({
         product_id: selectedProductId,
+        warehouse_id: opsWarehouseId || undefined,
         quantity: qty,
         unit_price: price,
         reference_doc: blRef || undefined,
@@ -235,6 +250,7 @@ export const StockPage: React.FC = () => {
     try {
       await addExit({
         product_id: selectedProductId,
+        warehouse_id: opsWarehouseId || undefined,
         quantity: qty,
         unit_price: price,
         exitType,
@@ -256,6 +272,7 @@ export const StockPage: React.FC = () => {
     try {
       await addInventory({
         product_id: selectedProductId,
+        warehouse_id: opsWarehouseId || undefined,
         unit_price: 0,
       }, actualCount);
       toast.success('Inventaire enregistré (écart ajusté).');
@@ -337,14 +354,38 @@ export const StockPage: React.FC = () => {
                     {selectedProduct.reference} — {selectedProduct.designation} ({selectedProduct.unit || 'PIÈCE'})
                   </div>
                 )}
-                <div style={{ fontSize: 24, marginBottom: 20 }}>
+                <div style={{ fontSize: 24, marginBottom: 12 }}>
                   Stock Actuel :{' '}
                   <strong className={currentProductStock > 0 ? 'text-success' : 'text-danger'}>
                     {currentProductStock}
                   </strong>
                 </div>
 
+                {warehouses.length > 1 && breakdown.length > 0 && (
+                  <div style={{ marginBottom: 20 }}>
+                    <div className="text-xs text-muted" style={{ marginBottom: 6 }}>Répartition par dépôt</div>
+                    <table className="table">
+                      <tbody>
+                        {breakdown.map(b => (
+                          <tr key={b.warehouse_id}>
+                            <td>{b.warehouse_name}</td>
+                            <td className="qty text-right font-semibold">{b.quantity}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+                  {warehouses.length > 1 && (
+                    <div>
+                      <label className="text-xs text-muted" style={{ display: 'block', marginBottom: 4 }}>Dépôt des opérations</label>
+                      <Select value={opsWarehouseId} onChange={e => setOpsWarehouseId(e.target.value)}>
+                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </Select>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <input
                       type="number"

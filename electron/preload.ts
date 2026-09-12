@@ -51,6 +51,8 @@ export interface StockEntryInput {
   reference_doc?: string | null;
   supplier_id?: string | null;
   notes?: string | null;
+  // Multi-dépôts : dépôt cible (absent → dépôt actif/par défaut).
+  warehouse_id?: string | null;
 }
 
 export interface StockExitInput {
@@ -60,12 +62,16 @@ export interface StockExitInput {
   // Type de sortie libre (défini dans Paramètres) : VENTE, CASSE, PERTE, RETOUR, DON…
   exitType?: string;
   notes?: string | null;
+  // Multi-dépôts : dépôt cible (absent → dépôt actif/par défaut).
+  warehouse_id?: string | null;
 }
 
 export interface StockInventoryInput {
   product_id: string;
   unit_price?: number;
   notes?: string | null;
+  // Multi-dépôts : dépôt de l'ajustement (absent → dépôt actif/par défaut).
+  warehouse_id?: string | null;
 }
 
 // ── Clients ──
@@ -158,6 +164,15 @@ export interface WarehouseInput {
   is_default?: boolean;
 }
 
+// ── Transferts entre dépôts (multi-dépôts) ──
+export interface TransferInput {
+  product_id: string;
+  from_warehouse_id: string;
+  to_warehouse_id: string;
+  quantity: number;
+  notes?: string | null;
+}
+
 // ── Commandes d'achat ──
 export interface PurchaseOrderItemInput {
   product_id: string;
@@ -205,6 +220,8 @@ export interface GlobalSettingsInput {
   show_inactive_product_alerts?: boolean;
   product_units?: string[];
   stock_exit_types?: string[];
+  // Multi-dépôts : dépôt actif (persisté).
+  active_warehouse_id?: string;
 }
 
 // ── Rapport CSV ──
@@ -282,6 +299,8 @@ export const api = {
     getAllHistory: (params?: number | { limit?: number; offset?: number }) =>
       ipcRenderer.invoke('stock:getAllHistory', typeof params === 'number' ? { limit: params } : params),
     getLevel: (productId: string) => ipcRenderer.invoke('stock:getLevel', productId),
+    // Multi-dépôts : répartition du stock d'un produit par dépôt.
+    getWarehouseBreakdown: (productId: string) => ipcRenderer.invoke('stock:getWarehouseBreakdown', productId),
     addEntry: (data: StockEntryInput) => ipcRenderer.invoke('stock:addEntry', data),
     addExit: (data: StockExitInput) => ipcRenderer.invoke('stock:addExit', data),
     addInventory: (data: StockInventoryInput, actualCount: number) => ipcRenderer.invoke('stock:addInventory', { data, actualCount }),
@@ -376,14 +395,16 @@ export const api = {
 
   // ─── Dashboard ─────────────────────────────────────────────────────────────
   dashboard: {
-    getStats: () => ipcRenderer.invoke('dashboard:getStats'),
+    // Multi-dépôts : warehouseId optionnel → KPI de stock filtrés sur un dépôt.
+    // Sans filtre → vue CONSOLIDÉE (tous dépôts).
+    getStats: (warehouseId?: string) => ipcRenderer.invoke('dashboard:getStats', warehouseId),
     getTopProducts: () => ipcRenderer.invoke('dashboard:getTopProducts'),
     getTopClients: () => ipcRenderer.invoke('dashboard:getTopClients'),
     getPaymentsByMethod: () => ipcRenderer.invoke('dashboard:getPaymentsByMethod'),
-    getLowStock: () => ipcRenderer.invoke('dashboard:getLowStock'),
+    getLowStock: (warehouseId?: string) => ipcRenderer.invoke('dashboard:getLowStock', warehouseId),
     getUpcomingDues: (days: number) => ipcRenderer.invoke('dashboard:getUpcomingDues', days),
     getRevenue: (period?: string) => ipcRenderer.invoke('dashboard:getRevenue', period),
-    getAlertSummary: () => ipcRenderer.invoke('dashboard:getAlertSummary'),
+    getAlertSummary: (warehouseId?: string) => ipcRenderer.invoke('dashboard:getAlertSummary', warehouseId),
   },
 
   // ─── Backup ────────────────────────────────────────────────────────────────
@@ -421,6 +442,15 @@ export const api = {
     update: (id: string, data: WarehouseInput) => ipcRenderer.invoke('warehouses:update', { id, data }),
     setDefault: (id: string) => ipcRenderer.invoke('warehouses:setDefault', id),
     delete: (id: string) => ipcRenderer.invoke('warehouses:delete', id),
+    // Multi-dépôts : dépôt actif (lu/écrit, persisté dans global_settings).
+    getActive: () => ipcRenderer.invoke('warehouses:getActive'),
+    setActive: (id: string) => ipcRenderer.invoke('warehouses:setActive', id),
+  },
+
+  // ─── Transferts entre dépôts (multi-dépôts) ────────────────────────────────
+  transfers: {
+    create: (data: TransferInput) => ipcRenderer.invoke('transfers:create', data),
+    getHistory: (limit?: number) => ipcRenderer.invoke('transfers:getHistory', limit),
   },
 
   // ─── Price History ─────────────────────────────────────────────────────────
@@ -449,7 +479,7 @@ export const api = {
   inventory: {
     getAll: () => ipcRenderer.invoke('inventory:getAll'),
     getById: (id: string) => ipcRenderer.invoke('inventory:getById', id),
-    create: (data: { name: string; notes?: string }) => ipcRenderer.invoke('inventory:create', data),
+    create: (data: { name: string; notes?: string; warehouse_id?: string }) => ipcRenderer.invoke('inventory:create', data),
     update: (id: string, data: { name?: string; notes?: string; status?: 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION' }) => ipcRenderer.invoke('inventory:update', { id, ...data }),
     startCounting: (id: string) => ipcRenderer.invoke('inventory:startCounting', id),
     countItem: (itemId: string, countedQty: number) => ipcRenderer.invoke('inventory:countItem', { itemId, countedQty }),

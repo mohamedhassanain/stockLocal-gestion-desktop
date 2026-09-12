@@ -6,6 +6,9 @@ import { StockLedgerService } from '../services/StockLedgerService';
 export interface InventorySession {
   id: string;
   name: string;
+  // Multi-dépôts : dépôt ciblé par l'inventaire (NULL = session héritée).
+  warehouse_id?: string | null;
+  warehouse_name?: string | null;
   status: 'DRAFT' | 'COMPTAGE' | 'CALCUL' | 'VALIDATION';
   started_at: string;
   completed_at: string | null;
@@ -47,9 +50,20 @@ export interface InventoryItemVersion {
 
 // ─── Prepared Statements ──────────────────────────────────────────────────────
 
-const stmtGetAll = db.prepare('SELECT * FROM inventory_sessions ORDER BY created_at DESC LIMIT 100');
+const stmtGetAll = db.prepare(`
+  SELECT s.*, w.name AS warehouse_name
+  FROM inventory_sessions s
+  LEFT JOIN warehouses w ON w.id = s.warehouse_id
+  ORDER BY s.created_at DESC
+  LIMIT 100
+`);
 
-const stmtGetById = db.prepare('SELECT * FROM inventory_sessions WHERE id = ?');
+const stmtGetById = db.prepare(`
+  SELECT s.*, w.name AS warehouse_name
+  FROM inventory_sessions s
+  LEFT JOIN warehouses w ON w.id = s.warehouse_id
+  WHERE s.id = ?
+`);
 
 const stmtGetItems = db.prepare(`
   SELECT ii.*, p.reference AS product_ref, p.designation AS product_name, p.unit AS unit
@@ -60,8 +74,8 @@ const stmtGetItems = db.prepare(`
 `);
 
 const stmtInsertSession = db.prepare(`
-  INSERT INTO inventory_sessions (id, name, status, notes)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO inventory_sessions (id, name, warehouse_id, status, notes)
+  VALUES (?, ?, ?, ?, ?)
 `);
 
 const stmtInsertItem = db.prepare(`
@@ -89,10 +103,12 @@ const stmtUpdateItemStatus = db.prepare(`
 
 const stmtDeleteSession = db.prepare('DELETE FROM inventory_sessions WHERE id = ?');
 
-// §14 : stock attendu lu sur la balance précalculée (1 requête par produit
-// lors de la création de session, sans rescan de tout l'historique).
+// §14 : stock attendu lu sur la balance précalculée, PAR DÉPÔT (1 requête par
+// produit lors de la création de session, sans rescan de tout l'historique).
 const stmtGetStockLevel = db.prepare(`
-  SELECT COALESCE(quantity, 0) AS total FROM inventory_balances WHERE product_id = ?
+  SELECT COALESCE(quantity, 0) AS total
+  FROM inventory_balances
+  WHERE product_id = ? AND warehouse_id = ?
 `);
 
 const stmtGetActiveProducts = db.prepare(`
@@ -134,10 +150,12 @@ export const InventorySessionRepository = {
    * Crée une session d'inventaire en peuplant tous les produits actifs
    * avec leur stock attendu actuel.
    */
-  create(data: { name: string; notes?: string }): InventorySession {
+  create(data: { name: string; notes?: string; warehouse_id?: string }): InventorySession {
     const id = randomUUID();
+    // Dépôt de l'inventaire : explicite, sinon dépôt actif/par défaut.
+    const warehouseId = StockLedgerService.resolveWarehouseId(data.warehouse_id);
     const insertAll = db.transaction(() => {
-      stmtInsertSession.run(id, data.name, 'DRAFT', data.notes ?? null);
+      stmtInsertSession.run(id, data.name, warehouseId, 'DRAFT', data.notes ?? null);
 
       const products = stmtGetActiveProducts.all() as Array<{
         id: string; reference: string; designation: string; purchase_price: number; unit: string;
@@ -146,7 +164,7 @@ export const InventorySessionRepository = {
       for (const p of products) {
         // P0 — un produit sans ligne `inventory_balances` (créé sans stock
         // initial) renvoie `undefined` ici : on ne doit PAS planter.
-        const level = stmtGetStockLevel.get(p.id) as { total?: number } | undefined;
+        const level = stmtGetStockLevel.get(p.id, warehouseId) as { total?: number } | undefined;
         const expected = Number(level?.total ?? 0);
         stmtInsertItem.run(randomUUID(), id, p.id, expected);
       }
@@ -222,6 +240,8 @@ export const InventorySessionRepository = {
       if (session.status !== 'CALCUL') throw new Error('La session doit être en mode calcul.');
 
       const items = stmtGetItems.all(id) as InventoryItem[];
+      // Dépôt de l'inventaire (session héritée sans dépôt → dépôt actif/par défaut).
+      const warehouseId = StockLedgerService.resolveWarehouseId(session.warehouse_id ?? undefined);
 
       for (const item of items) {
         if (item.counted_qty === null || item.difference === null || item.difference === 0) continue;
@@ -230,10 +250,12 @@ export const InventorySessionRepository = {
         const price = product?.purchase_price ?? 0;
         const sessionName = session.name;
 
-        // Écriture via le moteur central (atomique, traçable, signe correct)
+        // Écriture via le moteur central (atomique, traçable, signe correct),
+        // DANS LE DÉPÔT de la session.
         StockLedgerService.adjustInventory({
           product_id: item.product_id,
           actualCount: item.counted_qty,
+          warehouse_id: warehouseId,
           unit_price: price,
           document_id: id,
           notes: `INVENTAIRE — ${sessionName}`,
@@ -367,10 +389,12 @@ export const InventorySessionRepository = {
       if (diff === 0) return;
 
       const product = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(item.product_id) as { purchase_price: number } | undefined;
+      const warehouseId = StockLedgerService.resolveWarehouseId(session.warehouse_id ?? undefined);
 
       StockLedgerService.adjustInventory({
         product_id: item.product_id,
-        actualCount: StockLedgerService.getStockLevel(item.product_id) + diff,
+        actualCount: StockLedgerService.getStockLevel(item.product_id, warehouseId) + diff,
+        warehouse_id: warehouseId,
         unit_price: product?.purchase_price ?? 0,
         document_id: sessionId,
         notes: `CORRECTION INVENTAIRE — ${session.name} (ancien: ${oldQty}, nouveau: ${correctedQty})`,
@@ -391,6 +415,8 @@ export const InventorySessionRepository = {
         throw new Error('Seules les sessions validées peuvent être corrigées.');
       }
 
+      const warehouseId = StockLedgerService.resolveWarehouseId(session.warehouse_id ?? undefined);
+
       for (const [itemId, correctedQty] of Object.entries(corrections)) {
         const qty = Number(correctedQty);
         if (!Number.isFinite(qty) || qty < 0) {
@@ -408,7 +434,8 @@ export const InventorySessionRepository = {
         const product = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(item.product_id) as { purchase_price: number } | undefined;
         StockLedgerService.adjustInventory({
           product_id: item.product_id,
-          actualCount: StockLedgerService.getStockLevel(item.product_id) + diff,
+          actualCount: StockLedgerService.getStockLevel(item.product_id, warehouseId) + diff,
+          warehouse_id: warehouseId,
           unit_price: product?.purchase_price ?? 0,
           document_id: sessionId,
           notes: `CORRECTION INVENTAIRE — ${session.name} (ancien: ${oldQty}, nouveau: ${correctedQty})`,

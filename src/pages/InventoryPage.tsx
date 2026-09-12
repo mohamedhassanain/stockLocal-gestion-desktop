@@ -11,6 +11,7 @@ import {
   INVENTORY_STATUS_BADGE,
 } from '../components/ui';
 import { toast } from '../stores/useToastStore';
+import { useWarehouseStore } from '../stores/useWarehouseStore';
 
 // ─── Workflow Steps ──────────────────────────────────────────────────────────
 
@@ -139,6 +140,9 @@ export const InventoryPage: React.FC = () => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  // Multi-dépôts : un inventaire physique porte sur UN dépôt précis.
+  const { warehouses, activeId } = useWarehouseStore();
+  const [newWarehouseId, setNewWarehouseId] = useState('');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [countInput, setCountInput] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -151,10 +155,15 @@ export const InventoryPage: React.FC = () => {
     loadSessions();
   }, []);
 
+  // Initialise le dépôt de la nouvelle session sur le dépôt actif.
+  useEffect(() => {
+    if (!newWarehouseId && activeId) setNewWarehouseId(activeId);
+  }, [activeId, newWarehouseId]);
+
   const handleCreateSession = async () => {
     if (!newName.trim()) return;
     try {
-      const session = await createSession(newName.trim(), newNotes.trim() || undefined);
+      const session = await createSession(newName.trim(), newNotes.trim() || undefined, newWarehouseId || undefined);
       toast.success(`Session « ${newName.trim()} » créée.`);
       setNewName('');
       setNewNotes('');
@@ -385,6 +394,18 @@ export const InventoryPage: React.FC = () => {
                 onChange={(e) => setNewNotes(e.target.value)}
                 rows={2}
               />
+              {warehouses.length > 1 && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted" style={{ marginBottom: 2 }}>Dépôt de l'inventaire</label>
+                  <select
+                    className="input"
+                    value={newWarehouseId}
+                    onChange={(e) => setNewWarehouseId(e.target.value)}
+                  >
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-2">
                 <Button variant="success" onClick={handleCreateSession} disabled={!newName.trim() || isLoading}>
                   Créer la Session
@@ -465,6 +486,9 @@ export const InventoryPage: React.FC = () => {
                   <div className="flex justify-between items-start">
                     <div>
                       <h2 style={{ margin: '0 0 4px' }}>{selectedSession.name}</h2>
+                      {selectedSession.warehouse_name && (
+                        <div className="text-sm text-muted">Dépôt : {selectedSession.warehouse_name}</div>
+                      )}
                       {selectedSession.notes && (
                         <p className="text-sm text-secondary" style={{ margin: '0 0 8px' }}>
                           {selectedSession.notes}

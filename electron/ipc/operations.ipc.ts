@@ -21,11 +21,18 @@ async function run(action: () => unknown): Promise<unknown> {
 
 export function registerOperationsHandlers(): void {
   // ─── Dashboard ─────────────────────────────────────────────────────────────
-  ipcMain.handle('dashboard:getStats', async () => DashboardRepository.getStats());
+  // Multi-dépôts : un filtre optionnel `warehouseId` restreint les KPI de STOCK
+  // à un dépôt ; sans filtre → vue CONSOLIDÉE (tous dépôts), comme avant.
+  const safeWarehouseFilter = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim().slice(0, 64) : undefined;
+
+  ipcMain.handle('dashboard:getStats', async (_, warehouseId: unknown) =>
+    DashboardRepository.getStats(safeWarehouseFilter(warehouseId)));
   ipcMain.handle('dashboard:getTopProducts', async () => DashboardRepository.getTopProducts());
   ipcMain.handle('dashboard:getTopClients', async () => DashboardRepository.getTopClients());
   ipcMain.handle('dashboard:getPaymentsByMethod', async () => DashboardRepository.getPaymentsByMethod());
-  ipcMain.handle('dashboard:getLowStock', async () => DashboardRepository.getLowStockAlerts());
+  ipcMain.handle('dashboard:getLowStock', async (_, warehouseId: unknown) =>
+    DashboardRepository.getLowStockAlerts(safeWarehouseFilter(warehouseId)));
   ipcMain.handle('dashboard:getUpcomingDues', async (_, days: unknown) => {
     const d = Math.min(Math.max(Number(days) || 30, 1), 365);
     return DashboardRepository.getUpcomingDues(d);
@@ -34,7 +41,8 @@ export function registerOperationsHandlers(): void {
     const p = typeof period === 'string' ? period : '';
     return DashboardRepository.getRevenue(p);
   });
-  ipcMain.handle('dashboard:getAlertSummary', async () => DashboardRepository.getAlertSummary());
+  ipcMain.handle('dashboard:getAlertSummary', async (_, warehouseId: unknown) =>
+    DashboardRepository.getAlertSummary(safeWarehouseFilter(warehouseId)));
 
   // ─── Purchase Orders ───────────────────────────────────────────────────────
   ipcMain.handle('purchases:getAll', async () => PurchaseOrderRepository.getAll());
@@ -123,11 +131,15 @@ export function registerOperationsHandlers(): void {
 
   ipcMain.handle('inventory:create', async (_, data: unknown) => {
     return run(() => {
-      const payload = (data ?? {}) as { name?: unknown; notes?: unknown };
+      const payload = (data ?? {}) as { name?: unknown; notes?: unknown; warehouse_id?: unknown };
       const name = typeof payload.name === 'string' ? payload.name.trim().slice(0, 200) : '';
       if (!name) throw new Error('Le nom de la session est obligatoire.');
       const notes = typeof payload.notes === 'string' ? payload.notes.trim().slice(0, 1000) : undefined;
-      const session = InventorySessionRepository.create({ name, notes });
+      // Multi-dépôts : dépôt ciblé par l'inventaire (sinon dépôt actif/par défaut).
+      const warehouse_id = typeof payload.warehouse_id === 'string' && payload.warehouse_id.trim()
+        ? payload.warehouse_id.trim().slice(0, 64)
+        : undefined;
+      const session = InventorySessionRepository.create({ name, notes, warehouse_id });
       AuditService.log('INVENTORY_CREATE', 'inventory', session.id, `Session "${session.name}"`);
       return { success: true, data: session };
     });

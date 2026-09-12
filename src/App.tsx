@@ -22,6 +22,7 @@ import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './stores/useToastStore';
+import { useWarehouseStore } from './stores/useWarehouseStore';
 
 export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant' | 'warehouses';
 
@@ -77,6 +78,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     checkAppReady();
   }, [checkAppReady]);
+
+  // Multi-dépôts : charger les dépôts + le dépôt actif une fois l'app prête.
+  // Le sélecteur de dépôt se masque tout seul s'il n'y a qu'un seul dépôt.
+  const loadWarehouses = useWarehouseStore((s) => s.loadWarehouses);
+  useEffect(() => {
+    if (appState !== 'ready') return;
+    void loadWarehouses();
+  }, [appState, loadWarehouses]);
 
   // Notification discrète de mise à jour (§2.3) — non intrusive, via toast.
   useEffect(() => {

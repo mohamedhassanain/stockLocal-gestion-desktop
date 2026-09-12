@@ -35,6 +35,8 @@ export class StockService {
       movement_type: data.movement_type ?? 'PURCHASE_IN',
       quantity: data.quantity,
       unit_price: data.unit_price,
+      // Multi-dépôts : dépôt cible (absent → dépôt actif/par défaut).
+      warehouse_id: data.warehouse_id,
       date: data.date ?? undefined,
       reference_doc: data.reference_doc ?? undefined,
       document_id: data.document_id ?? undefined,
@@ -68,6 +70,8 @@ export class StockService {
       movement_type: movementType,
       quantity: data.quantity,
       unit_price: data.unit_price,
+      // Multi-dépôts : dépôt cible (absent → dépôt actif/par défaut).
+      warehouse_id: data.warehouse_id,
       date: data.date ?? undefined,
       reference_doc: data.reference_doc ?? undefined,
       document_id: data.document_id ?? undefined,
@@ -90,11 +94,11 @@ export class StockService {
     const movement = StockLedgerService.adjustInventory({
       product_id: data.product_id,
       actualCount,
+      // Multi-dépôts : dépôt ciblé (absent → dépôt actif/par défaut).
+      warehouse_id: data.warehouse_id,
       unit_price: data.unit_price,
       document_id: data.document_id ?? undefined,
       notes: data.notes ?? undefined,
-
-
     });
 
     // Aucun écart → aucun mouvement créé

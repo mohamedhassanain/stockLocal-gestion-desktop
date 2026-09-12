@@ -6,6 +6,7 @@ import {
   Boxes, Bot, Warehouse,
 } from 'lucide-react';
 import type { Page } from '../../App';
+import { WarehouseSelector } from './WarehouseSelector';
 
 interface SidebarProps {
   currentPage: Page;
@@ -117,6 +118,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate }) => 
           </React.Fragment>
         ))}
       </nav>
+
+      {/* Dépôt actif (masqué si un seul dépôt) */}
+      <WarehouseSelector />
 
       {/* Footer */}
       <div className="sidebar-footer">

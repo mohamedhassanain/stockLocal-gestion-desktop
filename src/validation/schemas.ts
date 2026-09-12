@@ -101,6 +101,8 @@ export const StockEntrySchema = z.object({
   reference_doc: z.string().max(100).optional().nullable(),
   supplier_id: z.string().max(64).optional().nullable(),
   notes: z.string().max(500).optional().nullable(),
+  // Multi-dépôts : dépôt cible (absent → dépôt actif/par défaut).
+  warehouse_id: z.string().max(64).optional().nullable(),
 });
 
 export const StockExitSchema = z.object({
@@ -111,12 +113,16 @@ export const StockExitSchema = z.object({
   // Restreint à une chaîne courte pour éviter les valeurs aberrantes.
   exitType: z.string().min(1, 'Le type de sortie est obligatoire.').max(50),
   notes: z.string().max(500).optional().nullable(),
+  // Multi-dépôts : dépôt cible (absent → dépôt actif/par défaut).
+  warehouse_id: z.string().max(64).optional().nullable(),
 });
 
 export const InventorySchema = z.object({
   product_id: z.string().min(1).max(64),
   unit_price: z.number().min(0).optional(),
   notes: z.string().max(500).optional().nullable(),
+  // Multi-dépôts : dépôt de l'ajustement (absent → dépôt actif/par défaut).
+  warehouse_id: z.string().max(64).optional().nullable(),
 });
 
 // ─── Inventaire : versioning / correction (P1) ───────────────────────────────
@@ -265,6 +271,18 @@ export const GlobalSettingsSchema = z.object({
   show_inactive_product_alerts: z.boolean().optional(),
   product_units: z.array(z.string().max(20)).optional(),
   stock_exit_types: z.array(z.string().min(1).max(50)).optional(),
+  // Multi-dépôts : dépôt actif (persisté dans global_settings).
+  active_warehouse_id: z.string().max(64).optional(),
+});
+
+// ─── Transferts entre dépôts (multi-dépôts) ──────────────────────────────────
+
+export const TransferCreateSchema = z.object({
+  product_id: z.string().min(1).max(64),
+  from_warehouse_id: z.string().min(1).max(64),
+  to_warehouse_id: z.string().min(1).max(64),
+  quantity: z.number().positive('La quantité doit être supérieure à 0.'),
+  notes: z.string().max(500).optional().nullable(),
 });
 
 // ─── Assistant IA (electron/ipc/ai.ipc.ts) ───────────────────────────────────

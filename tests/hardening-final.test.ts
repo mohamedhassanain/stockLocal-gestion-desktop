@@ -180,13 +180,15 @@ describe('FINAL HARDENING — Backup / Restore E2E (vrai code BackupService)', (
     const insertProduct = db.prepare("INSERT INTO products (id, reference, designation, purchase_price, selling_price, status) VALUES (?, ?, ?, ?, ?, 'ACTIVE')");
     const insertCustomer = db.prepare("INSERT INTO customers (id, name, status) VALUES (?, ?, 'ACTIVE')");
     const insertDoc = db.prepare("INSERT INTO documents (id, type, document_number, entity_id, date, total_excl_tax, total_tax, total_incl_tax, status) VALUES (?, 'INVOICE', ?, ?, datetime('now'), 100, 20, 120, 'PAID')");
-    const insertMvt = db.prepare("INSERT INTO stock_movements (id, product_id, type, movement_type, quantity, unit_price) VALUES (?, ?, 'IN', 'OPENING_BALANCE', ?, ?)");
+    // Multi-dépôts : le mouvement est rattaché au dépôt par défaut (garanti).
+    const warehouseId = (db.prepare('SELECT id FROM warehouses WHERE is_default = 1 LIMIT 1').get() as { id: string }).id;
+    const insertMvt = db.prepare("INSERT INTO stock_movements (id, product_id, warehouse_id, type, movement_type, quantity, unit_price) VALUES (?, ?, ?, 'IN', 'OPENING_BALANCE', ?, ?)");
 
     const txCreate = db.transaction(() => {
       insertProduct.run('p2', 'REF-2', 'Produit E2E', 10, 25);
       insertCustomer.run('c2', 'Client E2E');
       insertDoc.run('d2', 'FAC-E2E-1', 'c2');
-      insertMvt.run('m2', 'p2', 10, 10);
+      insertMvt.run('m2', 'p2', warehouseId, 10, 10);
     });
     txCreate();
     const beforeCount = (db.prepare("SELECT COUNT(*) AS c FROM products").get() as { c: number }).c;

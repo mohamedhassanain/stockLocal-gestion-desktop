@@ -98,6 +98,15 @@ const stmtStockValue = db.prepare<[]>(`
   WHERE p.status = 'ACTIVE' AND ib.quantity > 0
 `);
 
+// Multi-dépôts : valeur du stock filtrée sur UN dépôt (filtre optionnel du
+// dashboard/rapports ; par défaut, vue CONSOLIDÉE = tous les dépôts).
+const stmtStockValueByWarehouse = db.prepare<[string]>(`
+  SELECT COALESCE(SUM(ib.quantity * ib.average_cost), 0) AS total_stock_value
+  FROM inventory_balances ib
+  LEFT JOIN products p ON p.id = ib.product_id
+  WHERE p.status = 'ACTIVE' AND ib.quantity > 0 AND ib.warehouse_id = ?
+`);
+
 const stmtUnpaid = db.prepare<[]>(`
   SELECT COALESCE(SUM(d.total_incl_tax - COALESCE(
     (SELECT SUM(pay.amount) FROM payments pay WHERE pay.document_id = d.id), 0
@@ -163,6 +172,34 @@ const stmtLowStock = db.prepare<[]>(`
   LIMIT 20
 `);
 
+// Alertes de stock bas calculées PAR DÉPÔT : un produit peut être bas dans un
+// dépôt et suffisant dans un autre.
+const stmtLowStockByWarehouse = db.prepare<[string]>(`
+  SELECT p.id, p.reference, p.designation, p.min_stock,
+    COALESCE(ib.quantity, 0) AS current_stock
+  FROM products p
+  LEFT JOIN inventory_balances ib ON ib.product_id = p.id AND ib.warehouse_id = ?
+  WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
+  ORDER BY current_stock ASC
+  LIMIT 20
+`);
+
+const stmtLowStockCount = db.prepare<[]>(`
+  SELECT COUNT(*) AS cnt FROM (
+    SELECT p.id FROM products p
+    LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+    WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
+  )
+`);
+
+const stmtLowStockCountByWarehouse = db.prepare<[string]>(`
+  SELECT COUNT(*) AS cnt FROM (
+    SELECT p.id FROM products p
+    LEFT JOIN inventory_balances ib ON ib.product_id = p.id AND ib.warehouse_id = ?
+    WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
+  )
+`);
+
 const stmtUpcomingDue = db.prepare<[number]>(`
   SELECT d.id, d.document_number, c.name AS customer_name, d.due_date,
     (d.total_incl_tax - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.document_id = d.id), 0)) AS remaining,
@@ -186,10 +223,17 @@ interface UnpaidRow { unpaid_total: number }
 interface SupplierDebtRow { supplier_debt_total: number }
 
 export const DashboardRepository = {
-  getStats(): DashboardStats {
+  /**
+   * Indicateurs du tableau de bord.
+   * @param warehouseId Filtre optionnel sur UN dépôt. Absent → CONSOLIDÉ
+   *   (tous dépôts), comportement identique à avant le multi-dépôts.
+   */
+  getStats(warehouseId?: string): DashboardStats {
     const revenue = stmtRevenue.get() as RevenueRow | undefined;
     const margin = stmtMargin.get() as MarginRow | undefined;
-    const stockVal = stmtStockValue.get() as StockValueRow | undefined;
+    const stockVal = (warehouseId
+      ? stmtStockValueByWarehouse.get(warehouseId)
+      : stmtStockValue.get()) as StockValueRow | undefined;
     const unpaid = stmtUnpaid.get() as UnpaidRow | undefined;
     const supplierDebt = stmtSupplierDebt.get() as SupplierDebtRow | undefined;
 
@@ -218,8 +262,11 @@ export const DashboardRepository = {
     return stmtPaymentsByMethod.all() as PaymentMethodTotal[];
   },
 
-  getLowStockAlerts(): LowStockAlert[] {
-    return stmtLowStock.all() as LowStockAlert[];
+  /** Alertes de stock bas. @param warehouseId Filtre optionnel (sinon consolidé). */
+  getLowStockAlerts(warehouseId?: string): LowStockAlert[] {
+    return (warehouseId
+      ? stmtLowStockByWarehouse.all(warehouseId)
+      : stmtLowStock.all()) as LowStockAlert[];
   },
 
   getUpcomingDues(daysAhead: number = 30): UpcomingDue[] {
@@ -248,14 +295,11 @@ export const DashboardRepository = {
     `).all(offset) as RevenuePoint[];
   },
 
-  getAlertSummary(): AlertSummary {
-    const lowStock = db.prepare(`
-      SELECT COUNT(*) AS cnt FROM (
-        SELECT p.id FROM products p
-        LEFT JOIN inventory_balances ib ON ib.product_id = p.id
-        WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
-      )
-    `).get() as { cnt: number };
+  /** Résumé des alertes. @param warehouseId Filtre optionnel sur le stock bas. */
+  getAlertSummary(warehouseId?: string): AlertSummary {
+    const lowStock = (warehouseId
+      ? stmtLowStockCountByWarehouse.get(warehouseId)
+      : stmtLowStockCount.get()) as { cnt: number };
 
     const overdue = db.prepare(`
       SELECT COUNT(*) AS cnt FROM documents d

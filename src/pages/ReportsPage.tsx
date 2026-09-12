@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from '../stores/useToastStore';
 import { Button, Card, PageHeader, StatCard } from '../components/ui';
 import type { DashboardStats, TopProduct, TopClient, PaymentMethodTotal } from '../repositories/DashboardRepository';
+import { useWarehouseStore } from '../stores/useWarehouseStore';
 
 const RankBadge: React.FC<{ rank: number; variant?: 'primary' | 'accent' }> = ({ rank, variant = 'primary' }) => (
   <span
@@ -39,12 +40,15 @@ export const ReportsPage: React.FC = () => {
   const [topClients, setTopClients] = useState<TopClient[]>([]);
   const [paymentsByMethod, setPaymentsByMethod] = useState<PaymentMethodTotal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Multi-dépôts : vue CONSOLIDÉE par défaut (tous dépôts) + filtre optionnel.
+  const [warehouseFilter, setWarehouseFilter] = useState('');
+  const warehouses = useWarehouseStore((s) => s.warehouses);
 
   const load = async () => {
     setIsLoading(true);
     try {
       const [s, tp, tc, pm] = await Promise.all([
-        window.api.dashboard.getStats(),
+        window.api.dashboard.getStats(warehouseFilter || undefined),
         window.api.dashboard.getTopProducts(),
         window.api.dashboard.getTopClients(),
         window.api.dashboard.getPaymentsByMethod(),
@@ -61,7 +65,7 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [warehouseFilter]);
 
   const handleReportPdf = async (month?: string) => {
     try {
@@ -181,6 +185,18 @@ export const ReportsPage: React.FC = () => {
         subtitle={`Synthèse de gestion — ${new Date().toLocaleDateString('fr-MA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`}
         actions={
           <>
+            {warehouses.length > 1 && (
+              <select
+                className="select"
+                style={{ width: 'auto', minWidth: 180 }}
+                value={warehouseFilter}
+                onChange={e => setWarehouseFilter(e.target.value)}
+                aria-label="Filtrer par dépôt"
+              >
+                <option value="">Tous les dépôts (consolidé)</option>
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            )}
             <Button variant="success" onClick={handleReportCsv}>Export Excel</Button>
             <Button onClick={() => handleReportPdf(month)}>Rapport PDF du mois</Button>
             <Button variant="ghost" onClick={load}>Actualiser</Button>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from '../stores/useToastStore';
 import type { LowStockAlert } from '../repositories/DashboardRepository';
 import type { ExpiringBatch } from '../repositories/ProductBatchRepository';
+import { useWarehouseStore } from '../stores/useWarehouseStore';
 
 /**
  * Page Alertes (§3.2 + Phase 3) :
@@ -14,12 +15,15 @@ export const StockAlertsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   // Fenêtre d'alerte d'expiration : 30 jours par défaut, 7 jours en option.
   const [expiryWithin, setExpiryWithin] = useState<number>(30);
+  // Multi-dépôts : filtre des alertes de stock bas. '' = consolidé (tous dépôts).
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('');
+  const warehouses = useWarehouseStore((s) => s.warehouses);
 
   const load = async () => {
     setIsLoading(true);
     try {
       const [lowStock, batches] = await Promise.all([
-        window.api.dashboard.getLowStock(),
+        window.api.dashboard.getLowStock(warehouseFilter || undefined),
         window.api.batches.getExpiring(expiryWithin),
       ]);
       setAlerts(lowStock ?? []);
@@ -32,7 +36,7 @@ export const StockAlertsPage: React.FC = () => {
     }
   };
 
-  useEffect(() => { load(); }, [expiryWithin]);
+  useEffect(() => { load(); }, [expiryWithin, warehouseFilter]);
 
   const goToProducts = () => {
     // Navigation simple : App gère la navigation via bouton (dispatch custom).
@@ -64,7 +68,21 @@ export const StockAlertsPage: React.FC = () => {
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
         {/* ── Section 1 : stock bas / rupture ── */}
         <div>
-          <h2 style={{ margin: '0 0 12px', fontSize: 'var(--font-size-lg)' }}>🔴 Stock bas / rupture</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>🔴 Stock bas / rupture</h2>
+            {warehouses.length > 1 && (
+              <select
+                className="select"
+                style={{ width: 'auto', minWidth: '200px' }}
+                value={warehouseFilter}
+                onChange={e => setWarehouseFilter(e.target.value)}
+                aria-label="Filtrer par dépôt"
+              >
+                <option value="">Tous les dépôts (consolidé)</option>
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            )}
+          </div>
           {isLoading ? (
             <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {Array.from({ length: 4 }).map((_, i) => (

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { DataStorageService } from '../../services/DataStorageService';
@@ -233,6 +234,114 @@ function rebuildTable(target: string, newSql: string, copyColumns: string[]): vo
 }
 
 /**
+ * ─── Multi-dépôts (Phase 1) — fondation ─────────────────────────────────────
+ *
+ * Garantit qu'AU MOINS un dépôt par défaut existe. Idempotent : renvoie l'id du
+ * dépôt par défaut (le crée si aucun dépôt n'existe).
+ */
+function ensureDefaultWarehouse(): string {
+  const row = db.prepare('SELECT id FROM warehouses WHERE is_default = 1 LIMIT 1').get() as { id: string } | undefined;
+  if (row?.id) return row.id;
+
+  const anyRow = db.prepare('SELECT id FROM warehouses ORDER BY created_at ASC LIMIT 1').get() as { id: string } | undefined;
+  if (anyRow?.id) {
+    db.prepare('UPDATE warehouses SET is_default = 1 WHERE id = ?').run(anyRow.id);
+    return anyRow.id;
+  }
+
+  const id = randomUUID();
+  db.prepare('INSERT INTO warehouses (id, name, address, is_default) VALUES (?, ?, NULL, 1)')
+    .run(id, 'Dépôt principal');
+  console.log('[DB] Dépôt par défaut créé : « Dépôt principal ».');
+  return id;
+}
+
+/**
+ * Migre `stock_movements` vers le multi-dépôts : ajoute `warehouse_id`
+ * (NOT NULL + FK RESTRICT) et rattache TOUS les mouvements existants au dépôt
+ * par défaut (aucune donnée supprimée). Idempotent (skip si colonne présente).
+ */
+function migrateStockMovementsToWarehouses(defaultWarehouseId: string): void {
+  const cols = db.prepare('PRAGMA table_info(stock_movements)').all() as { name: string }[];
+  if (cols.some(c => c.name === 'warehouse_id')) return;
+
+  db.transaction(() => {
+    db.exec(`CREATE TABLE stock_movements_upgrade (
+      id TEXT PRIMARY KEY,
+      product_id TEXT NOT NULL,
+      warehouse_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      movement_type TEXT NOT NULL DEFAULT 'ADJUSTMENT_IN',
+      quantity REAL NOT NULL CHECK (quantity > 0),
+      unit_price REAL NOT NULL DEFAULT 0,
+      date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      reference_doc TEXT,
+      document_id TEXT,
+      supplier_id TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT,
+      FOREIGN KEY (warehouse_id) REFERENCES warehouses (id) ON DELETE RESTRICT
+    );`);
+    db.prepare(`INSERT INTO stock_movements_upgrade
+      (id, product_id, warehouse_id, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes, created_at)
+      SELECT id, product_id, ?, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes, created_at
+      FROM stock_movements`).run(defaultWarehouseId);
+    db.exec('DROP TABLE stock_movements;');
+    db.exec('ALTER TABLE stock_movements_upgrade RENAME TO stock_movements;');
+  })();
+  console.log('[DB] stock_movements migré vers le multi-dépôts (warehouse_id → dépôt par défaut).');
+}
+
+/**
+ * Migre `inventory_balances` vers la clé composite (product_id, warehouse_id),
+ * en rattachant les soldes existants au dépôt par défaut. Idempotent.
+ */
+function migrateInventoryBalancesToWarehouses(defaultWarehouseId: string): void {
+  const cols = db.prepare('PRAGMA table_info(inventory_balances)').all() as { name: string }[];
+  if (cols.some(c => c.name === 'warehouse_id')) return;
+
+  db.transaction(() => {
+    db.exec(`CREATE TABLE inventory_balances_upgrade (
+      product_id TEXT NOT NULL,
+      warehouse_id TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 0,
+      total_in_qty REAL NOT NULL DEFAULT 0,
+      total_in_value REAL NOT NULL DEFAULT 0,
+      average_cost REAL NOT NULL DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (product_id, warehouse_id),
+      FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT,
+      FOREIGN KEY (warehouse_id) REFERENCES warehouses (id) ON DELETE RESTRICT
+    );`);
+    db.prepare(`INSERT INTO inventory_balances_upgrade
+      (product_id, warehouse_id, quantity, total_in_qty, total_in_value, average_cost, updated_at)
+      SELECT product_id, ?, quantity, total_in_qty, total_in_value, average_cost, updated_at
+      FROM inventory_balances`).run(defaultWarehouseId);
+    db.exec('DROP TABLE inventory_balances;');
+    db.exec('ALTER TABLE inventory_balances_upgrade RENAME TO inventory_balances;');
+  })();
+  console.log('[DB] inventory_balances migré vers la clé composite (product_id, warehouse_id).');
+}
+
+/** Vérifie l'intégrité physique + référentielle après la migration. */
+function verifyDatabaseIntegrity(): void {
+  try {
+    const fkViolations = db.pragma('foreign_key_check') as unknown[];
+    const count = Array.isArray(fkViolations) ? fkViolations.length : 0;
+    if (count > 0) {
+      console.warn(`[DB] foreign_key_check après migration : ${count} violation(s) référentielle(s).`);
+    }
+  } catch (e) {
+    console.warn('[DB] foreign_key_check indisponible :', e);
+  }
+  const result = db.pragma('integrity_check') as Array<{ integrity_check: string }>;
+  if (result[0]?.integrity_check !== 'ok') {
+    throw new Error(`[DB] integrity_check après migration : ${result[0]?.integrity_check}`);
+  }
+}
+
+/**
  * UPGRADE MINIMAL, CENTRALISÉ des bases EXISTANTES.
  *
  * `database.sql` crée le schéma complet pour une base NEUVE. Cette fonction ne
@@ -262,6 +371,9 @@ function upgradeLegacyDatabase(): void {
   addColumnIfMissing('stock_movements', 'document_id', 'TEXT');
   addColumnIfMissing('inventory_balances', 'average_cost', 'REAL NOT NULL DEFAULT 0');
   addColumnIfMissing('document_items', 'vat_rate', 'REAL NOT NULL DEFAULT 0.0');
+  // Multi-dépôts : un inventaire physique appartient à UN dépôt précis.
+  // NULL = session héritée → rattachée au dépôt actif/par défaut à la validation.
+  addColumnIfMissing('inventory_sessions', 'warehouse_id', 'TEXT');
 
   // ── Anciennes bases avec FK vers `users` (audit_logs, stock_movements,
   //    client_credits, supplier_credits) → reconstruire sans cette FK ─────────
@@ -439,6 +551,12 @@ function upgradeLegacyDatabase(): void {
     ['id', 'product_id', 'type', 'movement_type', 'quantity', 'unit_price', 'date', 'reference_doc', 'document_id', 'supplier_id', 'notes', 'created_at']
   );
 
+  // ── Multi-dépôts (Phase 1) : rattacher TOUT l'existant au dépôt par défaut,
+  //    AVANT de recréer les index (les tables viennent d'être reconstruites).
+  const defaultWarehouseId = ensureDefaultWarehouse();
+  migrateStockMovementsToWarehouses(defaultWarehouseId);
+  migrateInventoryBalancesToWarehouses(defaultWarehouseId);
+
   // Recréer les index qui peuvent avoir disparu après les rebuilds ci-dessus.
   try {
     db.exec(`
@@ -447,12 +565,15 @@ function upgradeLegacyDatabase(): void {
       CREATE INDEX IF NOT EXISTS idx_stock_movements_type ON stock_movements (type);
       CREATE INDEX IF NOT EXISTS idx_stock_movements_movement_type ON stock_movements (movement_type);
       CREATE INDEX IF NOT EXISTS idx_stock_movements_document ON stock_movements (document_id);
+      CREATE INDEX IF NOT EXISTS idx_stock_movements_warehouse ON stock_movements (warehouse_id);
+      CREATE INDEX IF NOT EXISTS idx_inventory_balances_warehouse ON inventory_balances (warehouse_id);
       CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items (document_id);
       CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items (product_id);
       CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
       CREATE INDEX IF NOT EXISTS idx_purchase_order_items_product ON purchase_order_items (product_id);
       CREATE INDEX IF NOT EXISTS idx_inventory_items_session ON inventory_items (session_id);
       CREATE INDEX IF NOT EXISTS idx_inventory_items_product ON inventory_items (product_id);
+      CREATE INDEX IF NOT EXISTS idx_inventory_sessions_warehouse ON inventory_sessions (warehouse_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs (entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS idx_audit_logs_date ON audit_logs (created_at);
       CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history (product_id);
@@ -506,6 +627,9 @@ function upgradeLegacyDatabase(): void {
       console.log('[DB] Séquences de numérotation initialisées depuis les documents existants.');
     }
   } catch { /* ignore */ }
+
+  // ── Vérification finale d'intégrité après migration (Phase 1) ──────────────
+  verifyDatabaseIntegrity();
 }
 
 /**

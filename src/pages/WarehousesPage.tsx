@@ -2,10 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { PageHeader, Card, Button, Input, Badge } from '../components/ui';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../stores/useToastStore';
+import { TransfersPanel } from '../components/warehouses/TransfersPanel';
+import { useWarehouseStore } from '../stores/useWarehouseStore';
 
 /**
- * Phase 5 — Gestion des dépôts (CRUD). Portée réduite documentée :
- * le stock reste global (aucune ventilation par dépôt), pas de transferts.
+ * Multi-dépôts — Gestion des dépôts.
+ *
+ * Chaque dépôt possède son PROPRE stock (ventilation réelle). On y choisit le
+ * « dépôt actif » (celui dans lequel on travaille : ventes, réceptions, stock)
+ * et on y réalise les TRANSFERTS de stock entre dépôts.
  */
 
 interface Warehouse {
@@ -24,6 +29,8 @@ export const WarehousesPage: React.FC = () => {
   const [isDefault, setIsDefault] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Warehouse | null>(null);
+  // Multi-dépôts : dépôt actif (persisté). Le sélecteur vit dans la barre latérale.
+  const { activeId, setActive } = useWarehouseStore();
 
   const load = async () => {
     setIsLoading(true);
@@ -69,6 +76,15 @@ export const WarehousesPage: React.FC = () => {
     setIsDefault(w.is_default === 1);
   };
 
+  const handleSetActive = async (id: string) => {
+    try {
+      await setActive(id);
+      toast.success('Dépôt actif changé.');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleSetDefault = async (id: string) => {
     try {
       const result = await window.api.warehouses.setDefault(id);
@@ -105,10 +121,12 @@ export const WarehousesPage: React.FC = () => {
       <PageHeader
         icon="🏬"
         title="Dépôts"
-        subtitle="Référentiel des dépôts. Le stock reste comptabilisé globalement (pas encore de ventilation par dépôt)."
+        subtitle="Chaque dépôt gère son propre stock. Le dépôt ACTIF (barre latérale) est celui dans lequel vous travailliez : ventes, réceptions, inventaires et mouvements s'y appliquent."
       />
 
-      <div className="page-content" style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      {/* `flexDirection: row` explicite : `.page-content` est en colonne par
+          défaut — sans cet override, la liste s'empilait SOUS le formulaire. */}
+      <div className="page-content" style={{ display: 'flex', flexDirection: 'row', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <Card padding style={{ width: 380, flexShrink: 0 }}>
           <h3 style={{ marginTop: 0 }}>{editingId ? 'Modifier le dépôt' : 'Nouveau dépôt'}</h3>
           <Input label="Nom *" value={name} onChange={e => setName(e.target.value)} placeholder="Ex : Dépôt principal" />
@@ -128,7 +146,7 @@ export const WarehousesPage: React.FC = () => {
           </div>
         </Card>
 
-        <Card overflow className="flex-1">
+        <Card overflow className="flex-1" style={{ minWidth: 360 }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
             <Input
               type="text"
@@ -160,12 +178,18 @@ export const WarehousesPage: React.FC = () => {
               <tbody>
                 {filteredWarehouses.map(w => (
                   <tr key={w.id}>
-                    <td className="font-semibold">{w.name}</td>
+                    <td className="font-semibold">
+                      {w.name}
+                      {activeId === w.id && <Badge variant="info" style={{ marginLeft: 8 }}>Actif</Badge>}
+                    </td>
                     <td className="text-sm text-secondary">{w.address || '—'}</td>
                     <td>{w.is_default === 1 ? <Badge variant="success">Par défaut</Badge> : <span className="text-muted">—</span>}</td>
                     <td>
                       <div className="flex gap-2">
                         <Button variant="secondary" size="sm" onClick={() => handleEdit(w)} title="Modifier">✏️</Button>
+                        {activeId !== w.id && (
+                          <Button variant="secondary" size="sm" onClick={() => handleSetActive(w.id)} title="Travailler dans ce dépôt">🎯</Button>
+                        )}
                         {w.is_default !== 1 && (
                           <Button variant="secondary" size="sm" onClick={() => handleSetDefault(w.id)} title="Définir par défaut">⭐</Button>
                         )}
@@ -178,6 +202,10 @@ export const WarehousesPage: React.FC = () => {
             </table>
           )}
         </Card>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <TransfersPanel warehouses={warehouses} />
       </div>
 
       {pendingDelete && (

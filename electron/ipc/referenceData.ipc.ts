@@ -12,6 +12,7 @@ import { VolumeDiscountRepository } from '../../src/repositories/VolumeDiscountR
 import { UnitConversionRepository } from '../../src/repositories/UnitConversionRepository';
 import { ProductBatchRepository } from '../../src/repositories/ProductBatchRepository';
 import { WarehouseRepository } from '../../src/repositories/WarehouseRepository';
+import { StockLedgerService } from '../../src/services/StockLedgerService';
 import { PriceHistoryRepository } from '../../src/repositories/PriceHistoryRepository';
 import { CompanySettingsService } from '../../src/services/CompanySettingsService';
 import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
@@ -32,6 +33,7 @@ import {
   UnitConversionSchema,
   ProductBatchCreateSchema,
   WarehouseSchema,
+  TransferCreateSchema,
   CompanySettingsSchema,
   GlobalSettingsSchema,
 } from '../../src/validation/schemas';
@@ -393,6 +395,46 @@ export function registerReferenceDataHandlers(): void {
       WarehouseRepository.remove(requireId(id, 'id dépôt'));
       return { success: true };
     });
+  });
+
+  // Dépôt ACTIF (multi-dépôts) : le rendu lit/écrit ce paramètre local. Les
+  // écritures de stock sans dépôt explicite s'appliquent à ce dépôt.
+  ipcMain.handle('warehouses:getActive', async () => {
+    const id = StockLedgerService.getActiveWarehouseId();
+    const warehouse = WarehouseRepository.getById(id);
+    return { id, name: warehouse?.name ?? 'Dépôt principal' };
+  });
+
+  ipcMain.handle('warehouses:setActive', async (_, id: unknown) => {
+    return humanError(() => {
+      const safeId = requireId(id, 'id dépôt');
+      const warehouse = WarehouseRepository.getById(safeId);
+      if (!warehouse) throw new Error('Dépôt introuvable.');
+      GlobalSettingsService.save({ active_warehouse_id: safeId });
+      return { success: true, data: { id: safeId, name: warehouse.name } };
+    });
+  });
+
+  // ─── Transferts entre dépôts (multi-dépôts) ────────────────────────────────
+  ipcMain.handle('transfers:create', async (_, data: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(TransferCreateSchema, data, 'Création transfert');
+      const transfer = StockLedgerService.transferStock({
+        product_id: safe.product_id,
+        from_warehouse_id: safe.from_warehouse_id,
+        to_warehouse_id: safe.to_warehouse_id,
+        quantity: safe.quantity,
+        notes: safe.notes ?? undefined,
+      });
+      AuditService.log('STOCK_TRANSFER', 'product', safe.product_id,
+        `Transfert ${transfer.quantity} du dépôt ${transfer.from_warehouse_id} vers ${transfer.to_warehouse_id}`);
+      return { success: true, data: transfer };
+    });
+  });
+
+  ipcMain.handle('transfers:getHistory', async (_, limit: unknown) => {
+    const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 1000) : 200;
+    return StockLedgerService.getTransfers(safeLimit, 0);
   });
 
   // ─── Price History ─────────────────────────────────────────────────────────

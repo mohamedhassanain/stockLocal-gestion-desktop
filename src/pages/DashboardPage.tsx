@@ -3,6 +3,7 @@ import { toast } from '../stores/useToastStore';
 import { Button, Card, CardBody, CardHeader, PageHeader, StatCard } from '../components/ui';
 import type { DashboardStats, TopProduct, TopClient, LowStockAlert, UpcomingDue, RevenuePoint, AlertSummary } from '../repositories/DashboardRepository';
 import { formatAxisValue } from '../utils/chartFormat';
+import { useWarehouseStore } from '../stores/useWarehouseStore';
 
 const EmptyState: React.FC<{ icon: string; text: string; good?: boolean }> = ({ icon, text, good }) => (
   <div className="text-center text-sm font-semibold" style={{ padding: 16, color: good ? 'var(--success)' : 'var(--muted)' }}>
@@ -66,19 +67,22 @@ export const DashboardPage: React.FC = () => {
   const [dueDays, setDueDays] = useState(30);
   const [revenuePeriod, setRevenuePeriod] = useState('6months');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  // Multi-dépôts : vue CONSOLIDÉE par défaut (tous dépôts) + filtre optionnel.
+  const [warehouseFilter, setWarehouseFilter] = useState('');
+  const warehouses = useWarehouseStore((s) => s.warehouses);
 
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
       const [s, tp, tc, ls, d, backups, mr, alerts] = await Promise.all([
-        window.api.dashboard.getStats(),
+        window.api.dashboard.getStats(warehouseFilter || undefined),
         window.api.dashboard.getTopProducts(),
         window.api.dashboard.getTopClients(),
-        window.api.dashboard.getLowStock(),
+        window.api.dashboard.getLowStock(warehouseFilter || undefined),
         window.api.dashboard.getUpcomingDues(dueDays),
         window.api.backup.list(),
         window.api.dashboard.getRevenue(revenuePeriod),
-        window.api.dashboard.getAlertSummary(),
+        window.api.dashboard.getAlertSummary(warehouseFilter || undefined),
       ]);
       setStats(s);
       setTopProducts(tp);
@@ -93,7 +97,7 @@ export const DashboardPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [dueDays, revenuePeriod]);
+  }, [dueDays, revenuePeriod, warehouseFilter]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -166,6 +170,18 @@ export const DashboardPage: React.FC = () => {
         subtitle={new Date().toLocaleDateString('fr-MA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         actions={
           <>
+            {warehouses.length > 1 && (
+              <select
+                className="select"
+                style={{ width: 'auto', minWidth: 180 }}
+                value={warehouseFilter}
+                onChange={e => setWarehouseFilter(e.target.value)}
+                aria-label="Filtrer par dépôt"
+              >
+                <option value="">Tous les dépôts (consolidé)</option>
+                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            )}
             {lastBackup && (
               <span className="badge badge-muted text-sm" style={{ whiteSpace: 'nowrap' }}>
                 💾 Dernière sauvegarde : {lastBackup}

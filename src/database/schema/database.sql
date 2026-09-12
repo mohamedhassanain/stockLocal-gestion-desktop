@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS stock_movements (
     id TEXT PRIMARY KEY,
     product_id TEXT NOT NULL,
+    -- Multi-dépôts : chaque mouvement appartient à UN dépôt (historique
+    -- conservé → ON DELETE RESTRICT : supprimer un dépôt n'efface rien).
+    warehouse_id TEXT NOT NULL,
     type TEXT NOT NULL,
     movement_type TEXT NOT NULL DEFAULT 'ADJUSTMENT_IN', -- PURCHASE_IN, SALE_OUT, RETURN_IN, RETURN_OUT, ADJUSTMENT_IN/OUT, TRANSFER_IN/OUT, DAMAGE_OUT, LOSS_OUT, OPENING_BALANCE
     quantity REAL NOT NULL CHECK (quantity > 0),
@@ -70,17 +73,39 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     supplier_id TEXT,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT,
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses (id) ON DELETE RESTRICT
 );
 
+-- Multi-dépôts : un solde PAR (produit, dépôt). La clé primaire est composite.
 CREATE TABLE IF NOT EXISTS inventory_balances (
-    product_id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    warehouse_id TEXT NOT NULL,
     quantity REAL NOT NULL DEFAULT 0,
     total_in_qty REAL NOT NULL DEFAULT 0,
     total_in_value REAL NOT NULL DEFAULT 0,
     average_cost REAL NOT NULL DEFAULT 0,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT
+    PRIMARY KEY (product_id, warehouse_id),
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT,
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses (id) ON DELETE RESTRICT
+);
+
+-- ─── Transferts entre dépôts ──────────────────────────────────────────────────
+-- Un transfert génère TOUJOURS 2 mouvements (TRANSFER_OUT + TRANSFER_IN) et
+-- 1 ligne ici, dans une même transaction (jamais l'un sans l'autre).
+CREATE TABLE IF NOT EXISTS stock_transfers (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    from_warehouse_id TEXT NOT NULL,
+    to_warehouse_id TEXT NOT NULL,
+    quantity REAL NOT NULL CHECK (quantity > 0),
+    date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT,
+    FOREIGN KEY (from_warehouse_id) REFERENCES warehouses (id) ON DELETE RESTRICT,
+    FOREIGN KEY (to_warehouse_id) REFERENCES warehouses (id) ON DELETE RESTRICT
 );
 
 -- ─── Tiers (clients / fournisseurs) ───────────────────────────────────────────
@@ -315,12 +340,17 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
 CREATE TABLE IF NOT EXISTS inventory_sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    -- Multi-dépôts : un inventaire physique est réalisé pour UN dépôt précis.
+    -- NULL = session héritée (avant la ventilation) → rattachée au dépôt actif/
+    -- par défaut au moment de la validation.
+    warehouse_id TEXT,
     status TEXT NOT NULL DEFAULT 'DRAFT', -- DRAFT, COMPTAGE, CALCUL, VALIDATION
     started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses (id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS inventory_items (
@@ -415,6 +445,13 @@ CREATE INDEX IF NOT EXISTS idx_inventory_items_session ON inventory_items (sessi
 CREATE INDEX IF NOT EXISTS idx_inventory_items_product ON inventory_items (product_id);
 
 CREATE INDEX IF NOT EXISTS idx_unit_conversions_product ON unit_conversions (product_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_warehouse ON stock_movements (warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_balances_warehouse ON inventory_balances (warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_product ON stock_transfers (product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_from ON stock_transfers (from_warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_to ON stock_transfers (to_warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_date ON stock_transfers (date);
 
 CREATE INDEX IF NOT EXISTS idx_inventory_versions_session ON inventory_versions (session_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_item_versions_version ON inventory_item_versions (version_id);

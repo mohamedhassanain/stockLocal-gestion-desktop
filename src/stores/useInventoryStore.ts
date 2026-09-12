@@ -20,6 +20,9 @@ export interface InventoryItem {
 export interface InventorySession {
   id: string;
   name: string;
+  // Multi-dépôts : dépôt ciblé par l'inventaire.
+  warehouse_id?: string | null;
+  warehouse_name?: string | null;
   notes?: string;
   status: InventorySessionStatus;
   started_at?: string;
@@ -58,7 +61,7 @@ interface InventoryState {
 
   loadSessions: () => Promise<void>;
   loadSessionById: (id: string) => Promise<void>;
-  createSession: (name: string, notes?: string) => Promise<InventorySession>;
+  createSession: (name: string, notes?: string, warehouseId?: string) => Promise<InventorySession>;
   updateSession: (id: string, data: { name: string; notes?: string; status?: InventorySessionStatus }) => Promise<void>;
   startCounting: (id: string) => Promise<void>;
   countItem: (itemId: string, countedQty: number) => Promise<void>;
@@ -108,10 +111,10 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     }
   },
 
-  createSession: async (name: string, notes?: string) => {
+  createSession: async (name: string, notes?: string, warehouseId?: string) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await window.api.inventory.create({ name, notes });
+      const result = await window.api.inventory.create({ name, notes, warehouse_id: warehouseId });
       if (result && result.success === false) {
         throw new Error(result.error || 'Création de session impossible.');
       }
