@@ -32,17 +32,19 @@ assumés**, pas des bugs bloquants.
 | Build MCP | **PASS** | `npm run build:mcp` |
 | Build production complet (tsc+vite+mcp+electron-builder) | **PASS** (EXIT 0) | `npm run build` |
 | Packaging / installeur Windows | **PASS** — `release/StockLocal-1.0.0-setup.exe` (124 770 762 octets) | `npm run build` |
-| Electron E2E (parcours + persistance) | **PASS** — `tests/e2e-full-workflow.test.ts` | `npm test` |
+| Electron E2E (parcours + persistance, service+SQLite) | **PASS** — `tests/e2e-full-workflow.test.ts` | `npm test` |
+| **Electron E2E réel** (fenêtre + preload + IPC + SQLite) | **PASS** — `npm run e2e` (renderer piloté via CDP : produit créé, stock=100, recherche OK, audit sans écart) | `npm run e2e` |
 
 Preuves (fichiers de sortie générés par l'audit) : `tsc_audit2.txt`,
 `test_audit3.txt`, `build_audit.txt`.
 
-> Note honnête : le parcours « clic réel dans la fenêtre Electron » n'est pas
-> automatisé (l'app est une fenêtre Electron, pas un navigateur). Le démarrage
-> réel (`npm run dev`) a été vérifié (Electron démarre, applique le schéma,
-> exécute de vraies requêtes SQLite, **aucun EBUSY**), et le parcours métier
-> complet est couvert au niveau service+SQLite **avec fermeture/réouverture de
-> la base** par `e2e-full-workflow.test.ts`.
+> Note : un **E2E Electron réel** est désormais automatisé (`npm run e2e`) — il
+> lance l'application réelle (fenêtre + preload) et pilote le renderer via CDP
+> (DevTools Protocol) pour exécuter un workflow métier à travers la vraie chaîne
+> renderer → preload → IPC → service → SQLite. Vérifié : produit créé, stock = 100,
+> recherche OK, audit de stock sans écart. Le parcours métier complet **avec
+> fermeture/réouverture de la base** reste couvert par `e2e-full-workflow.test.ts`,
+> et le démarrage réel (`npm run dev`) ne produit aucun EBUSY.
 
 ## 3. Critical Findings
 
@@ -167,6 +169,8 @@ recherche paginée ; 50 000 mouvements → historique paginé
   `tests/vite-watch-ignored.test.ts`.
 - Démarrages répétés de `npm run dev` : plusieurs démarrages consécutifs propres,
   **aucun EBUSY** (vérifié pendant l'audit).
+- **E2E Electron réel** (`npm run e2e`) : fenêtre réelle pilotée via CDP, workflow
+  produit+stock+recherche+audit — **PASS**.
 - Installeur NSIS produit et horodaté ; schéma embarqué via `extraResources`.
 - Lancement du binaire packagé **vérifié réellement** sur profil vierge
   (démarrage, création DB, migration, backup automatique, 4 processus Electron).
@@ -278,6 +282,8 @@ Verification: tests/demo-seed.test.ts (2 tests) — 6 produits créés, 0 mouvem
 - `src/services/DemoDataService.ts` — `seedIfEmpty` (warehouse_id + movement_type).
 - `tests/document-stock-consistency.test.ts` — **nouveau** (4 tests).
 - `tests/demo-seed.test.ts` — **nouveau** (2 tests).
+- `scripts/e2e-electron.cjs` — **nouveau** (E2E Electron réel via CDP).
+- `package.json` — script `e2e`.
 - `FINAL_PRODUCTION_AUDIT.md` — **nouveau** (ce rapport).
 
 ## Database changes
