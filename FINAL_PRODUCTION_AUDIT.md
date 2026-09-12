@@ -218,6 +218,17 @@ aucun P0/P1 ouvert ; build et installeur OK. Les limitations du §17 sont des
 choix de modèle documentés (non bloquants) ; le point n°1 et le point n°2
 devront être **validés par le propriétaire produit** avant toute évolution.
 
+### Phase 27 — décision
+
+Le test de l'installeur sur un **profil Windows propre** n'est **pas réalisable
+sur cette machine** : une **politique Windows « Application Control »** bloque
+l'exécution du `.exe` fraîchement reconstruit (« An Application Control policy
+has blocked this file »), y compris via `Start-Process`. Ce n'est pas un défaut
+applicatif (le premier lancement du binaire packagé — avant reconstruction — a
+eu lieu et a servi à détecter le bug de seed). **Décision (propriétaire produit,
+Option 1) : considérer cette phase comme bloquée par l'environnement.** À refaire
+sur une machine/profil où la politique l'autorise.
+
 ## Bugs
 
 ```
