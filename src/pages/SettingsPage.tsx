@@ -14,8 +14,10 @@ import {
   EXPENSE_CATEGORY_MAX_LENGTH,
   normalizeExpenseCategories,
 } from '../domain/expenses/expenseCategories';
+// Conformité fiscale DGI (Maroc) — constantes/traits PURS (sans accès base).
+import { DGI_MODULE_DISCLAIMER, DGI_STATUS_LABEL } from '../compliance/dgi/dgiStatus';
 // ─── Onglets ────────────────────────────────────────────────────────────────
-type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'alerts' | 'updates';
+type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'dgi' | 'alerts' | 'updates';
 
 interface Category {
   id: string;
@@ -71,6 +73,7 @@ interface GlobalSettings {
   stock_exit_types: string[];
   cash_movement_types: CashMovementTypeDef[];
   expense_categories: string[];
+  dgi_compliance_enabled: boolean;
 }
 
 const SectionTitle: React.FC<{ icon: string; title: string }> = ({ icon, title }) => (
@@ -127,6 +130,7 @@ export const SettingsPage: React.FC = () => {
     stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
     cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
     expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
+    dgi_compliance_enabled: false,
   });
   const [newUnit, setNewUnit] = useState('');
   const [newExitType, setNewExitType] = useState('');
@@ -757,6 +761,32 @@ export const SettingsPage: React.FC = () => {
     notify(`🗑️ Catégorie « ${label} » supprimée`);
   };
 
+  // ─── Conformité fiscale DGI (Maroc) — préparation ──────────────────────────
+  const [dgiState, setDgiState] = useState<{ enabled: boolean; configured: boolean; integrationAvailable: boolean } | null>(null);
+
+  useEffect(() => {
+    if (tab !== 'dgi') return;
+    window.api.dgi.getModuleState()
+      .then((r: { success: boolean; state?: { enabled: boolean; configured: boolean; integrationAvailable: boolean } }) => {
+        if (r && r.success && r.state) setDgiState(r.state);
+      })
+      .catch(() => { /* diagnostic non bloquant */ });
+  }, [tab]);
+
+  const toggleDgiCompliance = async (enabled: boolean) => {
+    setGlobalSettings(prev => ({ ...prev, dgi_compliance_enabled: enabled }));
+    try {
+      const result = await window.api.globalSettings.save({ dgi_compliance_enabled: enabled });
+      if (result && result.success) {
+        notify(enabled ? '✅ Module de conformité DGI activé' : '✅ Module de conformité DGI désactivé');
+      } else {
+        notify(`❌ ${result?.error ?? 'Enregistrement impossible'}`);
+      }
+    } catch (e: unknown) {
+      notify(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const [updateResult, setUpdateResult] = useState<string | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
 
@@ -795,6 +825,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'units', label: 'Unités', icon: '📏' },
     { id: 'cash', label: 'Caisse', icon: '💵' },
     { id: 'expenses', label: 'Dépenses', icon: '🧾' },
+    { id: 'dgi', label: 'Conformité DGI', icon: '🇲🇦' },
     { id: 'alerts', label: 'Alertes', icon: '🔔' },
     { id: 'data', label: 'Données', icon: '💾' },
     { id: 'backups', label: 'Sauvegardes', icon: '🔐' },
@@ -906,6 +937,60 @@ export const SettingsPage: React.FC = () => {
             </label>
 
             <Button onClick={saveCompany} className="mt-4">💾 Enregistrer</Button>
+          </Card>
+        )}
+
+        {tab === 'dgi' && (
+          <Card padding style={{ maxWidth: 820 }}>
+            <SectionTitle icon="🇲🇦" title="Conformité fiscale — Maroc (facturation électronique DGI)" />
+
+            <div className="card card-body-compact mb-4">
+              <p className="text-sm text-secondary" style={{ marginTop: 0 }}>
+                {DGI_MODULE_DISCLAIMER}
+              </p>
+              <p className="text-xs text-muted" style={{ marginBottom: 0 }}>
+                Cette section prépare l'architecture (module isolé, statut de conformité sur les
+                documents, générateur UBL 2.1). Elle ne rend PAS l'application conforme DGI :
+                la conformité réelle nécessitera l'intégration finale, une fois les spécifications
+                officielles publiées. Aucune fonctionnalité existante n'est affectée tant que le
+                module reste désactivé.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary mb-4">
+              <input
+                type="checkbox"
+                checked={globalSettings.dgi_compliance_enabled}
+                onChange={e => toggleDgiCompliance(e.target.checked)}
+                style={{ width: 18, height: 18, accentColor: 'var(--primary)' }}
+              />
+              Activer le module de conformité DGI (désactivé par défaut)
+            </label>
+
+            <table className="table">
+              <tbody>
+                <tr>
+                  <td className="font-semibold">État du module</td>
+                  <td>{globalSettings.dgi_compliance_enabled ? 'Activé' : 'Désactivé'}</td>
+                </tr>
+                <tr>
+                  <td className="font-semibold">Intégration DGI (API réelle)</td>
+                  <td>
+                    {(dgiState?.integrationAvailable ?? false)
+                      ? 'Branchée'
+                      : `Non branchée — ${DGI_STATUS_LABEL.PENDING}`}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="font-semibold">Statut par défaut des factures</td>
+                  <td>
+                    {globalSettings.dgi_compliance_enabled
+                      ? DGI_STATUS_LABEL.PENDING
+                      : DGI_STATUS_LABEL.NOT_APPLICABLE}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </Card>
         )}
 

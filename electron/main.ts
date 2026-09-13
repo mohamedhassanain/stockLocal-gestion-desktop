@@ -8,6 +8,7 @@ import { registerBusinessDataHandlers } from './ipc/businessData.ipc';
 import { registerOperationsHandlers } from './ipc/operations.ipc';
 import { registerSystemHandlers } from './ipc/system.ipc';
 import { registerAiHandlers } from './ipc/ai.ipc';
+import { registerDgiHandlers } from './ipc/dgi.ipc';
 import { initAutoUpdater } from './autoUpdater';
 import { ErrorLogService } from '../src/services/ErrorLogService';
 import { DemoDataService } from '../src/services/DemoDataService';
@@ -168,6 +169,8 @@ app.whenReady().then(() => {
   registerBusinessDataHandlers();
   registerOperationsHandlers();
   registerAiHandlers();
+  // Conformité fiscale DGI (Maroc) — lecture seule (état + aperçu UBL).
+  registerDgiHandlers();
 
   // ─── Démarrage ────────────────────────────────────────────────────────────
   ErrorLogService.installGlobalHandlers();

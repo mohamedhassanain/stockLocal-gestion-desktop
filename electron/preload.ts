@@ -236,6 +236,9 @@ export interface GlobalSettingsInput {
   expense_categories?: string[];
   // Multi-dépôts : dépôt actif (persisté).
   active_warehouse_id?: string;
+  // Conformité fiscale DGI (Maroc) — facturation électronique. Désactivé par
+  // défaut ; module totalement isolé.
+  dgi_compliance_enabled?: boolean;
 }
 
 // ── Rapport CSV ──
@@ -599,6 +602,13 @@ export const api = {
   globalSettings: {
     get: () => ipcRenderer.invoke('globalSettings:get'),
     save: (settings: GlobalSettingsInput) => ipcRenderer.invoke('globalSettings:save', settings),
+  },
+
+  // ─── Conformité fiscale DGI (Maroc) — préparation ──────────────────────────
+  // ⚠️  Aucune soumission réelle : lecture seule (état du module + aperçu UBL).
+  dgi: {
+    getModuleState: () => ipcRenderer.invoke('dgi:getModuleState'),
+    previewUbl: (documentId: string) => ipcRenderer.invoke('dgi:previewUbl', documentId),
   },
 
   // ─── Migration (§35) ─────────────────────────────────────────────────────

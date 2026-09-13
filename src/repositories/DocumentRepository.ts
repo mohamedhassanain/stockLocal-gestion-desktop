@@ -52,6 +52,14 @@ export interface Document {
   updated_at?: string;
   items?: DocumentItem[];
   amount_paid?: number;
+  // ─── Conformité fiscale DGI (Maroc) — colonnes présentes en base ──────────
+  // Déclarées ici (SELECT d.* les remonte déjà) uniquement pour l'affichage du
+  // statut. ADDITIF et sans logique DGI : le repository n'appelle jamais le
+  // module de conformité. Valeur normalisée à NOT_APPLICABLE tant que le module
+  // est désactivé (voir migration), PENDING si activé sans intégration réelle.
+  dgi_status?: string | null;
+  dgi_reference?: string | null;
+  dgi_submitted_at?: string | null;
 }
 
 export interface Payment {

@@ -43,8 +43,12 @@ export interface GlobalSettings {
   // Multi-dépôts : id du dépôt actif ('' = dépôt par défaut).
   active_warehouse_id: string;
   // Après un « Tout supprimer », on désactive le seed de démonstration pour
-  // éviter de ré-injecter les produits/données de démo au redémarrage.
+  // éviter de ré-injecter les produits/démo au redémarrage.
   demo_seed_suppressed: boolean;
+  // Conformité fiscale DGI (Maroc) — facturation électronique.
+  // Désactivé par défaut : aucune fonctionnalité existante n'est affectée tant
+  // que ce réglage reste à `false`.
+  dgi_compliance_enabled: boolean;
 }
 
 const DEFAULTS: GlobalSettings = {
@@ -73,6 +77,7 @@ const DEFAULTS: GlobalSettings = {
   ai_rate_limit_per_min: 30,
   active_warehouse_id: '',
   demo_seed_suppressed: false,
+  dgi_compliance_enabled: false,
 };
 
 const stmtGetAll = db.prepare('SELECT key, value FROM global_settings');
@@ -133,6 +138,7 @@ export const GlobalSettingsService = {
       ai_rate_limit_per_min: parseInt(map['ai_rate_limit_per_min'] ?? String(DEFAULTS.ai_rate_limit_per_min), 10),
       active_warehouse_id: map['active_warehouse_id'] ?? DEFAULTS.active_warehouse_id,
       demo_seed_suppressed: (map['demo_seed_suppressed'] ?? 'false') === 'true',
+      dgi_compliance_enabled: (map['dgi_compliance_enabled'] ?? 'false') === 'true',
     };
   },
 

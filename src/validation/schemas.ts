@@ -280,6 +280,9 @@ export const GlobalSettingsSchema = z.object({
   expense_categories: z.array(z.string().min(1, 'La catégorie est obligatoire.').max(50)).max(100).optional(),
   // Multi-dépôts : dépôt actif (persisté dans global_settings).
   active_warehouse_id: z.string().max(64).optional(),
+  // Conformité fiscale DGI (Maroc) — facturation électronique. Désactivé par
+  // défaut. Le module est totalement isolé : l'activer n'affecte rien d'autre.
+  dgi_compliance_enabled: z.boolean().optional(),
 });
 
 // ─── Transferts entre dépôts (multi-dépôts) ──────────────────────────────────

@@ -9,6 +9,8 @@ import type { Document, DocumentType } from '../repositories/DocumentRepository'
 import type { Product } from '../repositories/ProductRepository';
 import { toLocalDateString } from '../utils/date';
 import { resolveDiscount, findApplicableDiscount, describeVolumeDiscount, type VolumeDiscountRule } from '../utils/volumeDiscount';
+// Conformité fiscale DGI (Maroc) — constantes PURES (aucun accès base de données).
+import { DGI_STATUS_LABEL } from '../compliance/dgi/dgiStatus';
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
 
@@ -738,6 +740,15 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
   const documentListRef = useRef<HTMLDivElement>(null);
   const documentVirtualizer = useVirtualizer({ count: documents.length, getScrollElement: () => documentListRef.current, estimateSize: () => 94, overscan: 8 });
 
+  // §DGI — badge de conformité discret : visible UNIQUEMENT si le module est
+  // activé. Désactivé (par défaut) → aucun changement dans l'interface.
+  const [dgiEnabled, setDgiEnabled] = useState(false);
+  useEffect(() => {
+    window.api.globalSettings.get()
+      .then((gs: { dgi_compliance_enabled?: boolean }) => setDgiEnabled(gs?.dgi_compliance_enabled === true))
+      .catch(() => { /* non bloquant */ });
+  }, []);
+
   useEffect(() => {
     if (initialType) setActiveType(initialType);
     if (initialStatusFilter !== undefined) setStatusFilter(initialStatusFilter);
@@ -879,6 +890,14 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
       <div style={{ padding: '20px 28px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
           <h1 style={{ margin: 0, fontSize: '26px', color: 'var(--text)', flex: 1 }}>📄 Facturation</h1>
+          {dgiEnabled && (
+            <span
+              className="badge badge-info"
+              title="Préparation à la facturation électronique DGI — l'intégration réelle n'est pas encore branchée."
+            >
+              Statut DGI : {DGI_STATUS_LABEL.PENDING}
+            </span>
+          )}
           <button onClick={() => setShowNewForm(true)} className="btn btn-primary">
             + Nouveau {TYPE_LABELS[activeType].label}
           </button>

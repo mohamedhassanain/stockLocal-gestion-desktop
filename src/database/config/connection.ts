@@ -384,6 +384,10 @@ function upgradeLegacyDatabase(): void {
   // Multi-dépôts : un inventaire physique appartient à UN dépôt précis.
   // NULL = session héritée → rattachée au dépôt actif/par défaut à la validation.
   addColumnIfMissing('inventory_sessions', 'warehouse_id', 'TEXT');
+  // §DGI — Conformité fiscale (Maroc) : colonnes ADDITIVES, sans perte de données.
+  addColumnIfMissing('documents', 'dgi_status', 'TEXT DEFAULT NULL');
+  addColumnIfMissing('documents', 'dgi_reference', 'TEXT DEFAULT NULL');
+  addColumnIfMissing('documents', 'dgi_submitted_at', 'DATETIME DEFAULT NULL');
 
   // ── Anciennes bases avec FK vers `users` (audit_logs, stock_movements,
   //    client_credits, supplier_credits) → reconstruire sans cette FK ─────────
@@ -577,6 +581,7 @@ function upgradeLegacyDatabase(): void {
       CREATE INDEX IF NOT EXISTS idx_stock_movements_document ON stock_movements (document_id);
       CREATE INDEX IF NOT EXISTS idx_stock_movements_warehouse ON stock_movements (warehouse_id);
       CREATE INDEX IF NOT EXISTS idx_inventory_balances_warehouse ON inventory_balances (warehouse_id);
+      CREATE INDEX IF NOT EXISTS idx_documents_dgi_status ON documents (dgi_status);
       CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items (document_id);
       CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items (product_id);
       CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
@@ -597,6 +602,22 @@ function upgradeLegacyDatabase(): void {
       UPDATE documents SET total_tax = total_incl_tax - total_excl_tax
       WHERE total_tax = 0 AND total_incl_tax != total_excl_tax
     `);
+  } catch { /* ignore */ }
+
+  // §DGI — Statut de conformité fiscale DGI (Maroc).
+  //
+  // Tant que le module est DÉSACTIVÉ (valeur par défaut), tout document est
+  // « non applicable » : on normalise les valeurs encore NULL. Idempotent, sans
+  // contrainte et sans effet sur la facturation existante. Si le module est
+  // ACTIVÉ, on ne touche à rien : un document non encore traité reste NULL en
+  // base et est résolu à « PENDING » par le module (jamais de faux succès).
+  try {
+    const dgiRow = db
+      .prepare("SELECT value FROM global_settings WHERE key = 'dgi_compliance_enabled'")
+      .get() as { value: string } | undefined;
+    if (dgiRow?.value !== 'true') {
+      db.exec("UPDATE documents SET dgi_status = 'NOT_APPLICABLE' WHERE dgi_status IS NULL");
+    }
   } catch { /* ignore */ }
 
   // Backfill des séquences de numérotation depuis les documents existants.

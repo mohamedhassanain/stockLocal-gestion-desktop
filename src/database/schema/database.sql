@@ -173,6 +173,15 @@ CREATE TABLE IF NOT EXISTS documents (
     discount_amount REAL NOT NULL DEFAULT 0.0,
     status TEXT NOT NULL DEFAULT 'UNPAID', -- PAID, UNPAID, PARTIAL, CANCELLED
     notes TEXT,
+    -- ─── Conformité fiscale DGI (Maroc) — facturation électronique ─────────
+    -- Préparation uniquement : aucune intégration réelle n'est branchée.
+    -- dgi_status          : PENDING, SUBMITTED, CLEARED, REJECTED, NOT_APPLICABLE
+    -- dgi_reference       : référence retournée par la plateforme (plus tard)
+    -- dgi_submitted_at    : horodatage de soumission (plus tard)
+    -- Tant que le module est désactivé, dgi_status reste NOT_APPLICABLE.
+    dgi_status TEXT DEFAULT NULL,
+    dgi_reference TEXT DEFAULT NULL,
+    dgi_submitted_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -405,6 +414,10 @@ CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents (entity_id);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents (status);
 CREATE INDEX IF NOT EXISTS idx_documents_date ON documents (date);
 CREATE INDEX IF NOT EXISTS idx_documents_type ON documents (type);
+-- NB : l'index sur documents.dgi_status est créé par le chemin d'UPGRADE
+-- (upgradeLegacyDatabase), APRÈS l'ajout de la colonne sur les bases anciennes.
+-- Le référencer ici casserait l'exécution intégrale du schéma sur une base
+-- ancienne dont la table `documents` n'a pas encore la colonne.
 CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items (document_id);
 CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items (product_id);
 

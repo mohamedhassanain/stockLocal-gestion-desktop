@@ -175,6 +175,10 @@ describe('Database schema — database.sql is the single source of truth', () =>
     addCol('documents', 'notes', 'TEXT');
     addCol('documents', 'total_tax', 'REAL NOT NULL DEFAULT 0.0');
     addCol('documents', 'discount_amount', 'REAL NOT NULL DEFAULT 0.0');
+    // §DGI — colonnes ADDITIVES de conformité fiscale (Maroc), sans perte.
+    addCol('documents', 'dgi_status', 'TEXT DEFAULT NULL');
+    addCol('documents', 'dgi_reference', 'TEXT DEFAULT NULL');
+    addCol('documents', 'dgi_submitted_at', 'DATETIME DEFAULT NULL');
     addCol('products', 'unit', "TEXT NOT NULL DEFAULT 'PIÈCE'");
     addCol('products', 'vat_rate', 'REAL DEFAULT 20.0');
     addCol('products', 'max_stock', 'INTEGER DEFAULT 0');
@@ -186,6 +190,12 @@ describe('Database schema — database.sql is the single source of truth', () =>
     const d = upgraded.prepare('SELECT * FROM documents WHERE id = ?').get('d1') as Record<string, unknown>;
     expect(d.document_number).toBe('FAC-2025-00001');
     expect(d.total_tax).toBe(0);
+    // Migration DGI : colonnes présentes sur une base ancienne, sans perte, et
+    // NULL tant que le module de conformité n'est pas activé (backfill
+    // NOT_APPLICABLE appliqué par connection.ts au démarrage).
+    expect(d.dgi_status).toBeNull();
+    expect(d.dgi_reference).toBeNull();
+    expect(d.dgi_submitted_at).toBeNull();
 
     const integrity = upgraded.pragma('integrity_check') as Array<{ integrity_check: string }>;
     expect(integrity[0]?.integrity_check).toBe('ok');
