@@ -424,12 +424,16 @@ export const DashboardRepository = {
     costOfGoods: number;
     salesCount: number;
   } {
+    // §CMUP — le CA TTC est NET DES AVOIRS : un avoir réduit le chiffre
+    // d'affaires. (Auparavant, la requête excluait les CREDIT_NOTE du WHERE,
+    // donc le CA TTC était surévalué après un retour, alors que le CA HT, lui,
+    // incluait bien les avoirs : les deux n'étaient pas cohérents.)
     const revenue = db.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN d.type = 'CREDIT_NOTE' THEN -d.total_incl_tax ELSE d.total_incl_tax END), 0) AS revenue_incl_tax,
-        COUNT(*) AS sales_count
+        COUNT(CASE WHEN d.type IN ('INVOICE', 'DELIVERY_NOTE') THEN 1 END) AS sales_count
       FROM documents d
-      WHERE d.type IN ('INVOICE', 'DELIVERY_NOTE') AND d.status != 'CANCELLED'
+      WHERE d.type IN ('INVOICE', 'DELIVERY_NOTE', 'CREDIT_NOTE') AND d.status != 'CANCELLED'
         AND date(d.date) BETWEEN date(?) AND date(?)
     `).get(from, to) as { revenue_incl_tax: number; sales_count: number };
 
@@ -441,14 +445,22 @@ export const DashboardRepository = {
         AND date(d.date) BETWEEN date(?) AND date(?)
     `).get(from, to) as { revenue_excl_tax: number };
 
+    // §CMUP — COGS = coût de valorisation RÉEL des mouvements de VENTE
+    // (`SALE_OUT`, figé au CMUP du moment de la sortie), NET DES RETOURS
+    // (`RETURN_IN` d'un avoir). C'est la MÊME source de coût que la valorisation
+    // du stock : COGS + valeur du stock restant = coût des biens acquis.
+    // (Avant : `products.purchase_price` — un prix CATALOGUE, jamais le coût
+    // réellement sorti du stock → marge et valorisation divergeaient.)
     const cost = db.prepare(`
       SELECT COALESCE(SUM(
-        p.purchase_price * di.quantity * (CASE WHEN d.type = 'CREDIT_NOTE' THEN -1 ELSE 1 END)
+        CASE WHEN d.type = 'CREDIT_NOTE' THEN -(sm.quantity * sm.unit_cost)
+             ELSE (sm.quantity * sm.unit_cost) END
       ), 0) AS cost_of_goods
-      FROM document_items di
-      JOIN documents d ON d.id = di.document_id
-      JOIN products p ON p.id = di.product_id
-      WHERE d.type IN ('INVOICE', 'DELIVERY_NOTE', 'CREDIT_NOTE') AND d.status != 'CANCELLED'
+      FROM stock_movements sm
+      JOIN documents d ON d.id = sm.document_id
+      WHERE sm.movement_type IN ('SALE_OUT', 'RETURN_IN')
+        AND d.type IN ('INVOICE', 'DELIVERY_NOTE', 'CREDIT_NOTE')
+        AND d.status != 'CANCELLED'
         AND date(d.date) BETWEEN date(?) AND date(?)
     `).get(from, to) as { cost_of_goods: number };
 

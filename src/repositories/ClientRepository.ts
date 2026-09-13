@@ -1,6 +1,8 @@
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { EntityCannotBeDeletedError } from '../domain/errors/EntityCannotBeDeletedError';
+// §Solde client — arrondi à la précision monétaire, comme le relevé de compte.
+import { roundMoney } from '../utils/money';
 
 export interface Customer {
   id: string;
@@ -30,12 +32,38 @@ export interface ClientCredit {
 
 // ─── Requêtes Préparées ──────────────────────────────────────────────────────
 
+/**
+ * §Solde client — DÉFINITION UNIQUE, identique au relevé de compte
+ * (`StatementRepository.getClientStatement`). C'est le SEUL calcul autorisé.
+ *
+ *   solde = (factures & bons de livraison NON annulés)
+ *         + (crédits manuels — client_credits CREDIT)
+ *         − (paiements rattachés à un document NON annulé)
+ *         − (règlements — client_credits PAYMENT)
+ *
+ * POURQUOI ce n'est PAS « SUM(client_credits) » : les FACTURES ne sont JAMAIS
+ * dupliquées dans `client_credits` (elles vivent dans `documents`). Un solde
+ * réduit à `client_credits` renvoyait donc 0 MAD pour un client dont la dette
+ * provient d'une vente à crédit : le plafond de crédit n'était jamais appliqué
+ * et l'encaissement manuel d'une facture était refusé à tort.
+ */
+export function clientBalanceSql(customerRef: string): string {
+  return `
+    COALESCE((SELECT SUM(CASE WHEN cc.type = 'CREDIT' THEN cc.amount ELSE -cc.amount END)
+              FROM client_credits cc WHERE cc.customer_id = ${customerRef}), 0)
+    + COALESCE((SELECT SUM(d.total_incl_tax) FROM documents d
+                WHERE d.entity_id = ${customerRef}
+                  AND d.type IN ('INVOICE', 'DELIVERY_NOTE')
+                  AND d.status <> 'CANCELLED'), 0)
+    - COALESCE((SELECT SUM(p.amount) FROM payments p
+                JOIN documents pd ON pd.id = p.document_id
+                WHERE pd.entity_id = ${customerRef} AND pd.status <> 'CANCELLED'), 0)
+  `;
+}
+
 const stmtSearch = db.prepare<[string, string]>(`
   SELECT c.*,
-    COALESCE(
-      (SELECT SUM(CASE WHEN cc.type='CREDIT' THEN cc.amount ELSE -cc.amount END)
-       FROM client_credits cc WHERE cc.customer_id = c.id),
-    0) AS balance
+    ${clientBalanceSql('c.id')} AS balance
   FROM customers c
   WHERE c.name LIKE ? OR c.phone LIKE ?
   ORDER BY c.name ASC
@@ -44,10 +72,7 @@ const stmtSearch = db.prepare<[string, string]>(`
 
 const stmtGetAll = db.prepare<[]>(`
   SELECT c.*,
-    COALESCE(
-      (SELECT SUM(CASE WHEN cc.type='CREDIT' THEN cc.amount ELSE -cc.amount END)
-       FROM client_credits cc WHERE cc.customer_id = c.id),
-    0) AS balance
+    ${clientBalanceSql('c.id')} AS balance
   FROM customers c
   ORDER BY c.name ASC
   LIMIT 500
@@ -55,10 +80,7 @@ const stmtGetAll = db.prepare<[]>(`
 
 const stmtGetById = db.prepare<[string]>(`
   SELECT c.*,
-    COALESCE(
-      (SELECT SUM(CASE WHEN cc.type='CREDIT' THEN cc.amount ELSE -cc.amount END)
-       FROM client_credits cc WHERE cc.customer_id = c.id),
-    0) AS balance
+    ${clientBalanceSql('c.id')} AS balance
   FROM customers c
   WHERE c.id = ?
 `);
@@ -82,11 +104,10 @@ const stmtAddCredit = db.prepare<[string, string, string, number, string | null]
   VALUES (?, ?, ?, ?, ?)
 `);
 
-const stmtGetBalance = db.prepare<[string]>(`
-  SELECT COALESCE(SUM(CASE WHEN type='CREDIT' THEN amount ELSE -amount END), 0) AS balance
-  FROM client_credits
-  WHERE customer_id = ?
-`);
+// §Solde client — l'ancien calcul « SUM(client_credits) » a été SUPPRIMÉ :
+// il ignorait les factures. Le solde provient désormais de l'expression unique
+// `clientBalanceSql`, PARTAGÉE avec l'export CSV (ExportService.exportClients)
+// pour qu'un export ne puisse jamais afficher un solde différent de l'écran.
 
 const stmtDelete = db.prepare('DELETE FROM customers WHERE id = ?');
 
@@ -176,9 +197,13 @@ export const ClientRepository = {
     return stmtGetHistory.all(customerId) as ClientCredit[];
   },
 
+  /**
+   * Solde client (positif = le client nous doit). Repose sur la MÊME expression
+   * que `getAll` / `getById`, donc STRICTEMENT identique au relevé de compte.
+   */
   getBalance(customerId: string): number {
-    const result = stmtGetBalance.get(customerId) as { balance: number };
-    return result.balance;
+    const row = stmtGetById.get(customerId) as Customer | undefined;
+    return roundMoney(Number(row?.balance ?? 0));
   },
 
   addCredit(data: { customer_id: string; type: 'CREDIT' | 'PAYMENT'; amount: number; description?: string }): ClientCredit {

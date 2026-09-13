@@ -317,7 +317,21 @@ describe('Cohérence rebuildBalances vs recordMovement (CMUP identique, §14)', 
     expect(rebuilt.total_in_qty).toBeCloseTo(live.total_in_qty, 6);
     expect(rebuilt.total_in_value).toBeCloseTo(live.total_in_value, 6);
     expect(rebuilt.average_cost).toBeCloseTo(live.average_cost, 6);
-    expect(rebuilt.average_cost).toBeCloseTo(rebuilt.total_in_value / rebuilt.total_in_qty, 6);
+
+    // §CMUP — INVARIANT CORRIGÉ. `average_cost` est désormais une MOYENNE
+    // PONDÉRÉE MOBILE : elle suit l'ORDRE des mouvements et n'est donc PLUS
+    // égale à `total_in_value / total_in_qty` (ces deux colonnes restent des
+    // CUMULS D'ENTRÉES, conservés pour la traçabilité et l'audit).
+    // Séquence : 100×10 puis 50×20 → 13.333… ; sortie 30 (CMUP inchangé) ;
+    // retour 5×15 ; ajustement 3×12 ⇒ valeur restante 1711 pour 128 unités.
+    expect(rebuilt.total_in_qty).toBe(158);    // cumul des ENTRÉES
+    expect(rebuilt.total_in_value).toBe(2111); // cumul des valeurs d'entrée
+    expect(live.total_in_qty).toBe(158);
+    expect(live.total_in_value).toBe(2111);
+    expect(rebuilt.average_cost).toBeCloseTo(1711 / 128, 10);
+    expect(rebuilt.quantity).toBeCloseTo(126, 10);
+    // Invariant réel : CMUP × quantité en stock = valeur du stock restant.
+    expect(rebuilt.average_cost * rebuilt.quantity).toBeCloseTo(1684.265625, 8);
   });
 
   it('CMUP exact : 100×10 + 100×20 = 3000 / 200 = 15', () => {

@@ -1,5 +1,12 @@
 {
   "compilerOptions": {
+    // §Type-safety — `target` MANQUAIT : TypeScript retombait sous ES2015, ce qui
+    // rejetait toute itération de `Map`/`Set` (for…of, spread) avec TS2802 dans
+    // `src/services` et `src/repositories` — pourtant écrits pour ES2020 (cf.
+    // tsconfig.json). On aligne donc les deux configurations : le code
+    // (electron + services + repositories) est désormais vérifié réellement.
+    "target": "ES2020",
+    "lib": ["ES2020"],
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",

@@ -1,6 +1,9 @@
 import { db, runInTransaction } from '../database/config/connection';
 import { ProductBatchRepository, type FefoAllocation } from '../repositories/ProductBatchRepository';
 import { randomUUID } from 'crypto';
+// §CMUP — moteur monétaire central : tout coût EXPOSÉ est arrondi à la
+// précision monétaire du projet (2 décimales), jamais arrondi en interne.
+import { roundMoney } from '../utils/money';
 
 /**
  * ─── StockLedgerService (multi-dépôts) ─────────────────────────────────────────
@@ -48,7 +51,14 @@ export interface StockMovementRow {
   type: MovementDirection;
   movement_type: MovementType;
   quantity: number;
+  /** Prix de la pièce : prix de vente (sortie) ou prix d'achat (entrée). */
   unit_price: number;
+  /**
+   * §CMUP — Coût unitaire de valorisation de CE mouvement (entrées : coût
+   * d'acquisition ; sorties : CMUP courant au moment de la sortie). Jamais un
+   * prix de vente : c'est la base du COGS et de la valorisation du stock.
+   */
+  unit_cost?: number;
   date?: string;
   reference_doc?: string;
   document_id?: string;
@@ -70,7 +80,15 @@ interface MovementInput {
   warehouse_id?: string;
   /** Direction physique. Dérivée automatiquement du movement_type si absente. */
   direction?: MovementDirection;
+  /** Prix de la pièce : prix de vente pour une SORTIE, prix d'achat pour une ENTRÉE. */
   unit_price?: number;
+  /**
+   * §CMUP — Coût unitaire de VALORISATION. Si absent, il est DÉRIVÉ :
+   *   - ENTRÉE  : `unit_price` (prix d'achat réel) ;
+   *   - SORTIE  : CMUP courant du dépôt (coût des marchandises sorties).
+   * Un transfert entrant DOIT fournir le coût moyen du dépôt source.
+   */
+  unit_cost?: number;
   date?: string;
   reference_doc?: string;
   document_id?: string;
@@ -96,9 +114,9 @@ const MOVEMENT_DIRECTION: Record<MovementType, MovementDirection> = {
 
 const stmtInsert = db.prepare(`
   INSERT INTO stock_movements
-    (id, product_id, warehouse_id, type, movement_type, quantity, unit_price, date, reference_doc, document_id, supplier_id, notes)
+    (id, product_id, warehouse_id, type, movement_type, quantity, unit_price, unit_cost, date, reference_doc, document_id, supplier_id, notes)
   VALUES
-    (@id, @product_id, @warehouse_id, @type, @movement_type, @quantity, @unit_price, @date, @reference_doc, @document_id, @supplier_id, @notes)
+    (@id, @product_id, @warehouse_id, @type, @movement_type, @quantity, @unit_price, @unit_cost, @date, @reference_doc, @document_id, @supplier_id, @notes)
 `);
 
 // Solde par (produit, dépôt) — upsert atomique.
@@ -268,14 +286,33 @@ export const StockLedgerService = {
    * @param warehouseId Dépôt précis ; absent → consolidé.
    */
   getAverageCost(productId: string, warehouseId?: string): number {
-    const row = (warehouseId
-      ? stmtGetBalanceAt.get(productId, warehouseId)
-      : stmtGetBalanceConsolidated.get(productId)) as { total_in_qty: number; total_in_value: number } | undefined;
-    const value = Number(row?.total_in_value ?? 0);
-    const qty = Number(row?.total_in_qty ?? 0);
-    if (qty > 0) return value / qty;
+    // §CMUP — on retourne le coût moyen MOBILE stocké (moyenne pondérée des
+    // entrées ENCORE en stock). L'ancien calcul « cumul achats / cumul
+    // quantités » n'était plus un coût « à jour » dès la première sortie.
+    if (warehouseId) {
+      const row = stmtGetBalanceAt.get(productId, warehouseId) as { average_cost: number } | undefined;
+      const avg = Number(row?.average_cost ?? 0);
+      if (avg > 0) return roundMoney(avg);
+      return this.getCatalogCost(productId);
+    }
+    // Consolidé (tous dépôts) : moyenne pondérée par les quantités DÉTENUES.
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(quantity), 0) AS qty,
+             COALESCE(SUM(quantity * average_cost), 0) AS value
+      FROM inventory_balances WHERE product_id = ? AND quantity > 0
+    `).get(productId) as { qty: number; value: number } | undefined;
+    const qty = Number(row?.qty ?? 0);
+    if (qty > 0) return roundMoney(Number(row?.value ?? 0) / qty);
+    return this.getCatalogCost(productId);
+  },
+
+  /**
+   * Prix d'achat CATALOGUE d'un produit — utilisé UNIQUEMENT comme repli
+   * lorsqu'aucun stock valorisé n'existe (aucun coût moyen disponible).
+   */
+  getCatalogCost(productId: string): number {
     const fallback = db.prepare('SELECT purchase_price FROM products WHERE id = ?').get(productId) as { purchase_price: number } | undefined;
-    return Number(fallback?.purchase_price ?? 0);
+    return roundMoney(Number(fallback?.purchase_price ?? 0));
   },
 
   /**
@@ -374,6 +411,34 @@ export const StockLedgerService = {
         }
       }
 
+      // §14 : solde du (produit, dépôt) lu AVANT écriture — il porte la
+      // quantité en main et le CMUP courant, base du nouveau coût moyen.
+      const balance = stmtGetBalanceAt.get(input.product_id, warehouseId) as
+        { quantity: number; total_in_qty: number; total_in_value: number; average_cost: number } | undefined;
+
+      const currentQty = Number(balance?.quantity ?? 0);
+      const currentInQty = Number(balance?.total_in_qty ?? 0);
+      const currentInValue = Number(balance?.total_in_value ?? 0);
+      const currentAverageCost = Number(balance?.average_cost ?? 0);
+
+      const pricePerUnit = Number(input.unit_price ?? 0);
+      const catalogCost = Number(product.purchase_price ?? 0);
+
+      // Coût unitaire de VALORISATION de ce mouvement (§CMUP) :
+      //   - ENTRÉE : coût d'acquisition réel (unit_cost explicite, sinon le prix
+      //     d'achat `unit_price`), avec repli sur le CMUP courant puis le prix
+      //     d'achat catalogue. Une entrée n'est JAMAIS valorisée à 0 par accident.
+      //   - SORTIE : CMUP courant (coût des marchandises sorties) → COGS exact,
+      //     jamais le prix de vente.
+      let incomingUnitCost: number;
+      if (input.unit_cost !== undefined && Number.isFinite(input.unit_cost) && input.unit_cost >= 0) {
+        incomingUnitCost = Number(input.unit_cost);
+      } else if (direction === 'IN') {
+        incomingUnitCost = pricePerUnit > 0 ? pricePerUnit : (currentAverageCost > 0 ? currentAverageCost : catalogCost);
+      } else {
+        incomingUnitCost = currentAverageCost > 0 ? currentAverageCost : catalogCost;
+      }
+
       const movement: StockMovementRow = {
         id: randomUUID(),
         product_id: input.product_id,
@@ -381,7 +446,8 @@ export const StockLedgerService = {
         type: direction,
         movement_type: input.movement_type,
         quantity,
-        unit_price: Number(input.unit_price ?? 0),
+        unit_price: pricePerUnit,
+        unit_cost: incomingUnitCost,
         date: input.date ?? new Date().toISOString(),
         reference_doc: input.reference_doc,
         document_id: input.document_id,
@@ -398,6 +464,7 @@ export const StockLedgerService = {
         movement_type: movement.movement_type,
         quantity: movement.quantity,
         unit_price: movement.unit_price,
+        unit_cost: movement.unit_cost,
         date: movement.date,
         reference_doc: movement.reference_doc ?? null,
         document_id: movement.document_id ?? null,
@@ -405,18 +472,31 @@ export const StockLedgerService = {
         notes: movement.notes ?? null,
       });
 
-      // §14 : solde du (produit, dépôt) mis à jour DANS la même transaction.
-      const balance = stmtGetBalanceAt.get(input.product_id, warehouseId) as
-        { quantity: number; total_in_qty: number; total_in_value: number } | undefined;
-
-      const currentQty = Number(balance?.quantity ?? 0);
-      const currentInQty = Number(balance?.total_in_qty ?? 0);
-      const currentInValue = Number(balance?.total_in_value ?? 0);
-
+      // ─── Solde (produit, dépôt) — MOYENNE PONDÉRÉE MOBILE (CMUP) ───────────
+      //   ENTRÉE : CMUP = (qty_en_main × CMUP + qty_entrée × coût) / qty totale.
+      //   SORTIE : la quantité diminue, le CMUP RESTE INCHANGÉ — les unités
+      //            sortent au coût moyen courant, ce qui rend le COGS cohérent
+      //            avec la valorisation du stock restant.
+      // `total_in_qty` / `total_in_value` restent des CUMULS D'ENTRÉES
+      // (traçabilité + audit), indépendants du CMUP affiché.
       const newQty = direction === 'IN' ? currentQty + quantity : currentQty - quantity;
       const newInQty = direction === 'IN' ? currentInQty + quantity : currentInQty;
-      const newInValue = direction === 'IN' ? currentInValue + quantity * movement.unit_price : currentInValue;
-      const newAverageCost = newInQty > 0 ? newInValue / newInQty : 0;
+      const newInValue = direction === 'IN' ? currentInValue + quantity * incomingUnitCost : currentInValue;
+
+      let newAverageCost = currentAverageCost;
+      if (direction === 'IN') {
+        const totalQtyForCost = currentQty + quantity;
+        newAverageCost = totalQtyForCost > 0
+          ? ((currentQty * currentAverageCost) + (quantity * incomingUnitCost)) / totalQtyForCost
+          : 0;
+      } else if (currentQty <= 0) {
+        // Aucun stock en main : rien à moyenner, on retient le coût du mouvement.
+        newAverageCost = incomingUnitCost;
+      }
+      // Valeur conservée en pleine précision : l'arrondi monétaire n'a lieu
+      // qu'à l'exposition (getAverageCost / getStockValue) pour éviter toute
+      // dérive d'arrondi cumulée sur une longue série de mouvements.
+      if (!Number.isFinite(newAverageCost) || newAverageCost < 0) newAverageCost = 0;
 
       stmtUpsertBalance.run({
         product_id: input.product_id,
@@ -432,30 +512,128 @@ export const StockLedgerService = {
   },
 
   /**
-   * Reconstruit `inventory_balances` depuis l'historique, PAR (produit, dépôt).
-   * Backfill idempotent exécuté au démarrage (logique CMUP inchangée).
+   * §CMUP — Reconstruit les soldes depuis le journal en REJOUANT les mouvements
+   * dans l'ordre CHRONOLOGIQUE, PAR (produit, dépôt).
+   *
+   * POURQUOI un rejeu (et non un simple agrégat SQL) : une moyenne pondérée
+   * MOBILE dépend de l'ORDRE des mouvements (le coût après une vente dépend du
+   * coût moyen AVANT cette vente). Aucun `SUM` groupé ne peut le produire.
+   *
+   * Effets : (1) recalcule `quantity` + `average_cost` exacts ; (2) BACKFILL
+   * `unit_cost` des mouvements antérieurs (0/NULL) pour que le COGS historique
+   * soit cohérent.
+   *
+   * @param productIds Restreint le recalcul à ces produits (sinon : tout le journal).
+   */
+  rebuildFromLedger(productIds?: string[]): void {
+    const restricted = Array.isArray(productIds) && productIds.length > 0;
+    const ids = restricted
+      ? Array.from(new Set((productIds as string[]).filter(id => typeof id === 'string' && id.length > 0)))
+      : [];
+    if (restricted && ids.length === 0) return;
+
+    const placeholders = ids.map(() => '?').join(', ');
+
+    runInTransaction(() => {
+      // 1. Mouvements concernés, dans l'ORDRE D'ÉCRITURE du journal.
+      //
+      // POURQUOI `created_at`/`rowid` et NON `date` : la colonne `date` mélange
+      // des formats (date seule `YYYY-MM-DD` issue d'un document, et horodatage
+      // complet `YYYY-MM-DDTHH:MM:SS.mmmZ` issu d'un mouvement direct). Une date
+      // seule trie AVANT tout horodatage du MÊME jour, ce qui inverserait
+      // l'ordre réel (une vente du jour passerait avant l'achat du jour) et
+      // fausserait la moyenne mobile. La seule chronologie dont le journal
+      // dispose réellement est l'ordre d'ÉCRITURE : on rejoue donc cet ordre.
+      // La PÉRIODE comptable, elle, reste portée par `documents.date` (voir
+      // DashboardRepository.getRevenueAndCost) — jamais par `stock_movements.date`.
+      const movementRows = (restricted
+        ? db.prepare(`
+            SELECT id, product_id, warehouse_id, type, quantity, unit_price, unit_cost
+            FROM stock_movements
+            WHERE product_id IN (${placeholders})
+            ORDER BY created_at ASC, rowid ASC
+          `).all(...ids)
+        : db.prepare(`
+            SELECT id, product_id, warehouse_id, type, quantity, unit_price, unit_cost
+            FROM stock_movements
+            ORDER BY created_at ASC, rowid ASC
+          `).all()) as Array<{
+            id: string; product_id: string; warehouse_id: string; type: string;
+            quantity: number; unit_price: number; unit_cost: number | null;
+          }>;
+
+      // Prix d'achat catalogue — repli quand aucun coût n'est disponible.
+      const catalogRows = (restricted
+        ? db.prepare(`SELECT id, purchase_price FROM products WHERE id IN (${placeholders})`).all(...ids)
+        : db.prepare('SELECT id, purchase_price FROM products').all()) as Array<{ id: string; purchase_price: number }>;
+      const catalogCost = new Map(catalogRows.map(r => [r.id, Number(r.purchase_price ?? 0)]));
+
+      // 2. Rejeu par (produit, dépôt).
+      interface RunningState { qty: number; avg: number; inQty: number; inValue: number }
+      const running = new Map<string, RunningState>();
+      const keyOf = (productId: string, warehouseId: string) => `${productId}|${warehouseId}`;
+      const backfillUnitCost = db.prepare('UPDATE stock_movements SET unit_cost = ? WHERE id = ?');
+
+      for (const m of movementRows) {
+        const key = keyOf(m.product_id, m.warehouse_id);
+        const state = running.get(key) ?? { qty: 0, avg: 0, inQty: 0, inValue: 0 };
+        const direction: MovementDirection = m.type === 'OUT' ? 'OUT' : 'IN';
+        const quantity = Number(m.quantity ?? 0);
+        const price = Number(m.unit_price ?? 0);
+        const fallbackCost = catalogCost.get(m.product_id) ?? 0;
+        const storedCost = m.unit_cost === null || m.unit_cost === undefined ? 0 : Number(m.unit_cost);
+
+        let unitCost: number;
+        if (storedCost > 0) {
+          unitCost = storedCost;
+        } else if (direction === 'IN') {
+          unitCost = price > 0 ? price : (state.avg > 0 ? state.avg : fallbackCost);
+        } else {
+          unitCost = state.avg > 0 ? state.avg : fallbackCost;
+        }
+
+        // Backfill : fige le coût de valorisation du mouvement s'il manquait.
+        if (storedCost <= 0) backfillUnitCost.run(unitCost, m.id);
+
+        if (direction === 'IN') {
+          const newQty = state.qty + quantity;
+          state.avg = newQty > 0 ? ((state.qty * state.avg) + (quantity * unitCost)) / newQty : 0;
+          state.qty = newQty;
+          state.inQty += quantity;
+          state.inValue += quantity * unitCost;
+        } else {
+          state.qty -= quantity;
+          if (state.qty < 0) state.qty = 0; // garde-fou : journal incohérent
+        }
+        running.set(key, state);
+      }
+
+      // 3. Réécriture des soldes concernés.
+      if (restricted) {
+        db.prepare(`DELETE FROM inventory_balances WHERE product_id IN (${placeholders})`).run(...ids);
+      } else {
+        db.exec('DELETE FROM inventory_balances;');
+      }
+
+      const insertBalance = db.prepare(`
+        INSERT INTO inventory_balances
+          (product_id, warehouse_id, quantity, total_in_qty, total_in_value, average_cost, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `);
+      for (const [key, state] of running) {
+        const separator = key.indexOf('|');
+        const productId = key.slice(0, separator);
+        const warehouseId = key.slice(separator + 1);
+        insertBalance.run(productId, warehouseId, state.qty, state.inQty, state.inValue, state.avg);
+      }
+    });
+  },
+
+  /**
+   * Backfill GLOBAL au démarrage : reconstruit tous les soldes depuis le journal.
    */
   rebuildBalances(): void {
-    db.transaction(() => {
-      db.exec('DELETE FROM inventory_balances;');
-      db.exec(`
-        INSERT INTO inventory_balances (product_id, warehouse_id, quantity, total_in_qty, total_in_value, updated_at)
-        SELECT
-          product_id,
-          warehouse_id,
-          SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS quantity,
-          SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) AS total_in_qty,
-          SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END) AS total_in_value,
-          CURRENT_TIMESTAMP
-        FROM stock_movements
-        GROUP BY product_id, warehouse_id
-      `);
-      db.exec(`
-        UPDATE inventory_balances
-        SET average_cost = CASE WHEN total_in_qty > 0 THEN total_in_value / total_in_qty ELSE 0 END
-        WHERE total_in_qty > 0
-      `);
-    })();
+    this.rebuildFromLedger();
   },
 
   /**
@@ -478,30 +656,8 @@ export const StockLedgerService = {
       (productIds ?? []).filter(id => typeof id === 'string' && id.length > 0),
     ));
     if (ids.length === 0) return;
-
-    const placeholders = ids.map(() => '?').join(', ');
-
-    runInTransaction(() => {
-      db.prepare(`DELETE FROM inventory_balances WHERE product_id IN (${placeholders})`).run(...ids);
-      db.prepare(`
-        INSERT INTO inventory_balances
-          (product_id, warehouse_id, quantity, total_in_qty, total_in_value, average_cost, updated_at)
-        SELECT
-          product_id,
-          warehouse_id,
-          SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END) AS quantity,
-          SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) AS total_in_qty,
-          SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END) AS total_in_value,
-          CASE WHEN SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END) > 0
-               THEN SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END)
-                    / SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END)
-               ELSE 0 END AS average_cost,
-          CURRENT_TIMESTAMP
-        FROM stock_movements
-        WHERE product_id IN (${placeholders})
-        GROUP BY product_id, warehouse_id
-      `).run(...ids);
-    });
+    // Rejeu chronologique (moyenne pondérée mobile) borné à ces produits.
+    this.rebuildFromLedger(ids);
   },
 
   /**
@@ -582,11 +738,18 @@ export const StockLedgerService = {
 
       const notes = input.notes ?? 'Transfert entre dépôts';
 
+      // §CMUP — le coût moyen du dépôt SOURCE est reporté TEL QUEL sur l'entrée
+      // de destination : la valeur totale du stock (tous dépôts) reste INCHANGÉE
+      // (un transfert ne crée ni profit ni perte). Sans ce report, l'entrée
+      // serait valorisée à 0 et DILUERAIT le coût moyen du dépôt de destination.
+      const sourceAverageCost = this.getAverageCost(input.product_id, fromId);
+
       this.recordMovement({
         product_id: input.product_id,
         movement_type: 'TRANSFER_OUT',
         quantity,
         warehouse_id: fromId,
+        unit_cost: sourceAverageCost,
         notes,
       });
       this.recordMovement({
@@ -594,6 +757,9 @@ export const StockLedgerService = {
         movement_type: 'TRANSFER_IN',
         quantity,
         warehouse_id: toId,
+        // Report de valeur : coût de valorisation = coût moyen du dépôt source.
+        unit_cost: sourceAverageCost,
+        unit_price: sourceAverageCost,
         notes,
       });
 
@@ -717,42 +883,33 @@ export const StockLedgerService = {
       return { repaired: 0, details: [] };
     }
 
-    return runInTransaction(() => {
-      const details: StockRepairDetail[] = [];
+    // Rejoue le journal (moyenne mobile) pour les PRODUITS concernés, puis
+    // rapporte le solde avant/après pour chaque couple (produit, dépôt).
+    const validItems = items
+      .map(item => ({ product_id: String(item.product_id ?? ''), warehouse_id: String(item.warehouse_id ?? '') }))
+      .filter(item => item.product_id && item.warehouse_id);
+    const productIds = Array.from(new Set(validItems.map(i => i.product_id)));
+    if (productIds.length === 0) return { repaired: 0, details: [] };
 
-      for (const item of items) {
-        const productId = String(item.product_id ?? '');
-        const warehouseId = String(item.warehouse_id ?? '');
-        if (!productId || !warehouseId) continue;
+    const beforeQty = new Map<string, number>();
+    for (const item of validItems) {
+      const row = stmtGetBalanceAt.get(item.product_id, item.warehouse_id) as { quantity: number } | undefined;
+      beforeQty.set(`${item.product_id}|${item.warehouse_id}`, Number(row?.quantity ?? 0));
+    }
 
-        const agg = db.prepare(`
-          SELECT
-            COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END), 0) AS qty,
-            COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE 0 END), 0) AS in_qty,
-            COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity * unit_price ELSE 0 END), 0) AS in_value
-          FROM stock_movements WHERE product_id = ? AND warehouse_id = ?
-        `).get(productId, warehouseId) as { qty: number; in_qty: number; in_value: number };
+    this.rebuildFromLedger(productIds);
 
-        const before = stmtGetBalanceAt.get(productId, warehouseId) as { quantity: number } | undefined;
-        const beforeQty = Number(before?.quantity ?? 0);
-        const newQty = Number(agg.qty ?? 0);
-        const newInQty = Number(agg.in_qty ?? 0);
-        const newInValue = Number(agg.in_value ?? 0);
-
-        stmtUpsertBalance.run({
-          product_id: productId,
-          warehouse_id: warehouseId,
-          quantity: newQty,
-          total_in_qty: newInQty,
-          total_in_value: newInValue,
-          average_cost: newInQty > 0 ? newInValue / newInQty : 0,
-        });
-
-        details.push({ product_id: productId, warehouse_id: warehouseId, before_qty: beforeQty, after_qty: newQty });
-      }
-
-      return { repaired: details.length, details };
+    const details: StockRepairDetail[] = validItems.map(item => {
+      const row = stmtGetBalanceAt.get(item.product_id, item.warehouse_id) as { quantity: number } | undefined;
+      return {
+        product_id: item.product_id,
+        warehouse_id: item.warehouse_id,
+        before_qty: beforeQty.get(`${item.product_id}|${item.warehouse_id}`) ?? 0,
+        after_qty: Number(row?.quantity ?? 0),
+      };
     });
+
+    return { repaired: details.length, details };
   },
 
   /**

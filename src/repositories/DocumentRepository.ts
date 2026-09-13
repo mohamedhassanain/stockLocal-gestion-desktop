@@ -310,6 +310,10 @@ export const DocumentRepository = {
             movement_type: 'SALE_OUT',
             quantity: item.quantity,
             unit_price: item.unit_price,
+            // §CMUP — la date MÉTIER du document (et non `now`) : sans cela le
+            // coût serait rattaché à la période du jour de saisie, pas à celle
+            // de la vente (COGS par période faussé pour une vente antidatée).
+            date: data.date,
             reference_doc: document_number,
             document_id: id,
             notes: `${data.type === 'INVOICE' ? 'VENTE' : 'LIVRAISON'} — ${document_number}`,
@@ -505,6 +509,8 @@ export const DocumentRepository = {
           // d'achat), jamais au prix de VENTE : sinon la valeur du stock et le CMUP
           // seraient artificiellement gonflés à chaque retour client.
           unit_price: StockLedgerService.getAverageCost(item.product_id),
+          unit_cost: StockLedgerService.getAverageCost(item.product_id),
+          date: data.date,
           reference_doc: document_number,
           document_id: id,
           notes: `RETOUR_CLIENT — ${document_number}`,
@@ -710,6 +716,7 @@ export const DocumentRepository = {
             movement_type: 'SALE_OUT',
             quantity: item.quantity,
             unit_price: item.unit_price,
+            date: data.date,
             reference_doc: doc.document_number,
             document_id: id,
             notes: `${doc.type === 'INVOICE' ? 'VENTE' : 'LIVRAISON'} — ${doc.document_number}`,

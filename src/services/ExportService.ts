@@ -4,6 +4,11 @@ import ExcelJS from 'exceljs';
 import { DataStorageService } from './DataStorageService';
 import { DashboardRepository } from '../repositories/DashboardRepository';
 import { db } from '../database/config/connection';
+// §Solde client — l'export réutilise l'expression de solde UNIQUE du repository
+// (factures incluses). Aucune recopie : un export ne peut pas diverger de l'écran.
+import { clientBalanceSql } from '../repositories/ClientRepository';
+// §Dette fournisseur — même principe : expression UNIQUE partagée.
+import { supplierBalanceSql } from '../repositories/SupplierRepository';
 
 /**
  * Service d'export CSV pour tous les types de données.
@@ -94,10 +99,7 @@ export const ExportService = {
     while (true) {
       const rows = db.prepare(`
         SELECT c.*,
-          COALESCE(
-            (SELECT SUM(CASE WHEN cc.type='CREDIT' THEN cc.amount ELSE -cc.amount END)
-             FROM client_credits cc WHERE cc.customer_id = c.id),
-          0) AS balance
+          ${clientBalanceSql('c.id')} AS balance
         FROM customers c
         ORDER BY c.name ASC
         LIMIT ? OFFSET ?
@@ -123,10 +125,7 @@ export const ExportService = {
     while (true) {
       const rows = db.prepare(`
         SELECT s.*,
-          COALESCE(
-            (SELECT SUM(CASE WHEN sc.type='DEBT' THEN sc.amount ELSE -sc.amount END)
-             FROM supplier_credits sc WHERE sc.supplier_id = s.id),
-          0) AS balance
+          ${supplierBalanceSql('s.id')} AS balance
         FROM suppliers s
         ORDER BY s.name ASC
         LIMIT ? OFFSET ?

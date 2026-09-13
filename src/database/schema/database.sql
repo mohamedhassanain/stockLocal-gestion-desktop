@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS stock_movements (
     movement_type TEXT NOT NULL DEFAULT 'ADJUSTMENT_IN', -- PURCHASE_IN, SALE_OUT, RETURN_IN, RETURN_OUT, ADJUSTMENT_IN/OUT, TRANSFER_IN/OUT, DAMAGE_OUT, LOSS_OUT, OPENING_BALANCE
     quantity REAL NOT NULL CHECK (quantity > 0),
     unit_price REAL NOT NULL DEFAULT 0,
+    -- §CMUP — Coût unitaire de VALORISATION de ce mouvement (jamais un prix de
+    -- vente). Entrées : coût d'acquisition réel. Sorties : CMUP courant au
+    -- moment de la sortie. Sert au calcul du coût des marchandises vendues
+    -- (COGS) et à l'audit. `unit_price` reste le prix de la pièce (vente).
+    unit_cost REAL NOT NULL DEFAULT 0,
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reference_doc TEXT,
     document_id TEXT,

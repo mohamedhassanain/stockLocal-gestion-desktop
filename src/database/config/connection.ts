@@ -571,6 +571,14 @@ function upgradeLegacyDatabase(): void {
   migrateStockMovementsToWarehouses(defaultWarehouseId);
   migrateInventoryBalancesToWarehouses(defaultWarehouseId);
 
+  // §CMUP — Coût unitaire de valorisation (colonne ADDITIVE). Ajoutée APRÈS les
+  // reconstructions de table ci-dessus : un rebuild de `stock_movements` ne
+  // recopie que les colonnes historiques, donc placer cet ajout en dernier
+  // garantit que la colonne survit quel que soit le chemin de migration.
+  // Valeur 0 par défaut ; les mouvements antérieurs sont valorisés lors du
+  // recalcul des soldes (StockLedgerService.rebuildBalances).
+  addColumnIfMissing('stock_movements', 'unit_cost', 'REAL NOT NULL DEFAULT 0');
+
   // Recréer les index qui peuvent avoir disparu après les rebuilds ci-dessus.
   try {
     db.exec(`
@@ -720,9 +728,13 @@ function initDb(): void {
     // Base EXISTANTE : correctifs additifs minimaux + centralisés.
     upgradeLegacyDatabase();
   } catch (e: unknown) {
+    // §Diagnostic — la CAUSE réelle est TOUJOURS incluse dans le message. Elle
+    // était auparavant MASQUÉE dès qu'un backup pré-migration existait, ce qui
+    // rendait tout diagnostic de migration aveugle (message générique seul).
+    const cause = e instanceof Error ? e.message : String(e);
     const detail = safetyBackup
-      ? `Erreur lors de la migration de la base de données. Une copie de sécurité a été créée ici : ${safetyBackup}. Vous pouvez joindre ce fichier au support pour diagnostiquer le problème.`
-      : `Erreur lors de la migration de la base de données : ${e instanceof Error ? e.message : String(e)}`;
+      ? `Erreur lors de la migration de la base de données : ${cause}. Une copie de sécurité a été créée ici : ${safetyBackup}. Vous pouvez joindre ce fichier au support pour diagnostiquer le problème.`
+      : `Erreur lors de la migration de la base de données : ${cause}`;
     console.error(`[DB] ${detail}`);
     throw new Error(detail);
   }

@@ -1,6 +1,8 @@
 import { db } from '../database/config/connection';
 import { randomUUID } from 'crypto';
 import { EntityCannotBeDeletedError } from '../domain/errors/EntityCannotBeDeletedError';
+// §Dette fournisseur — arrondi monétaire, comme le relevé de compte.
+import { roundMoney } from '../utils/money';
 
 export interface Supplier {
   id: string;
@@ -26,12 +28,30 @@ export interface SupplierCredit {
 
 // ─── Requêtes Préparées ──────────────────────────────────────────────────────
 
+/**
+ * §Dette fournisseur — DÉFINITION UNIQUE, identique au relevé de compte
+ * (`StatementRepository.getSupplierStatement`). Solde POSITIF = nous devons.
+ *
+ *   dette = (commandes d'achat NON annulées)
+ *         + (crédits manuels — supplier_credits DEBT)
+ *         − (nos règlements — supplier_credits PAYMENT)
+ *
+ * Même correctif que côté client : les COMMANDES D'ACHAT ne sont pas dupliquées
+ * dans `supplier_credits` ; un solde réduit à cette table affichait donc 0 MAD
+ * pour un fournisseur à qui nous devons réellement de l'argent.
+ */
+export function supplierBalanceSql(supplierRef: string): string {
+  return `
+    COALESCE((SELECT SUM(CASE WHEN sc.type = 'DEBT' THEN sc.amount ELSE -sc.amount END)
+              FROM supplier_credits sc WHERE sc.supplier_id = ${supplierRef}), 0)
+    + COALESCE((SELECT SUM(po.total) FROM purchase_orders po
+                WHERE po.supplier_id = ${supplierRef} AND po.status <> 'CANCELLED'), 0)
+  `;
+}
+
 const stmtSearch = db.prepare<[string, string]>(`
   SELECT s.*,
-    COALESCE(
-      (SELECT SUM(CASE WHEN sc.type='DEBT' THEN sc.amount ELSE -sc.amount END)
-       FROM supplier_credits sc WHERE sc.supplier_id = s.id),
-    0) AS balance
+    ${supplierBalanceSql('s.id')} AS balance
   FROM suppliers s
   WHERE s.name LIKE ? OR s.phone LIKE ?
   ORDER BY s.name ASC
@@ -40,10 +60,7 @@ const stmtSearch = db.prepare<[string, string]>(`
 
 const stmtGetAll = db.prepare<[]>(`
   SELECT s.*,
-    COALESCE(
-      (SELECT SUM(CASE WHEN sc.type='DEBT' THEN sc.amount ELSE -sc.amount END)
-       FROM supplier_credits sc WHERE sc.supplier_id = s.id),
-    0) AS balance
+    ${supplierBalanceSql('s.id')} AS balance
   FROM suppliers s
   ORDER BY s.name ASC
   LIMIT 500
@@ -51,10 +68,7 @@ const stmtGetAll = db.prepare<[]>(`
 
 const stmtGetById = db.prepare<[string]>(`
   SELECT s.*,
-    COALESCE(
-      (SELECT SUM(CASE WHEN sc.type='DEBT' THEN sc.amount ELSE -sc.amount END)
-       FROM supplier_credits sc WHERE sc.supplier_id = s.id),
-    0) AS balance
+    ${supplierBalanceSql('s.id')} AS balance
   FROM suppliers s
   WHERE s.id = ?
 `);
@@ -78,11 +92,8 @@ const stmtAddCredit = db.prepare<[string, string, string, number, string | null]
   VALUES (?, ?, ?, ?, ?)
 `);
 
-const stmtGetBalance = db.prepare<[string]>(`
-  SELECT COALESCE(SUM(CASE WHEN type='DEBT' THEN amount ELSE -amount END), 0) AS balance
-  FROM supplier_credits
-  WHERE supplier_id = ?
-`);
+// §Dette fournisseur — l'ancien calcul « SUM(supplier_credits) » a été SUPPRIMÉ
+// (il ignorait les commandes d'achat). Voir `supplierBalanceSql`.
 
 const stmtDelete = db.prepare('DELETE FROM suppliers WHERE id = ?');
 
@@ -169,9 +180,13 @@ export const SupplierRepository = {
     return stmtGetHistory.all(supplierId) as SupplierCredit[];
   },
 
+  /**
+   * Dette envers le fournisseur (positif = nous devons). MÊME expression que
+   * `getAll` / `getById`, donc identique au relevé de compte fournisseur.
+   */
   getBalance(supplierId: string): number {
-    const result = stmtGetBalance.get(supplierId) as { balance: number };
-    return result.balance;
+    const row = stmtGetById.get(supplierId) as Supplier | undefined;
+    return roundMoney(Number(row?.balance ?? 0));
   },
 
   addCredit(data: { supplier_id: string; type: 'DEBT' | 'PAYMENT'; amount: number; description?: string }): SupplierCredit {
