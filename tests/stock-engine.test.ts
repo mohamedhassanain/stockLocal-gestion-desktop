@@ -263,10 +263,18 @@ describe('Produits — création, modification, suppression protégée (§9, §1
     expect(() => ProductService.createProduct(input)).toThrow(/prix de vente/);
   });
 
-  it('refuse la suppression d\'un produit avec historique de stock (données protégées)', () => {
-    const productId = createProduct('PROD-PROTECT');
+  it('supprime un produit avec historique de stock ET efface mouvements + balance (cascade)', () => {
+    const productId = createProduct('PROD-PURGE-STOCK');
     StockLedgerService.recordMovement({ product_id: productId, movement_type: 'PURCHASE_IN', quantity: 10 });
-    expect(() => ProductService.deleteProduct(productId)).toThrow(/historique de stock/);
+    expect(stockOf(productId)).toBe(10);
+
+    expect(() => ProductService.deleteProduct(productId)).not.toThrow();
+
+    expect(ProductRepository.findById(productId)).toBeUndefined();
+    const moves = (db.prepare('SELECT COUNT(*) AS c FROM stock_movements WHERE product_id = ?').get(productId) as { c: number }).c;
+    expect(moves).toBe(0);
+    const balances = (db.prepare('SELECT COUNT(*) AS c FROM inventory_balances WHERE product_id = ?').get(productId) as { c: number }).c;
+    expect(balances).toBe(0);
   });
 
   it('permet la suppression d\'un produit sans historique', () => {

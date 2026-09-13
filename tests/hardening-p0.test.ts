@@ -145,15 +145,38 @@ describe('P0-3 — Product update atomic (prix + historique)', () => {
   });
 });
 
-describe('P1-15 — price_history RESTRICT', () => {
+describe('P1-15 — price_history supprimé avec le produit', () => {
   beforeEach(() => {
     resetRefs();
   });
 
-  it('refuse la suppression d\'un produit qui a un historique de prix', () => {
-    const id = ProductService.createProduct(makeProductInput('PH-PROTECT')).id;
-    ProductService.updateProduct(id, makeProductInput('PH-PROTECT', { purchasePrice: 12, sellingPrice: 24 }));
-    expect(() => ProductService.deleteProduct(id)).toThrow(/historique de prix/);
+  it('supprime un produit en effaçant AUSSI son historique de prix (cascade)', () => {
+    const id = ProductService.createProduct(makeProductInput('PH-PURGE')).id;
+    ProductService.updateProduct(id, makeProductInput('PH-PURGE', { purchasePrice: 12, sellingPrice: 24 }));
+    const before = (db.prepare('SELECT COUNT(*) AS c FROM price_history WHERE product_id = ?').get(id) as { c: number }).c;
+    expect(before).toBeGreaterThanOrEqual(1);
+
+    expect(() => ProductService.deleteProduct(id)).not.toThrow();
+
+    expect(ProductRepository.findById(id)).toBeUndefined();
+    const after = (db.prepare('SELECT COUNT(*) AS c FROM price_history WHERE product_id = ?').get(id) as { c: number }).c;
+    expect(after).toBe(0);
+  });
+
+  it('REFUSE la suppression d\'un produit référencé par une facture (donnée protégée)', () => {
+    const id = ProductService.createProductWithInitialStock(makeProductInput('PH-DOC-BLOCK'), 100).id;
+    const customerId = 'cust-ph-block';
+    db.prepare('INSERT INTO customers (id, name) VALUES (?, ?)').run(customerId, 'Client Test');
+    DocumentRepository.create({
+      type: 'INVOICE',
+      entity_id: customerId,
+      date: new Date().toISOString(),
+      items: [{ product_id: id, quantity: 1, unit_price: 10, discount: 0 }],
+    });
+
+    expect(() => ProductService.deleteProduct(id)).toThrow(/factures\/devis/);
+    // Le produit et son historique restent intacts après le refus.
+    expect(ProductRepository.findById(id)).toBeDefined();
   });
 });
 

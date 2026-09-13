@@ -596,7 +596,7 @@ h3 { font-size: var(--font-size-lg); font-weight: 600; color: var(--text); }
   /* Colonnes : [sélection] Image Réf Désignation Unité Stock Prix Vente Marge
      Statut Actions — 10 colonnes, total 100 % (la colonne de sélection permet
      l'impression groupée d'étiquettes sur une sélection multiple). */
-  grid-template-columns: 4% 6% 10% 18% 7% 7% 10% 9% 9% 20%;
+  grid-template-columns: 4% 6% 10% 16% 6% 6% 9% 9% 9% 25%;
   width: 100%;
   align-items: center;
 }

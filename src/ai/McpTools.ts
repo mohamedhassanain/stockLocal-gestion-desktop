@@ -453,7 +453,7 @@ export const MCP_TOOLS: Record<string, McpToolDef> = {
 
   delete_product: {
     name: 'delete_product',
-    description: 'Supprime définitivement un produit SI aucun historique. Bloqué par EntityCannotBeDeletedError sinon. Action destructive — confirmation requise.',
+    description: 'Supprime définitivement un produit et son historique de stock/prix. REFUSÉ (EntityCannotBeDeletedError) si le produit est lié à une facture/devis/commande d\'achat/avoir ou à un inventaire — utilisez alors archive_product. Action destructive — confirmation requise.',
     kind: 'DESTRUCTIVE',
     inputSchema: IdOnlyToolSchema,
     execute: (params) => {

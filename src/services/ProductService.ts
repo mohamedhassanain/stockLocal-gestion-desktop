@@ -230,12 +230,17 @@ export class ProductService {
   /**
    * Supprime définitivement un produit.
    *
-   * Protection des données historiques (§9) :
-   *  - si le produit a le moindre mouvement de stock ou une ligne dans un document
-   *    (facture, devis, BL, achat, avoir…), la suppression est REFUSÉE :
-   *    l'utilisateur doit utiliser "Archiver" à la place.
-   *  - seul un produit sans historique (créé par erreur, jamais utilisé)
-   *    peut être supprimé physiquement.
+   * Règle de suppression :
+   *  - REFUSÉE dès que le produit est référencé par un DOCUMENT (facture, devis,
+   *    BL, commande d'achat, avoir) ou par un INVENTAIRE : ces lignes portent
+   *    l'historique comptable/physique et ne doivent jamais disparaître avec le
+   *    produit. L'utilisateur doit alors utiliser « Archiver ».
+   *  - AUTORISÉE quand le produit n'a QUE son historique de stock/prix (mouvements,
+   *    transferts, historique de prix, solde précalculé). Ces données sont des
+   *    dérivées/annexes du produit : elles sont supprimées AVEC lui, dans une
+   *    seule transaction, pour ne pas violer les FK RESTRICT.
+   *
+   * Dans tous les cas, la suppression est PHYSIQUE et irréversible.
    */
   static deleteProduct(id: string): void {
     const existing = ProductRepository.findById(id);
@@ -251,30 +256,29 @@ export class ProductService {
     const invCount = (db.prepare('SELECT COUNT(*) AS count FROM inventory_items WHERE product_id = ?').get(id) as { count: number }).count;
     if (invCount > 0) hardRefs.push({ name: "lignes d'inventaire", count: invCount });
 
+    const invVerCount = (db.prepare('SELECT COUNT(*) AS count FROM inventory_item_versions WHERE product_id = ?').get(id) as { count: number }).count;
+    if (invVerCount > 0) hardRefs.push({ name: "lignes d'inventaire (versions)", count: invVerCount });
+
     const poCount = (db.prepare('SELECT COUNT(*) AS count FROM purchase_order_items WHERE product_id = ?').get(id) as { count: number }).count;
     if (poCount > 0) hardRefs.push({ name: "lignes de commandes d'achat", count: poCount });
 
     const cnCount = (db.prepare('SELECT COUNT(*) AS count FROM credit_note_refs WHERE product_id = ?').get(id) as { count: number }).count;
     if (cnCount > 0) hardRefs.push({ name: 'retours / avoirs', count: cnCount });
 
-    // P0 — Les mouvements de stock sont une référence HISTORIQUE : ils doivent
-    // BLOQUER la suppression (jamais supprimés avec le produit).
-    const moveCount = (db.prepare('SELECT COUNT(*) AS count FROM stock_movements WHERE product_id = ?').get(id) as { count: number }).count;
-    if (moveCount > 0) hardRefs.push({ name: 'mouvement(s) de stock', count: moveCount });
-
-    // Historique des prix : donnée historique, à protéger elle aussi.
-    const priceHistoryCount = (db.prepare('SELECT COUNT(*) AS count FROM price_history WHERE product_id = ?').get(id) as { count: number }).count;
-    if (priceHistoryCount > 0) hardRefs.push({ name: 'historique de prix', count: priceHistoryCount });
-
     if (hardRefs.length > 0) {
       throw new EntityCannotBeDeletedError('produit', hardRefs);
     }
 
-    // Produit « propre » (aucune référence historique) : suppression directe.
-    // La balance précalculée (inventory_balances) est une donnée DÉRIVÉE, pas de
-    // l'historique — on la nettoie pour ne pas être bloqué par la FK RESTRICT.
+    // Produit sans référence documentaire : il ne reste que son historique de
+    // stock/prix. On le supprime avec ses données dérivées dans UNE transaction,
+    // en nettoyant les tables RESTRICT d'abord (sinon la FK bloque le DELETE).
+    // `product_batches` et `unit_conversions` sont ON DELETE CASCADE : nettoyées
+    // automatiquement par SQLite — on ne les touche pas explicitement.
     const deleteTx = db.transaction(() => {
       db.prepare('DELETE FROM inventory_balances WHERE product_id = ?').run(id);
+      db.prepare('DELETE FROM stock_movements WHERE product_id = ?').run(id);
+      db.prepare('DELETE FROM stock_transfers WHERE product_id = ?').run(id);
+      db.prepare('DELETE FROM price_history WHERE product_id = ?').run(id);
       ProductRepository.remove(id);
     });
     deleteTx();

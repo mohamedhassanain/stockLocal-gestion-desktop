@@ -15,13 +15,24 @@ interface CategoryOption {
   name: string;
 }
 
+// Icône « archiver » (boîte d'archive) — SVG en currentColor, cohérente avec
+// DeleteButton. L'archivage masque le produit SANS le supprimer (historique
+// conservé) : c'est l'action recommandée pour un produit déjà utilisé.
+const ArchiveIcon: React.FC<{ size: number }> = ({ size }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="4" rx="1" />
+    <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+    <path d="M10 12h4" />
+  </svg>
+);
+
 // Layout de la liste produits en CSS Grid (§3.4) : les mêmes colonnes
 // grid-template-columns, partagées par l'en-tête et les lignes virtualisées,
 // garantissent l'alignement et le tronquage (nowrap + ellipsis) sans les
 // aléas de `<table>` + `<tbody style="display:block">` (largeur effondrée).
 
 export const ProductsPage: React.FC = () => {
-  const { products, loadProducts, isLoading, searchQuery, setSearchQuery, activateProduct, disableProduct, deleteProduct } = useProductStore();
+  const { products, loadProducts, isLoading, searchQuery, setSearchQuery, activateProduct, disableProduct, archiveProduct, deleteProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   // §Phase 6 — code-barres scanné au POS introuvable : pré-remplit la création.
@@ -146,6 +157,26 @@ export const ProductsPage: React.FC = () => {
     });
   };
 
+  const handleArchive = (product: Product) => {
+    setPendingConfirm({
+      title: 'Archiver ce produit ?',
+      message: (
+        <>
+          Le produit <strong>{product.designation}</strong> ({product.reference}) sera masqué des listes et retiré de la vente.
+          <br />Son historique (mouvements de stock, historique de prix, documents) est <strong>conservé</strong>.
+          <br />Vous pourrez le réactiver à tout moment.
+        </>
+      ),
+      confirmLabel: 'Archiver',
+      action: async () => {
+        try { await archiveProduct(product.id); toast.success(`Produit « ${product.designation} » archivé.`); } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.error(message);
+        }
+      },
+    });
+  };
+
   const handleDelete = (product: Product) => {
     setPendingConfirm({
       title: 'Suppression définitive',
@@ -153,8 +184,8 @@ export const ProductsPage: React.FC = () => {
           <>
             Supprimer <strong>{product.designation}</strong> ({product.reference}) ?
             <br /><span className="text-danger font-semibold">Cette action est irréversible.</span>
-            <br />Son historique de stock (mouvements, solde) sera également supprimé.
-            <br />Les produits liés à des factures, inventaires, commandes d'achat ou avoirs ne peuvent pas être supprimés.
+            <br />Son historique de stock (mouvements, solde) et son historique de prix seront également supprimés.
+            <br />Un produit lié à des factures, devis, commandes d'achat, avoirs ou inventaires ne peut pas être supprimé — utilisez « Archiver ».
           </>
         ),
       danger: true,
@@ -340,11 +371,22 @@ export const ProductsPage: React.FC = () => {
                         </div>
                         <div><Badge variant={statusBadge.variant}>{statusBadge.label}</Badge></div>
                         <div className="pdg-actions">
-                          <div className="flex gap-2 items-center">
-                            <Button variant="secondary" size="sm" onClick={() => handlePrintOne(p)} title="Imprimer l'étiquette de ce produit">🏷️</Button>
-                            <Button variant="secondary" size="sm" onClick={() => setHistoryProduct(p)} title="Historique du produit">📊</Button>
-                            <Button variant="secondary" size="sm" onClick={() => setConversionProduct(p)} title="Conversions d'unités">🔢</Button>
-                            <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>
+                          <div className="flex gap-1 items-center">
+                            <button type="button" className="icon-btn" onClick={() => handlePrintOne(p)} title="Imprimer l'étiquette de ce produit" aria-label={`Imprimer l'étiquette de ${p.designation}`}>🏷️</button>
+                            <button type="button" className="icon-btn" onClick={() => setHistoryProduct(p)} title="Historique du produit" aria-label={`Historique de ${p.designation}`}>📊</button>
+                            <button type="button" className="icon-btn" onClick={() => setConversionProduct(p)} title="Conversions d'unités" aria-label={`Conversions d'unités de ${p.designation}`}>🔢</button>
+                            <button type="button" className="icon-btn" onClick={() => handleEdit(p)} title="Modifier" aria-label={`Modifier ${p.designation}`}>✏️</button>
+                            {p.status !== 'ARCHIVED' && (
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                onClick={() => handleArchive(p)}
+                                title="Archiver (masquer en conservant l'historique)"
+                                aria-label={`Archiver ${p.designation}`}
+                              >
+                                <ArchiveIcon size={15} />
+                              </button>
+                            )}
                             <button
                               className={`switch ${p.status === 'ACTIVE' ? 'on' : ''}`}
                               onClick={() => p.status === 'ACTIVE' ? handleDisable(p) : handleActivate(p)}
