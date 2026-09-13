@@ -43,28 +43,55 @@ export class ProductRepository {
   // §14 : le stock courant est lu sur la balance précalculée (inventory_balances)
   // via LEFT JOIN — plus aucune agrégation corrélée par ligne sur tout l'historique.
   private static stmts = {
+    // ── SOLDE CONSOLIDÉ — `BALANCE_SUM` ────────────────────────────────────
+    // `inventory_balances` a une clé primaire COMPOSITE (product_id, warehouse_id)
+    // depuis le multi-dépôts : un produit stocké dans 2 dépôts y a 2 LIGNES.
+    // Joindre la table directement démultipliait donc chaque produit :
+    //   - listes et menus déroulants affichaient le produit plusieurs fois
+    //     (d'où les avertissements React « clés dupliquées »),
+    //   - `LIMIT/OFFSET` comptaient ces doublons → pagination fausse,
+    //   - `findById().current_stock` ne renvoyait le stock que d'UN SEUL dépôt.
+    // On agrège donc PAR PRODUIT avant la jointure : une ligne par produit,
+    // `current_stock` = stock CONSOLIDÉ (tous dépôts), ce que les appelants
+    // attendent (`Product.current_stock` documenté comme « niveau de stock actuel »).
     findById: db.prepare(`
       SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
-      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      LEFT JOIN (
+        SELECT product_id, SUM(quantity) AS quantity
+        FROM inventory_balances
+        GROUP BY product_id
+      ) ib ON ib.product_id = p.id
       WHERE p.id = ?
     `),
     findByBarcode: db.prepare(`
       SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
-      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      LEFT JOIN (
+        SELECT product_id, SUM(quantity) AS quantity
+        FROM inventory_balances
+        GROUP BY product_id
+      ) ib ON ib.product_id = p.id
       WHERE p.barcode = ?
     `),
     findByReference: db.prepare(`
       SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
-      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      LEFT JOIN (
+        SELECT product_id, SUM(quantity) AS quantity
+        FROM inventory_balances
+        GROUP BY product_id
+      ) ib ON ib.product_id = p.id
       WHERE p.reference = ? COLLATE NOCASE
     `),
     search: db.prepare(`
       SELECT p.*, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
-      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      LEFT JOIN (
+        SELECT product_id, SUM(quantity) AS quantity
+        FROM inventory_balances
+        GROUP BY product_id
+      ) ib ON ib.product_id = p.id
       WHERE p.designation LIKE @query OR p.reference LIKE @query OR p.barcode LIKE @query
       ORDER BY p.designation ASC
       LIMIT @limit OFFSET @offset

@@ -180,11 +180,23 @@ const stmtPaymentsByMethod = db.prepare<[string]>(`
   ORDER BY total DESC
 `);
 
+// §Multi-dépôts — vue CONSOLIDÉE (tous dépôts).
+//
+// `inventory_balances` a une clé primaire composite (product_id, warehouse_id) :
+// la joindre directement produisait PLUSIEURS lignes pour un même produit
+// (liste dupliquée) et comparait le seuil `min_stock` au stock d'UN SEUL dépôt
+// au lieu du stock total. On agrège donc par produit AVANT de joindre.
+const BALANCE_SUM = `(
+  SELECT product_id, SUM(quantity) AS quantity
+  FROM inventory_balances
+  GROUP BY product_id
+)`;
+
 const stmtLowStock = db.prepare<[]>(`
   SELECT p.id, p.reference, p.designation, p.min_stock,
     COALESCE(ib.quantity, 0) AS current_stock
   FROM products p
-  LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+  LEFT JOIN ${BALANCE_SUM} ib ON ib.product_id = p.id
   WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
   ORDER BY current_stock ASC
   LIMIT 20
@@ -205,7 +217,7 @@ const stmtLowStockByWarehouse = db.prepare<[string]>(`
 const stmtLowStockCount = db.prepare<[]>(`
   SELECT COUNT(*) AS cnt FROM (
     SELECT p.id FROM products p
-    LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+    LEFT JOIN ${BALANCE_SUM} ib ON ib.product_id = p.id
     WHERE p.status = 'ACTIVE' AND COALESCE(ib.quantity, 0) <= p.min_stock
   )
 `);
@@ -299,10 +311,12 @@ export const DashboardRepository = {
     const requestedLimit = Number(limit);
     const safeDays = Number.isFinite(requestedDays) ? Math.max(1, Math.min(3650, Math.trunc(requestedDays))) : 90;
     const safeLimit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(100, Math.trunc(requestedLimit))) : 15;
+    // Vue CONSOLIDÉE : la balance est agrégée par produit avant jointure, sinon
+    // un produit stocké dans plusieurs dépôts apparaîtrait plusieurs fois.
     return db.prepare(`
       SELECT p.id, p.reference, p.designation, COALESCE(ib.quantity, 0) AS current_stock
       FROM products p
-      LEFT JOIN inventory_balances ib ON ib.product_id = p.id
+      LEFT JOIN ${BALANCE_SUM} ib ON ib.product_id = p.id
       WHERE p.status = 'ACTIVE'
         AND p.id NOT IN (
           SELECT DISTINCT di.product_id
