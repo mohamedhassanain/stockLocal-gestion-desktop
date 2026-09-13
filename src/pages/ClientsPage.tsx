@@ -4,6 +4,7 @@ import { ClientDetailPanel } from '../components/ClientDetailPanel';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toast } from '../stores/useToastStore';
 import type { Customer } from '../repositories/ClientRepository';
+import { DEFAULT_CLIENT_CATEGORIES } from '../domain/clients/clientCategories';
 import { Button, Badge, Input, Select, PageHeader, Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui';
 
 interface ClientFormState {
@@ -13,14 +14,27 @@ interface ClientFormState {
   ice: string;
   payment_conditions: string;
   credit_limit: number;
-  category: 'DÉTAIL' | 'GROSSISTE' | 'VIP';
+  // Catégorie libre : la liste est définie par l'utilisateur dans Paramètres → Catégories clients.
+  category: string;
 }
 
-const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSave: (data: ClientFormState) => void }> = ({ initial, onClose, onSave }) => {
+const ClientFormModal: React.FC<{
+  initial?: Customer;
+  categories: string[];
+  onClose: () => void;
+  onSave: (data: ClientFormState) => void;
+}> = ({ initial, categories, onClose, onSave }) => {
+  const fallbackCategory = categories[0] ?? 'DÉTAIL';
   const [form, setForm] = useState<ClientFormState>(() =>
     initial
-      ? { name: initial.name, phone: initial.phone ?? '', address: initial.address ?? '', ice: initial.ice ?? '', payment_conditions: initial.payment_conditions ?? 'Comptant', credit_limit: initial.credit_limit ?? 0, category: initial.category ?? 'DÉTAIL' }
-      : { name: '', phone: '', address: '', ice: '', payment_conditions: 'Comptant', credit_limit: 0, category: 'DÉTAIL' });
+      ? { name: initial.name, phone: initial.phone ?? '', address: initial.address ?? '', ice: initial.ice ?? '', payment_conditions: initial.payment_conditions ?? 'Comptant', credit_limit: initial.credit_limit ?? 0, category: initial.category || fallbackCategory }
+      : { name: '', phone: '', address: '', ice: '', payment_conditions: 'Comptant', credit_limit: 0, category: fallbackCategory });
+
+  // Une catégorie déjà affectée au client reste sélectionnable même si elle a
+  // été retirée depuis les paramètres (aucune donnée perdue à l'édition).
+  const categoryOptions = form.category && !categories.includes(form.category)
+    ? [form.category, ...categories]
+    : categories;
 
   return (
     <Modal open onClose={onClose} width={480}>
@@ -29,11 +43,10 @@ const ClientFormModal: React.FC<{ initial?: Customer; onClose: () => void; onSav
         <Select
           label="Catégorie *"
           value={form.category}
-          onChange={e => setForm({ ...form, category: e.target.value as 'DÉTAIL' | 'GROSSISTE' | 'VIP' })}
+          onChange={e => setForm({ ...form, category: e.target.value })}
         >
-          <option value="DÉTAIL">Détail</option>
-          <option value="GROSSISTE">Grossiste</option>
-          <option value="VIP">VIP</option>
+          {categoryOptions.length === 0 && <option value="DÉTAIL">Détail</option>}
+          {categoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
         </Select>
 
         <Select
@@ -80,8 +93,27 @@ export const ClientsPage: React.FC = () => {
   const { clients, selectedClient, searchQuery, isLoading, setSearchQuery, loadClients, selectClient, createClient, updateClient, deleteClient, addDebt, addPayment } = useClientStore();
   const [modalState, setModalState] = useState<{ mode: 'create' } | { mode: 'edit'; client: Customer } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  // Catégories définies par l'utilisateur dans Paramètres → Catégories clients.
+  const [clientCategories, setClientCategories] = useState<string[]>(() => [...DEFAULT_CLIENT_CATEGORIES]);
 
   useEffect(() => { loadClients(); }, []);
+
+  // Recharge la liste des catégories à chaque ouverture d'un formulaire : si
+  // l'utilisateur vient de modifier ses catégories dans Paramètres, le menu est
+  // à jour sans redémarrer l'application.
+  useEffect(() => {
+    if (!modalState) return;
+    let cancelled = false;
+    window.api.globalSettings.get()
+      .then((settings: { client_categories?: string[] } | null) => {
+        if (cancelled) return;
+        if (settings && Array.isArray(settings.client_categories) && settings.client_categories.length > 0) {
+          setClientCategories(settings.client_categories);
+        }
+      })
+      .catch(() => { /* repli silencieux sur les catégories par défaut */ });
+    return () => { cancelled = true; };
+  }, [modalState]);
 
   const handleSaveForm = async (data: ClientFormState) => {
     try {
@@ -201,6 +233,7 @@ export const ClientsPage: React.FC = () => {
       {modalState && (
         <ClientFormModal
           initial={modalState.mode === 'edit' ? modalState.client : undefined}
+          categories={clientCategories}
           onClose={() => setModalState(null)}
           onSave={handleSaveForm}
         />

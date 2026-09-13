@@ -40,7 +40,9 @@ export const ClientCreateSchema = z.object({
   ice: z.string().max(30).optional().nullable(),
   payment_conditions: z.string().max(200).optional().nullable(),
   credit_limit: z.number().min(0, 'Le plafond de crédit ne peut pas être négatif.').default(0),
-  category: z.enum(['DÉTAIL', 'GROSSISTE', 'VIP']).default('DÉTAIL'),
+  // Catégorie libre : définie par l'utilisateur dans Paramètres → Catégories clients.
+  // Défaut historique conservé pour compatibilité ('DÉTAIL').
+  category: z.string().min(1, 'La catégorie est obligatoire.').max(50).default('DÉTAIL'),
 });
 
 export const ClientUpdateSchema = ClientCreateSchema.partial();
@@ -278,6 +280,8 @@ export const GlobalSettingsSchema = z.object({
   })).max(100).optional(),
   // Catégories de dépenses définies par l'utilisateur (Dépenses → Nouvelle dépense).
   expense_categories: z.array(z.string().min(1, 'La catégorie est obligatoire.').max(50)).max(100).optional(),
+  // Catégories de clients définies par l'utilisateur (Clients → Nouveau Client).
+  client_categories: z.array(z.string().min(1, 'La catégorie est obligatoire.').max(50)).max(100).optional(),
   // Multi-dépôts : dépôt actif (persisté dans global_settings).
   active_warehouse_id: z.string().max(64).optional(),
   // Conformité fiscale DGI (Maroc) — facturation électronique. Désactivé par

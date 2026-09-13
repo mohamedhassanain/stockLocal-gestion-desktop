@@ -399,6 +399,13 @@ CREATE TABLE IF NOT EXISTS inventory_item_versions (
 -- ══════════════════════════════════════════════════════════════════════════════
 
 CREATE INDEX IF NOT EXISTS idx_products_reference ON products (reference);
+-- Index NOCASE : la recherche d'un produit par référence au POS
+-- (ProductRepository.findByReference) filtre avec `reference = ? COLLATE NOCASE`.
+-- Une égalité COLLATE NOCASE ne peut PAS utiliser l'index BINARY ci-dessus (ni
+-- l'index automatique de la contrainte UNIQUE, lui aussi BINARY) : sans cet
+-- index dédié, SQLite faisait un SCAN COMPLET de `products` à chaque scan de
+-- code/référence au POS. Vérifié par EXPLAIN QUERY PLAN (tests/db-audit-indexes).
+CREATE INDEX IF NOT EXISTS idx_products_reference_nocase ON products (reference COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_products_barcode ON products (barcode);
 CREATE INDEX IF NOT EXISTS idx_products_designation ON products (designation);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products (category_id);

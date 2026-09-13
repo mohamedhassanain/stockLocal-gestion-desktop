@@ -14,10 +14,15 @@ import {
   EXPENSE_CATEGORY_MAX_LENGTH,
   normalizeExpenseCategories,
 } from '../domain/expenses/expenseCategories';
+import {
+  DEFAULT_CLIENT_CATEGORIES,
+  CLIENT_CATEGORY_MAX_LENGTH,
+  normalizeClientCategories,
+} from '../domain/clients/clientCategories';
 // Conformité fiscale DGI (Maroc) — constantes/traits PURS (sans accès base).
 import { DGI_MODULE_DISCLAIMER, DGI_STATUS_LABEL } from '../compliance/dgi/dgiStatus';
 // ─── Onglets ────────────────────────────────────────────────────────────────
-type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'dgi' | 'alerts' | 'updates';
+type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'clients' | 'dgi' | 'alerts' | 'updates';
 
 interface Category {
   id: string;
@@ -73,6 +78,7 @@ interface GlobalSettings {
   stock_exit_types: string[];
   cash_movement_types: CashMovementTypeDef[];
   expense_categories: string[];
+  client_categories: string[];
   dgi_compliance_enabled: boolean;
 }
 
@@ -130,6 +136,7 @@ export const SettingsPage: React.FC = () => {
     stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
     cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
     expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
+    client_categories: [...DEFAULT_CLIENT_CATEGORIES],
     dgi_compliance_enabled: false,
   });
   const [newUnit, setNewUnit] = useState('');
@@ -137,6 +144,7 @@ export const SettingsPage: React.FC = () => {
   const [newCashTypeLabel, setNewCashTypeLabel] = useState('');
   const [newCashTypeDirection, setNewCashTypeDirection] = useState<'IN' | 'OUT'>('IN');
   const [newExpenseCategory, setNewExpenseCategory] = useState('');
+  const [newClientCategory, setNewClientCategory] = useState('');
   const [productsList, setProductsList] = useState<Array<{ id: string; designation: string; reference: string; min_stock: number }>>([]);
   const [minStockSearch, setMinStockSearch] = useState('');
 
@@ -761,6 +769,43 @@ export const SettingsPage: React.FC = () => {
     notify(`🗑️ Catégorie « ${label} » supprimée`);
   };
 
+  // ─── Catégories de clients (Clients → Nouveau Client → Catégorie) ──────────
+  const persistClientCategories = async (categories: string[]) => {
+    const clean = normalizeClientCategories(categories);
+    setGlobalSettings(prev => ({ ...prev, client_categories: clean }));
+    try {
+      await window.api.globalSettings.save({ client_categories: clean });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      notify(`❌ ${message}`);
+    }
+  };
+
+  const addClientCategory = async () => {
+    const label = newClientCategory.trim().slice(0, CLIENT_CATEGORY_MAX_LENGTH);
+    if (!label) return;
+    const exists = globalSettings.client_categories.some(
+      c => c.toLocaleLowerCase('fr') === label.toLocaleLowerCase('fr'),
+    );
+    if (exists) {
+      notify('⚠️ Cette catégorie existe déjà');
+      return;
+    }
+    await persistClientCategories([...globalSettings.client_categories, label]);
+    setNewClientCategory('');
+    notify('✅ Catégorie client ajoutée');
+  };
+
+  const removeClientCategory = async (label: string) => {
+    // Au moins une catégorie doit rester définie (sinon le menu du client serait vide).
+    if (globalSettings.client_categories.length <= 1) {
+      notify('⚠️ Au moins une catégorie client est requise');
+      return;
+    }
+    await persistClientCategories(globalSettings.client_categories.filter(c => c !== label));
+    notify(`🗑️ Catégorie « ${label} » supprimée`);
+  };
+
   // ─── Conformité fiscale DGI (Maroc) — préparation ──────────────────────────
   const [dgiState, setDgiState] = useState<{ enabled: boolean; configured: boolean; integrationAvailable: boolean } | null>(null);
 
@@ -825,6 +870,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'units', label: 'Unités', icon: '📏' },
     { id: 'cash', label: 'Caisse', icon: '💵' },
     { id: 'expenses', label: 'Dépenses', icon: '🧾' },
+    { id: 'clients', label: 'Catégories clients', icon: '🤝' },
     { id: 'dgi', label: 'Conformité DGI', icon: '🇲🇦' },
     { id: 'alerts', label: 'Alertes', icon: '🔔' },
     { id: 'data', label: 'Données', icon: '💾' },
@@ -1300,6 +1346,42 @@ export const SettingsPage: React.FC = () => {
                 ))}
               </div>
             )}
+          </Card>
+        )}
+
+        {tab === 'clients' && (
+          <Card padding style={{ maxWidth: 720 }}>
+            <SectionTitle icon="🤝" title="Catégories de clients" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Définissez les catégories proposées dans « Clients → Nouveau Client → Catégorie »
+              (ex : Détail, Grossiste, VIP, Revendeur…). Elles apparaissent immédiatement dans le
+              formulaire client, sans redémarrer l'application.
+            </p>
+            <div className="flex gap-2 mb-4">
+              <Input
+                placeholder="Nouvelle catégorie (ex : Revendeur)"
+                value={newClientCategory}
+                onChange={e => setNewClientCategory(e.target.value)}
+                className="flex-1"
+                inputSize="sm"
+              />
+              <Button onClick={addClientCategory}>+ Ajouter</Button>
+            </div>
+            {globalSettings.client_categories.length === 0 ? (
+              <div className="text-muted text-center" style={{ padding: 16 }}>Aucune catégorie définie.</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {globalSettings.client_categories.map(c => (
+                  <span key={c} className="badge badge-info">
+                    {c}
+                    <DeleteButton size="xs" onClick={() => removeClientCategory(c)} title={`Supprimer ${c}`} />
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted" style={{ marginTop: 12 }}>
+              Les clients existants conservent leur catégorie même si vous la supprimez de cette liste.
+            </p>
           </Card>
         )}
 

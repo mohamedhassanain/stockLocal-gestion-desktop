@@ -10,7 +10,8 @@ export interface Customer {
   ice?: string;
   payment_conditions?: string;
   credit_limit: number;
-  category: 'DÉTAIL' | 'GROSSISTE' | 'VIP';
+  // Catégorie libre définie par l'utilisateur (Paramètres → Catégories clients).
+  category: string;
   created_at?: string;
   updated_at?: string;
   // Calculé dynamiquement

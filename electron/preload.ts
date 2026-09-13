@@ -85,7 +85,9 @@ export interface ClientCreateInput {
   ice?: string | null;
   payment_conditions?: string | null;
   credit_limit?: number;
-  category?: 'DÉTAIL' | 'GROSSISTE' | 'VIP';
+  // Catégorie libre : définie par l'utilisateur dans Paramètres → Catégories clients
+  // (valeur par défaut historique : 'DÉTAIL').
+  category?: string;
 }
 export type ClientUpdateInput = Partial<ClientCreateInput>;
 
@@ -234,6 +236,8 @@ export interface GlobalSettingsInput {
   cash_movement_types?: Array<{ label: string; direction: 'IN' | 'OUT' }>;
   // Catégories de dépenses définies par l'utilisateur.
   expense_categories?: string[];
+  // Catégories de clients définies par l'utilisateur (Détail, Grossiste, VIP…).
+  client_categories?: string[];
   // Multi-dépôts : dépôt actif (persisté).
   active_warehouse_id?: string;
   // Conformité fiscale DGI (Maroc) — facturation électronique. Désactivé par

@@ -8,6 +8,10 @@ import {
   DEFAULT_EXPENSE_CATEGORIES,
   parseExpenseCategories,
 } from '../domain/expenses/expenseCategories';
+import {
+  DEFAULT_CLIENT_CATEGORIES,
+  parseClientCategories,
+} from '../domain/clients/clientCategories';
 
 export interface GlobalSettings {
   low_stock_threshold_multiplier: number;
@@ -31,6 +35,8 @@ export interface GlobalSettings {
   cash_movement_types: CashMovementTypeDef[];
   // Catégories de dépenses définies par l'utilisateur.
   expense_categories: string[];
+  // Catégories de clients définies par l'utilisateur (Détail, Grossiste, VIP…).
+  client_categories: string[];
   // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
   ai_provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
   ai_provider_name: string;
@@ -67,6 +73,7 @@ const DEFAULTS: GlobalSettings = {
   stock_exit_types: ['VENTE', 'CASSE', 'PERTE', 'RETOUR'],
   cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
   expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
+  client_categories: [...DEFAULT_CLIENT_CATEGORIES],
   ai_provider: 'anthropic',
   ai_provider_name: '',
   ai_base_url: '',
@@ -128,6 +135,7 @@ export const GlobalSettingsService = {
       })(),
       cash_movement_types: parseCashMovementTypes(map['cash_movement_types']),
       expense_categories: parseExpenseCategories(map['expense_categories']),
+      client_categories: parseClientCategories(map['client_categories']),
       ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'openai-compatible' | 'custom',
       ai_provider_name: map['ai_provider_name'] ?? DEFAULTS.ai_provider_name,
       ai_base_url: map['ai_base_url'] ?? DEFAULTS.ai_base_url,
