@@ -24,6 +24,7 @@
 - [Base de données](#base-de-données)
 - [Installation](#installation)
 - [Développement](#développement)
+- [Dépannage — `npm run dev` plante avec `spawn UNKNOWN`](#dépannage--npm-run-dev-plante-avec-spawn-unknown)
 - [Tests](#tests)
 - [Build & packaging](#build--packaging)
 - [Sauvegarde & restauration](#sauvegarde--restauration)
@@ -196,6 +197,90 @@ exports batch, confinement des chemins) et volumétrie (10 000 produits,
 Test Files  8 passed (8)
      Tests  110 passed (110)
 ```
+
+---
+
+## Dépannage — `npm run dev` plante avec `spawn UNKNOWN`
+
+**Symptôme.** Après un build réussi de `main.js` / `preload.js`, `npm run dev`
+s'interrompt sur :
+
+```text
+Error: spawn UNKNOWN
+    errno: -4094, code: 'UNKNOWN', syscall: 'spawn'
+    at .../vite-plugin-electron/dist/index.js
+```
+
+Le **build** est correct : c'est le **lancement du binaire Electron** qui échoue.
+Ce n'est **pas un bug de l'application** ni de sa logique métier — c'est un
+problème d'**environnement de développement Windows**.
+
+### Cause la plus fréquente : Windows 11 « Smart App Control »
+
+Windows 11 active par défaut **Smart App Control**, qui refuse d'exécuter un
+`.exe` **non signé numériquement**. L'`electron.exe` fourni par npm pour le
+développement **n'est pas signé** (c'est normal en dev) → Windows bloque la
+création du processus (d'où `spawn UNKNOWN`, `errno -4094`).
+
+**Vérifier la cause** (PowerShell, à la racine du projet) :
+
+```powershell
+Get-AuthenticodeSignature ".\node_modules\electron\dist\electron.exe" | Format-List Status,StatusMessage
+```
+
+Un `Status : NotSigned` **confirme** la cause. Test complémentaire : exécuter
+directement `.\node_modules\electron\dist\electron.exe` → le message
+« An Application Control policy has blocked this file » apparaît.
+
+**Solutions (environnement de développement uniquement) :**
+
+1. **Désactiver Smart App Control** : *Sécurité Windows* → *Contrôle des
+   applications et du navigateur* → *Paramètres Smart App Control* →
+   **Désactivé**. (Attention : une fois désactivé, Smart App Control ne peut
+   être réactivé que par une réinstallation/réinitialisation de Windows.)
+2. **Ajouter une exclusion** pour le dossier du projet (ou `node_modules`) dans
+   les paramètres de sécurité Windows / l'antivirus.
+
+> ⚠️ Ces réglages ne concernent **que la machine de développement**. Ils ne
+> doivent **jamais** être appliqués à l'application **packagée** livrée aux
+> clients : pour l'installateur final, la bonne approche reste la **signature de
+> code** avec un vrai certificat (voir « Code signing Windows (SmartScreen) »).
+
+### Cause secondaire possible : chemin du projet contenant un espace
+
+Un chemin contenant un **espace** (ex. `C:\Users\mohamed hassanain\Desktop\...`)
+a déjà été associé à des échecs de `spawn` sous Windows selon la version de
+Node.js. Si le problème **persiste après** la vérification de Smart App Control,
+**déplacer le projet** vers un chemin sans espace ni caractère spécial, par
+exemple `C:\Dev\stockLocal`.
+
+### Faut-il mettre à jour `vite-plugin-electron` ?
+
+Vérifié à ce jour : **non**. Version installée : `vite-plugin-electron`
+**0.28.8** (dernière publiée : **1.1.2**). Le changelog officiel (v0.29 → v1.1)
+apporte des correctifs sur la **résolution du chemin Electron** et le
+**hot-reload Windows**, mais **aucun** ne traite un refus d'exécution au niveau
+**système d'exploitation**. Le plugin se contente d'appeler
+`child_process.spawn(electronPath, …)` : **aucun paramètre du plugin ne peut
+contourner un blocage système** de l'exécutable. Une montée 0.28 → 1.x serait
+**majeure** (changements d'API) **sans bénéfice** pour ce point précis → **non
+effectuée volontairement**. Aucun paramètre de configuration du plugin n'a été
+ajouté (aucune option officielle ne réduit ce type d'échec).
+
+### `npm test` est aussi touché (même binaire Electron)
+
+`npm test` lance Vitest **avec le Node embarqué d'Electron**
+(`scripts/run-tests-electron.cjs` → `spawnSync(electronPath, …)`), donc le même
+blocage s'applique : `npm test` se termine **sans exécuter les tests** (exit 1).
+Contournement de développement : lancer Vitest avec le **Node système** —
+`npx vitest run` — qui exécute exactement les mêmes tests. `npm test` reste la
+référence « ABI Electron » **une fois Smart App Control neutralisé**.
+
+### Le build de production n'est pas affecté
+
+Le blocage ne concerne **que** les commandes qui **lancent le binaire Electron**
+(`npm run dev`, `npm test`). `npx vite build` et `npm run build`
+(typecheck + bundle + `electron-builder`) fonctionnent normalement.
 
 ---
 
