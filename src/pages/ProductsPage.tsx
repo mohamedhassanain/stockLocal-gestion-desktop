@@ -21,7 +21,7 @@ interface CategoryOption {
 // aléas de `<table>` + `<tbody style="display:block">` (largeur effondrée).
 
 export const ProductsPage: React.FC = () => {
-  const { products, loadProducts, isLoading, searchQuery, setSearchQuery, archiveProduct, activateProduct, disableProduct, deleteProduct } = useProductStore();
+  const { products, loadProducts, isLoading, searchQuery, setSearchQuery, activateProduct, disableProduct, deleteProduct } = useProductStore();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   // §Phase 6 — code-barres scanné au POS introuvable : pré-remplit la création.
@@ -110,25 +110,6 @@ export const ProductsPage: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleArchive = (product: Product) => {
-    setPendingConfirm({
-      title: 'Archiver ce produit ?',
-      message: (
-        <>
-          Le produit <strong>{product.designation}</strong> ({product.reference}) sera masqué des recherches de vente.
-          <br />Vous pourrez le réactiver à tout moment.
-        </>
-      ),
-      confirmLabel: 'Archiver',
-      action: async () => {
-        try { await archiveProduct(product.id); toast.success(`Produit « ${product.designation} » archivé.`); } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : String(e);
-          toast.error(message);
-        }
-      },
-    });
-  };
-
   const handleActivate = async (product: Product) => {
     try { await activateProduct(product.id); toast.success(`Produit « ${product.designation} » réactivé.`); } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -162,7 +143,7 @@ export const ProductsPage: React.FC = () => {
             Supprimer <strong>{product.designation}</strong> ({product.reference}) ?
             <br /><span className="text-danger font-semibold">Cette action est irréversible.</span>
             <br />Son historique de stock (mouvements, solde) sera également supprimé.
-            <br />Les produits liés à des factures, inventaires, commandes d'achat ou avoirs restent bloqués (utilisez « Archiver »).
+            <br />Les produits liés à des factures, inventaires, commandes d'achat ou avoirs ne peuvent pas être supprimés.
           </>
         ),
       danger: true,
@@ -303,9 +284,6 @@ export const ProductsPage: React.FC = () => {
                             >
                               <span className="switch-knob" />
                             </button>
-                            {p.status !== 'ARCHIVED' && (
-                              <Button variant="secondary" size="sm" onClick={() => handleArchive(p)} title="Archiver">🗄️</Button>
-                            )}
                             <DeleteButton onClick={() => handleDelete(p)} title="Supprimer" />
                           </div>
                         </div>
