@@ -1,8 +1,9 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useToastStore } from '../../stores/useToastStore';
 
-const ICONS: Record<string, React.ComponentType<any>> = {
+const ICONS: Record<string, LucideIcon> = {
   success: CheckCircle2,
   error: XCircle,
   warning: AlertTriangle,

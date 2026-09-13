@@ -1,130 +1,136 @@
-# Rapport de Refactoring — StockLocal (Application Desktop Electron)
-
-> **Statut honnête.** Ce rapport reflète ce qui a **réellement été modifié, testé et vérifié**. Le chantier demandé (18 catégories P0/P1) est un effort **multi-sessions**. J'ai complété et **validé par tests** les correctifs **P0 les plus critiques** (intégrité des données) **et plusieurs items P1 concrets**, et documenté clairement ce qui **reste** à faire. **Je ne prétends pas "100% complete".**
-
----
-
-## 0. Mise à jour (avancement P1)
-
-Ces items P1 ont ensuite été **implémentés et vérifiés** (`tsc` OK) :
-
-- **Backup — tri fiable** : `listBackupsInDir` trie désormais par **`mtimeMs`** (nombre), plus jamais par la chaîne formatée `date` (`toLocaleString`).
-- **Backup — validation par checksum** : `backup()` écrit un fichier `.sha256` (SHA-256) à côté du backup ; `validateBackup()` vérifie `integrity_check` **puis** le checksum (`altéré` détecté).
-- **Backup — au démarrage si expiré** : nouvelle méthode `checkAndBackupIfDue()` appelée au démarrage (`main.ts`) — si la dernière sauvegarde est expirée (ou absente) et que `auto_backup_enabled` est actif, un backup est créé **immédiatement** (fire-and-forget).
-- **Sécurité Electron — CSP durcie** : ajout de `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'` à la CSP de production (ne casse ni React ni Electron). `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, `webSecurity:true` déjà présents.
-- **IPC Security — Zod pour inventaire versioning** : nouveaux schémas `InventoryCreateVersionSchema`, `InventoryGetVersionsSchema`, `InventoryRestoreVersionSchema`, `InventoryCorrectionSchema` utilisés dans les handlers IPC (`safeParse`). Le preload envoie `{ sessionId }` pour `getVersions` (cohérent avec le schéma).
-- **CSV — anti-injection de formule** : déjà centralisé dans `ExportService.csvEscape` (`=`, `+`, `-`, `@` → apostrophe) — **aucune modification nécessaire**.
+> [!WARNING] DOCUMENT HISTORIQUE - PERIME (Historical / superseded).
+> Le compteur de tests et le statut de production de ce fichier ne sont plus valides.
+> Rapport de reference : FINAL_PRODUCTION_AUDIT.md (57 fichiers, 538 tests, 538 PASS).
 
 ---
 
-## 1. Problèmes identifiés & corrigés
+# Rapport de Refactoring â€” StockLocal (Application Desktop Electron)
 
-### P0-1 — Suppression de produit : l'historique n'était pas protégé
+> **Statut honnÃªte.** Ce rapport reflÃ¨te ce qui a **rÃ©ellement Ã©tÃ© modifiÃ©, testÃ© et vÃ©rifiÃ©**. Le chantier demandÃ© (18 catÃ©gories P0/P1) est un effort **multi-sessions**. J'ai complÃ©tÃ© et **validÃ© par tests** les correctifs **P0 les plus critiques** (intÃ©gritÃ© des donnÃ©es) **et plusieurs items P1 concrets**, et documentÃ© clairement ce qui **reste** Ã  faire. **Je ne prÃ©tends pas "100% complete".**
+
+---
+
+## 0. Mise Ã  jour (avancement P1)
+
+Ces items P1 ont ensuite Ã©tÃ© **implÃ©mentÃ©s et vÃ©rifiÃ©s** (`tsc` OK) :
+
+- **Backup â€” tri fiable** : `listBackupsInDir` trie dÃ©sormais par **`mtimeMs`** (nombre), plus jamais par la chaÃ®ne formatÃ©e `date` (`toLocaleString`).
+- **Backup â€” validation par checksum** : `backup()` Ã©crit un fichier `.sha256` (SHA-256) Ã  cÃ´tÃ© du backup ; `validateBackup()` vÃ©rifie `integrity_check` **puis** le checksum (`altÃ©rÃ©` dÃ©tectÃ©).
+- **Backup â€” au dÃ©marrage si expirÃ©** : nouvelle mÃ©thode `checkAndBackupIfDue()` appelÃ©e au dÃ©marrage (`main.ts`) â€” si la derniÃ¨re sauvegarde est expirÃ©e (ou absente) et que `auto_backup_enabled` est actif, un backup est crÃ©Ã© **immÃ©diatement** (fire-and-forget).
+- **SÃ©curitÃ© Electron â€” CSP durcie** : ajout de `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'` Ã  la CSP de production (ne casse ni React ni Electron). `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true`, `webSecurity:true` dÃ©jÃ  prÃ©sents.
+- **IPC Security â€” Zod pour inventaire versioning** : nouveaux schÃ©mas `InventoryCreateVersionSchema`, `InventoryGetVersionsSchema`, `InventoryRestoreVersionSchema`, `InventoryCorrectionSchema` utilisÃ©s dans les handlers IPC (`safeParse`). Le preload envoie `{ sessionId }` pour `getVersions` (cohÃ©rent avec le schÃ©ma).
+- **CSV â€” anti-injection de formule** : dÃ©jÃ  centralisÃ© dans `ExportService.csvEscape` (`=`, `+`, `-`, `@` â†’ apostrophe) â€” **aucune modification nÃ©cessaire**.
+
+---
+
+## 1. ProblÃ¨mes identifiÃ©s & corrigÃ©s
+
+### P0-1 â€” Suppression de produit : l'historique n'Ã©tait pas protÃ©gÃ©
 - **Fichier** : `src/services/ProductService.ts` (`deleteProduct`)
-- **Problème** : `moveCount` (mouvements de stock) était calculé mais **non ajouté** aux références bloquantes. Pire, le code **supprimait les mouvements de stock** (`DELETE FROM stock_movements`) lors de la suppression — destruction d'historique. `price_history` n'était pas non plus bloquant.
+- **ProblÃ¨me** : `moveCount` (mouvements de stock) Ã©tait calculÃ© mais **non ajoutÃ©** aux rÃ©fÃ©rences bloquantes. Pire, le code **supprimait les mouvements de stock** (`DELETE FROM stock_movements`) lors de la suppression â€” destruction d'historique. `price_history` n'Ã©tait pas non plus bloquant.
 - **Correction** :
-  - `stock_movements` et `price_history` sont désormais des références **bloquantes** → `EntityCannotBeDeletedError` si le produit a un historique.
-  - La suppression transactionnelle ne touche **plus** `stock_movements` ; elle ne nettoie que la balance précalculée `inventory_balances` (donnée dérivée) puis supprime le produit.
-- **Tests** : `tests/stock-engine.test.ts` couvre déjà « produit avec mouvement → refusé » et « produit propre → suppression OK ».
+  - `stock_movements` et `price_history` sont dÃ©sormais des rÃ©fÃ©rences **bloquantes** â†’ `EntityCannotBeDeletedError` si le produit a un historique.
+  - La suppression transactionnelle ne touche **plus** `stock_movements` ; elle ne nettoie que la balance prÃ©calculÃ©e `inventory_balances` (donnÃ©e dÃ©rivÃ©e) puis supprime le produit.
+- **Tests** : `tests/stock-engine.test.ts` couvre dÃ©jÃ  Â« produit avec mouvement â†’ refusÃ© Â» et Â« produit propre â†’ suppression OK Â».
 
-### P0-3 — State machine d'inventaire
+### P0-3 â€” State machine d'inventaire
 - **Fichier** : `src/repositories/InventorySessionRepository.ts`
-- **Problème** : `update()` permettait de modifier `status` librement → `VALIDATION → DRAFT/COMPTAGE/CALCUL` possibles.
+- **ProblÃ¨me** : `update()` permettait de modifier `status` librement â†’ `VALIDATION â†’ DRAFT/COMPTAGE/CALCUL` possibles.
 - **Correction** :
-  - `update()` **refuse désormais tout changement de `status`** (uniquement nom/notes). Les transitions passent par `startCounting()` (DRAFT→COMPTAGE), `calculateGaps()` (COMPTAGE→CALCUL), `validate()` (CALCUL→VALIDATION).
-  - `remove()` **refuse la suppression d'une session `VALIDATION`** (l'historique de stock est protégé ; on passe par une correction).
+  - `update()` **refuse dÃ©sormais tout changement de `status`** (uniquement nom/notes). Les transitions passent par `startCounting()` (DRAFTâ†’COMPTAGE), `calculateGaps()` (COMPTAGEâ†’CALCUL), `validate()` (CALCULâ†’VALIDATION).
+  - `remove()` **refuse la suppression d'une session `VALIDATION`** (l'historique de stock est protÃ©gÃ© ; on passe par une correction).
 
-### P0-4 — Empêcher la double validation
-- **Vérifié** : `validate()` possédait déjà le garde `session.status === 'VALIDATION' → throw` et utilise `runInTransaction` (atomique).
-- **Test ajouté** : `tests/inventory-versioning.test.ts` — `validate()` → stock 95 ; `validate()` à nouveau → **refusé**, un seul mouvement (-5), pas de -10.
+### P0-4 â€” EmpÃªcher la double validation
+- **VÃ©rifiÃ©** : `validate()` possÃ©dait dÃ©jÃ  le garde `session.status === 'VALIDATION' â†’ throw` et utilise `runInTransaction` (atomique).
+- **Test ajoutÃ©** : `tests/inventory-versioning.test.ts` â€” `validate()` â†’ stock 95 ; `validate()` Ã  nouveau â†’ **refusÃ©**, un seul mouvement (-5), pas de -10.
 
-### P0-5 / P0-6 / P0-7 — Versioning d'inventaire de bout en bout + restauration + correction
-- **Backend déjà présent** : `InventorySessionRepository.createVersion/getVersions/restoreVersion/correctValidatedInventory` (restauration crée **une nouvelle version**, jamais d'écrasement).
-- **Manquant câblé** :
+### P0-5 / P0-6 / P0-7 â€” Versioning d'inventaire de bout en bout + restauration + correction
+- **Backend dÃ©jÃ  prÃ©sent** : `InventorySessionRepository.createVersion/getVersions/restoreVersion/correctValidatedInventory` (restauration crÃ©e **une nouvelle version**, jamais d'Ã©crasement).
+- **Manquant cÃ¢blÃ©** :
   - `electron/ipc/operations.ipc.ts` : handlers `inventory:createVersion`, `inventory:getVersions`, `inventory:restoreVersion`, `inventory:correctValidatedInventory` (validation des inputs, `requireId`, `toHumanError`).
   - `electron/preload.ts` : `inventory.createVersion/getVersions/restoreVersion/correctValidatedInventory`.
-  - `src/stores/useInventoryStore.ts` : état `versions` + actions `createVersion/getVersions/restoreVersion/correctValidatedInventory`.
-  - `src/pages/InventoryPage.tsx` : bouton « 💾 Enregistrer une version », panneau « 🕘 Historique des versions » (numéro, date, note) avec bouton « Restaurer », et bouton « Corriger » pour les sessions `VALIDATION` (correction post-validation).
-- **Test ajouté** : `V1=95, V2=97, V3=96 → restore V2 → V4=97`, V1/V2/V3 intactes ; correction post-validation `95 → 97 → +2 (stock 97)`.
+  - `src/stores/useInventoryStore.ts` : Ã©tat `versions` + actions `createVersion/getVersions/restoreVersion/correctValidatedInventory`.
+  - `src/pages/InventoryPage.tsx` : bouton Â« ðŸ’¾ Enregistrer une version Â», panneau Â« ðŸ•˜ Historique des versions Â» (numÃ©ro, date, note) avec bouton Â« Restaurer Â», et bouton Â« Corriger Â» pour les sessions `VALIDATION` (correction post-validation).
+- **Test ajoutÃ©** : `V1=95, V2=97, V3=96 â†’ restore V2 â†’ V4=97`, V1/V2/V3 intactes ; correction post-validation `95 â†’ 97 â†’ +2 (stock 97)`.
 
 ---
 
-## 2. Fichiers modifiés
+## 2. Fichiers modifiÃ©s
 
-- `src/services/ProductService.ts` — suppression protégée (moveCount + price_history).
-- `src/repositories/InventorySessionRepository.ts` — state machine + protection session validée.
-- `electron/ipc/operations.ipc.ts` — handlers versioning inventaire.
-- `electron/preload.ts` — API versioning.
-- `src/stores/useInventoryStore.ts` — actions + état `versions`.
-- `src/pages/InventoryPage.tsx` — UI historique des versions + restauration + correction.
+- `src/services/ProductService.ts` â€” suppression protÃ©gÃ©e (moveCount + price_history).
+- `src/repositories/InventorySessionRepository.ts` â€” state machine + protection session validÃ©e.
+- `electron/ipc/operations.ipc.ts` â€” handlers versioning inventaire.
+- `electron/preload.ts` â€” API versioning.
+- `src/stores/useInventoryStore.ts` â€” actions + Ã©tat `versions`.
+- `src/pages/InventoryPage.tsx` â€” UI historique des versions + restauration + correction.
 
-## 3. Fichiers créés
+## 3. Fichiers crÃ©Ã©s
 
-- `tests/inventory-versioning.test.ts` — tests P0-3/P0-4/P0-6/P0-7.
+- `tests/inventory-versioning.test.ts` â€” tests P0-3/P0-4/P0-6/P0-7.
 
-## 4. Bases de données / migrations
+## 4. Bases de donnÃ©es / migrations
 
-- **Aucune migration nécessaire** pour les correctifs réalisés : `inventory_versions`, `inventory_item_versions`, les FK `ON DELETE RESTRICT` sur `stock_movements → products`, etc. étaient déjà présentes dans `database.sql`.
-  - Les FK historiques critiques sont déjà `ON DELETE RESTRICT` : `document_items`, `inventory_items`, `purchase_order_items`, `credit_note_refs`, `stock_movements` (product).
-  - `product_batches.product_id` et `unit_conversions.product_id` sont `ON DELETE CASCADE` (données de configuration / lots, pas de l'historique comptable) — à confirmer selon la règle métier si vous considérez les lots comme historiques.
+- **Aucune migration nÃ©cessaire** pour les correctifs rÃ©alisÃ©s : `inventory_versions`, `inventory_item_versions`, les FK `ON DELETE RESTRICT` sur `stock_movements â†’ products`, etc. Ã©taient dÃ©jÃ  prÃ©sentes dans `database.sql`.
+  - Les FK historiques critiques sont dÃ©jÃ  `ON DELETE RESTRICT` : `document_items`, `inventory_items`, `purchase_order_items`, `credit_note_refs`, `stock_movements` (product).
+  - `product_batches.product_id` et `unit_conversions.product_id` sont `ON DELETE CASCADE` (donnÃ©es de configuration / lots, pas de l'historique comptable) â€” Ã  confirmer selon la rÃ¨gle mÃ©tier si vous considÃ©rez les lots comme historiques.
 
 ## 5. Comportement Delete / Archive
 
-- Un produit **avec historique** (facture, inventaire, achat, avoir, **mouvement de stock**, **historique de prix**) → **suppression refusée** (`EntityCannotBeDeletedError`), l'utilisateur doit **Archiver**.
-- Un produit **sans aucune référence** → suppression directe (balance dérivée nettoyée, produit supprimé).
+- Un produit **avec historique** (facture, inventaire, achat, avoir, **mouvement de stock**, **historique de prix**) â†’ **suppression refusÃ©e** (`EntityCannotBeDeletedError`), l'utilisateur doit **Archiver**.
+- Un produit **sans aucune rÃ©fÃ©rence** â†’ suppression directe (balance dÃ©rivÃ©e nettoyÃ©e, produit supprimÃ©).
 
-## 6. Machine à états d'inventaire
+## 6. Machine Ã  Ã©tats d'inventaire
 
 ```
-DRAFT → COMPTAGE → CALCUL → VALIDATION
+DRAFT â†’ COMPTAGE â†’ CALCUL â†’ VALIDATION
 ```
 - `update()` ne peut plus changer le statut.
-- Session `VALIDATION` indélébile par `update`/`remove` ; toute modification passe par **correction**.
-- Restauration d'une version → **nouvelle version** (V4), jamais d'écrasement.
+- Session `VALIDATION` indÃ©lÃ©bile par `update`/`remove` ; toute modification passe par **correction**.
+- Restauration d'une version â†’ **nouvelle version** (V4), jamais d'Ã©crasement.
 
-## 7. Intégrité du stock
+## 7. IntÃ©gritÃ© du stock
 
-- **Non modifié** : `StockLedgerService` + `inventory_balances` (CMUP) restent atomiques via `runInTransaction`/`SAVEPOINT`. Le test `stock-engine.test.ts` (cohérence `recordMovement` vs `rebuildBalances`, CMUP 100×10 + 100×20 = 15) passe toujours.
+- **Non modifiÃ©** : `StockLedgerService` + `inventory_balances` (CMUP) restent atomiques via `runInTransaction`/`SAVEPOINT`. Le test `stock-engine.test.ts` (cohÃ©rence `recordMovement` vs `rebuildBalances`, CMUP 100Ã—10 + 100Ã—20 = 15) passe toujours.
 
 ## 8. Sauvegarde
 
-- **Non modifié** dans cette session. Le prompt demande : backup **au démarrage** si expiré (pas seulement `setInterval`), validation par `integrity_check` + checksum, tri par `mtimeMs` (pas `toLocaleString`). **À faire.**
+- **Non modifiÃ©** dans cette session. Le prompt demande : backup **au dÃ©marrage** si expirÃ© (pas seulement `setInterval`), validation par `integrity_check` + checksum, tri par `mtimeMs` (pas `toLocaleString`). **Ã€ faire.**
 
-## 9. Sécurité Electron / IPC
+## 9. SÃ©curitÃ© Electron / IPC
 
-- **Non modifié** : `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true` doivent être vérifiés dans `electron/main.ts`. Les nouveaux handlers versioning utilisent `requireId` + validation explicite. **Audit CSP (`object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`) à faire.**
+- **Non modifiÃ©** : `nodeIntegration:false`, `contextIsolation:true`, `sandbox:true` doivent Ãªtre vÃ©rifiÃ©s dans `electron/main.ts`. Les nouveaux handlers versioning utilisent `requireId` + validation explicite. **Audit CSP (`object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'`) Ã  faire.**
 
 ## 10. CSV / Performance
 
-- **Non modifié** : import CSV charge tout en mémoire ; streaming/batch + `bulkCreateProducts()` **à faire** pour 100k lignes. Export CSV anti-injection de formule existant (à vérifier centralisé).
+- **Non modifiÃ©** : import CSV charge tout en mÃ©moire ; streaming/batch + `bulkCreateProducts()` **Ã  faire** pour 100k lignes. Export CSV anti-injection de formule existant (Ã  vÃ©rifier centralisÃ©).
 
-## 11. Tests exécutés
+## 11. Tests exÃ©cutÃ©s
 
-- **Nouveau test** : `npx vitest run tests/inventory-versioning.test.ts` → **5/5 ✓** (double validation, state machine, versioning V4, correction).
-- **Suite complète** (`npm test`) : **92 passés / 93**.
-  - **1 échec préexistant et sans lien avec ces modifications** : `tests/hardening.test.ts > Phase 4 — Exports > exportDashboard` — `expect(fs.existsSync(filePath)).toBe(true)` reçoit `false`. Ce test concerne `ExportService.exportDashboard()` (fichier non créé dans l'environnement de test). **Je n'ai touché aucun code d'export.**
+- **Nouveau test** : `npx vitest run tests/inventory-versioning.test.ts` â†’ **5/5 âœ“** (double validation, state machine, versioning V4, correction).
+- **Suite complÃ¨te** (`npm test`) : **92 passÃ©s / 93**.
+  - **1 Ã©chec prÃ©existant et sans lien avec ces modifications** : `tests/hardening.test.ts > Phase 4 â€” Exports > exportDashboard` â€” `expect(fs.existsSync(filePath)).toBe(true)` reÃ§oit `false`. Ce test concerne `ExportService.exportDashboard()` (fichier non crÃ©Ã© dans l'environnement de test). **Je n'ai touchÃ© aucun code d'export.**
 
 ## 12. Build / Typecheck
 
-- `npx tsc --noEmit` → **aucune erreur**.
-- **Build non exécuté** (non requis par les correctifs ; s'assurer que `npm run build` passe avant livraison).
+- `npx tsc --noEmit` â†’ **aucune erreur**.
+- **Build non exÃ©cutÃ©** (non requis par les correctifs ; s'assurer que `npm run build` passe avant livraison).
 
-## 13. Problèmes restants (à traiter en sessions suivantes)
+## 13. ProblÃ¨mes restants (Ã  traiter en sessions suivantes)
 
-1. **Sécurité Electron** : auditer `main.ts` (nodeIntegration/contextIsolation/sandbox), renforcer CSP.
-2. **Migrations versionnées** : unifier `migrationRunner` + fonctions ad-hoc ; faire migrer anciennes FK `CASCADE` → `RESTRICT` si nécessaire (via migration, pas DROP).
-3. **Backup** : scheduling au démarrage si expiré, validation `integrity_check` + checksum, tri par `mtimeMs`.
+1. **SÃ©curitÃ© Electron** : auditer `main.ts` (nodeIntegration/contextIsolation/sandbox), renforcer CSP.
+2. **Migrations versionnÃ©es** : unifier `migrationRunner` + fonctions ad-hoc ; faire migrer anciennes FK `CASCADE` â†’ `RESTRICT` si nÃ©cessaire (via migration, pas DROP).
+3. **Backup** : scheduling au dÃ©marrage si expirÃ©, validation `integrity_check` + checksum, tri par `mtimeMs`.
 4. **CSV import** : streaming/batch/transaction pour gros fichiers.
-5. **Sécurité filesystem** : confiner `path`/`fs` au dataDir (partiellement déjà via `validatePathWithinDataDir`).
-6. **Test exportDashboard** (préexistant) : diagnostiquer pourquoi le fichier n'est pas créé.
-7. **Pagination** / index supplémentaires si les volumétries (100k–1M mouvements) le nécessitent.
+5. **SÃ©curitÃ© filesystem** : confiner `path`/`fs` au dataDir (partiellement dÃ©jÃ  via `validatePathWithinDataDir`).
+6. **Test exportDashboard** (prÃ©existant) : diagnostiquer pourquoi le fichier n'est pas crÃ©Ã©.
+7. **Pagination** / index supplÃ©mentaires si les volumÃ©tries (100kâ€“1M mouvements) le nÃ©cessitent.
 
 ---
 
-## Résumé final (honnête)
+## RÃ©sumÃ© final (honnÃªte)
 
-✔ **P0-1, P0-3, P0-4, P0-5, P0-6, P0-7** : **implémentés et validés par tests** (5/5 verts, `tsc` OK).
-⚠ **P0-2 (audit FK), P1 (migrations, backup, security, CSV, performance)** : **restent à faire** — effort multi-sessions.
-✘ **1 test échoue** : `exportDashboard` (préexistant, hors périmètre de mes changements).
+âœ” **P0-1, P0-3, P0-4, P0-5, P0-6, P0-7** : **implÃ©mentÃ©s et validÃ©s par tests** (5/5 verts, `tsc` OK).
+âš  **P0-2 (audit FK), P1 (migrations, backup, security, CSV, performance)** : **restent Ã  faire** â€” effort multi-sessions.
+âœ˜ **1 test Ã©choue** : `exportDashboard` (prÃ©existant, hors pÃ©rimÃ¨tre de mes changements).
 
-**Je ne peux pas honnêtement affirmer que les 18 catégories sont complètes.** Ce qui a été livré est **réel, testé et sûr pour les données** ; le reste nécessite des sessions supplémentaires ciblées.
+**Je ne peux pas honnÃªtement affirmer que les 18 catÃ©gories sont complÃ¨tes.** Ce qui a Ã©tÃ© livrÃ© est **rÃ©el, testÃ© et sÃ»r pour les donnÃ©es** ; le reste nÃ©cessite des sessions supplÃ©mentaires ciblÃ©es.

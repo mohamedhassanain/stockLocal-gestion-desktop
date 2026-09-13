@@ -88,34 +88,60 @@ export const db = new Database(dbPath, {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DÉCISION CHIFFREMENT DE LA BASE (§1.5) — documentée, volontairement NON
-// appliquée pour préserver la stabilité du build à grande échelle.
+// CHIFFREMENT DE LA BASE AU REPOS — ÉTAT RÉEL : **NON IMPLÉMENTÉ** (§1.5)
 //
-// OPTION ÉVALUÉE : SQLCipher via `better-sqlite3-multiple-ciphers` (fork du
-// binding natif). RAISON DU REFUS :
-//   1. Le projet repose sur `better-sqlite3` compilé par `postinstall`
-//      (`electron-builder install-app-deps`) pour l'ABI Electron 31. Passer au
-//      fork remplace le module natif par un autre binding dont les prebuilds
-//      ne couvrent pas l'ABI d'Electron → recompilation locale exigée (chaîne
-//      d'outils VS Build Tools absente de la plupart des machines non-dev).
-//   2. Le chiffrement implique une clé : stockée localement, elle protège la
-//      base contre l'ouverture "curieuse" (DB Browser), pas contre un acteur
-//      ayant accès au dossier de données (clé + base sur la même machine).
-//      L'effort de migration (toutes les bases existantes, restore, tests
-//      sous ELECTRON_RUN_AS_NODE) est dépensé pour un gain de sécurité faible
-//      dans le modèle mono-utilisateur 100 % local assumé par le produit.
-//   3. Chaque correctif de sécurité/ABI du fork devient une dépendance
-//      supplémentaire de l'éditeur, au prix d'un risque de build cassé sur
-//      les milliers d'installations distribuées.
+// ⚠️  LIMITATION DE RELEASE CONNUE ET ASSUMÉE : `stocklocal.db` est EN CLAIR
+//     sur le disque. Aucune affirmation de sécurité au repos ne doit être
+//     faite à ce sujet. Voir FINAL_PRODUCTION_AUDIT.md.
 //
-// ALTERNATIVE RETENUE (limites) : les données restent non chiffrées au repos,
-// comme pour tout logiciel desktop mono-utilisateur (QuickBooks Desktop, Sage
-// 50, Ciel...). La protection repose sur : dossier de données utilisateur
-// (hors Program Files, permissions OS), sandbox du renderer, confinement des
-// chemins IPC, et backups locaux. Cela reste un choix produit assumé ; si
-// l'activation de SQLCipher devient nécessaire, la migration est décrite dans
-// le README (section Sécurité) et les backups héritent automatiquement du
-// chiffrement car ce sont des copies VACUUM INTO de la base (cf. §1.6).
+// ─── FAISABILITÉ : MESURÉE, PAS SUPPOSÉE (2026-09-13) ──────────────────────
+// La justification de refus précédemment écrite ici était FACTUELLEMENT
+// FAUSSE. Elle affirmait que les prebuilds du fork « ne couvrent pas l'ABI
+// d'Electron » et qu'une recompilation locale (VS Build Tools) était exigée.
+// Mesures réelles sur cette stack (Electron 43.4.1, better-sqlite3 13.0.3) :
+//
+//   1. `better-sqlite3-multiple-ciphers@13.0.3` est la MÊME version ligne que
+//      `better-sqlite3@13.0.3` : fork drop-in, même API, mêmes types.
+//   2. Le paquet embarque des binaires **N-API précompilés** (`prebuilds/`),
+//      dont `win32-x64.node`. N-API est STABLE À TRAVERS LES VERSIONS de Node
+//      ET d'Electron → AUCUNE recompilation, AUCUN VS Build Tools requis.
+//   3. Sonde d'exécution réelle (base créée, fermée, réouverte) :
+//        CREATE_OK
+//        REOPEN_OK {"a":7}                       ← cipher+key : lecture OK
+//        NOKEY_REJECTED_OK: file is not a database ← illisible sans la clé
+//        BADKEY_REJECTED_OK                        ← mauvaise clé rejetée
+//      + en-tête « SQLite format 3 » ABSENT du fichier
+//      + aucune chaîne en clair trouvée dans le fichier.
+//
+//    → SQLCipher est DONC réellement disponible, production-grade, sans
+//      compilation, sur cette configuration. Ce n'est PAS un blocage technique.
+//
+// ─── POURQUOI CE N'EST PAS ACTIVÉ DANS CETTE RELEASE ───────────────────────
+// Ce n'est pas un refus de principe, c'est un CHOIX DE PÉRIMÈTRE DE RELEASE.
+// L'activation est un changement de NIVEAU ARCHITECTURE, incompatible avec une
+// passe de stabilisation « pas de nouvelle fonctionnalité / pas d'architecture »:
+//   a. Remplacement du pilote natif : `better-sqlite3` → fork, sur le main
+//      process, le serveur MCP standalone (vite.config.mcp.ts) et le postinstall
+//      (`electron-builder install-app-deps`), plus `asarUnpack` du `.node`.
+//   b. Gestion de clé NON ÉCRITE. Une clé doit être protégée par le coffre
+//      OS (Electron `safeStorage` = DPAPI sur Windows) — jamais dans le code,
+//      le dépôt, la base ou un fichier de config en clair.
+//   c. Migration des bases EXISTANTES non écrite : base vérifiée → sauvegarde
+//      → `sqlcipher_export()` → `integrity_check` → remplacement atomique, avec
+//      conservation de la base d'origine si l'étape échoue.
+//   d. Backup/restore : ils sont aujourd'hui des `VACUUM INTO` en clair ; ils
+//      devraient hériter du même modèle de clé, sans laisser de copie en clair.
+//
+// Livrer une implémentation partielle serait PIRE que l'absence de chiffrement :
+// fausse garantie de sécurité + risque de base client irrécupérable. Le choix
+// retenu est donc : non chiffré aujourd'hui, limitation PUBLIÉE, et chemin de
+// migration documenté (README §Sécurité + FINAL_PRODUCTION_AUDIT.md).
+//
+// PROTECTIONS RÉELLEMENT EN PLACE (sans chiffrement au repos) : dossier de
+// données utilisateur hors Program Files (permissions OS), renderer en sandbox
+// (contextIsolation, nodeIntegration=false), confinement des chemins IPC
+// (validatePathWithinDataDir), allowlist IPC validée par Zod, sauvegardes
+// locales. Cela ne remplace PAS le chiffrement au repos.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Pragmas SQLite pour la performance, l'intégrité et la robustesse

@@ -1,309 +1,418 @@
-# STOCKLOCAL — FINAL PRODUCTION AUDIT
+# StockLocal — AUDIT DE PRODUCTION FINAL
 
-> Rapport factuel. Chaque chiffre ci‑dessous provient d'une commande réellement
-> exécutée sur ce dépôt (voir « Preuves »). Aucun résultat n'est repris d'un
-> rapport antérieur.
+**Statut : RAPPORT AUTORITATIF — état courant uniquement.**
+**Date : 2026-09-13** · **Version : 1.0.0** · **Plateforme : Windows x64**
 
-Date de l'audit : 2026‑09‑12 — Application : Electron + React + TypeScript +
-Zustand + SQLite (better‑sqlite3), offline‑first, mono‑utilisateur, Windows.
+> ⚠️ **Ce document REMPLACE tous les rapports précédents.** Tous les autres
+> fichiers d'audit du dépôt sont **HISTORIQUES et périmés** (`Historical /
+> superseded`) : leurs compteurs de tests et leurs statuts ne sont plus valides.
+> Voir la section « Rapports historiques » en fin de document.
+
+Toutes les valeurs de ce rapport proviennent de **commandes réellement exécutées**
+sur l'arbre de travail le 2026-09-13. Aucune valeur n'est reprise d'un ancien
+rapport. Là où une vérification n'a pas pu être faite, c'est écrit
+`NON VÉRIFIÉ` — jamais `PASS`.
 
 ---
 
-## 1. Executive Summary
+## 1. Comment reproduire ce rapport
 
-Statut global : 🟡 **Production Ready with known limitations**
+```bat
+npm test                                    :: Vitest via Electron
+npx tsc --noEmit                            :: renderer / src (tsconfig.json)
+npx tsc -p tsconfig.node.json --noEmit      :: main + electron (tsconfig.node.json)
+npm run build                               :: tsc + vite build + MCP build + electron-builder
+npm run e2e                                 :: Electron réel : renderer → preload → IPC → SQLite
+```
 
-L'architecture est saine et conforme au produit défini (local, offline,
-mono‑utilisateur, SQLite source de vérité, IA/MCP validée, aucun backend cloud).
-L'audit a mis en évidence **5 défauts réels** (1 majeur d'intégrité de stock,
-3 moyenne gravité — valorisation retour, restauration WAL, seed d'installation
-fraîche — et 1 robustesse/tests), **tous corrigés et couverts par des tests**.
-Aucun problème P0 (perte de données / sécurité critique) non résolu.
-Les limitations restantes sont documentées au §17 et sont des **choix de modèle
-assumés**, pas des bugs bloquants.
+---
 
-## 2. Automated Tests
+## 2. Vérifications automatisées — RÉSULTATS RÉELS
 
-| Vérification | Résultat | Commande |
-|---|---|---|
-| TypeScript (`tsc --noEmit`) | **PASS** (0 erreur) | `npx tsc --noEmit` |
-| Tests unitaires + intégration | **PASS — 430/430**, 45 fichiers, code de sortie **0** | `npm test` |
-| Build renderer + electron | **PASS** | `npx vite build` |
-| Build MCP | **PASS** | `npm run build:mcp` |
-| Build production complet (tsc+vite+mcp+electron-builder) | **PASS** (EXIT 0) | `npm run build` |
-| Packaging / installeur Windows | **PASS** — `release/StockLocal-1.0.0-setup.exe` (124 770 762 octets) | `npm run build` |
-| Electron E2E (parcours + persistance, service+SQLite) | **PASS** — `tests/e2e-full-workflow.test.ts` | `npm test` |
-| **Electron E2E réel** (fenêtre + preload + IPC + SQLite) | **PASS** — `npm run e2e` (renderer piloté via CDP : produit créé, stock=100, recherche OK, audit sans écart) | `npm run e2e` |
-
-Preuves (fichiers de sortie générés par l'audit) : `tsc_audit2.txt`,
-`test_audit3.txt`, `build_audit.txt`.
-
-> Note : un **E2E Electron réel** est désormais automatisé (`npm run e2e`) — il
-> lance l'application réelle (fenêtre + preload) et pilote le renderer via CDP
-> (DevTools Protocol) pour exécuter un workflow métier à travers la vraie chaîne
-> renderer → preload → IPC → service → SQLite. Vérifié : produit créé, stock = 100,
-> recherche OK, audit de stock sans écart. Le parcours métier complet **avec
-> fermeture/réouverture de la base** reste couvert par `e2e-full-workflow.test.ts`,
-> et le démarrage réel (`npm run dev`) ne produit aucun EBUSY.
-
-## 3. Critical Findings
-
-| Area | Status | Finding | Fix |
+| Contrôle | Commande | Résultat mesuré | Statut |
 |---|---|---|---|
-| Stock / Documents | **Corrigé (P1)** | `updateDocument` / `deleteDocument` retiraient des `stock_movements` par SQL brut **sans** recalculer `inventory_balances` → solde stocké divergent du journal pendant la session | Recalcul ciblé du solde des produits impactés depuis le journal (`StockLedgerService.recomputeBalancesForProducts`) |
-| Finance / Retours | **Corrigé (P2)** | Un retour client (`RETURN_IN`) était valorisé au **prix de vente** → CMUP et valeur du stock gonflés | Valorisation au **coût** (CMUP, repli prix d'achat) |
-| Sauvegarde / Restauration | **Corrigé (P2)** | À la restauration au démarrage, les fichiers `-wal`/`-shm` de l'ancienne base n'étaient pas supprimés avant d'écraser le fichier DB | Purge des sidecars WAL/SHM avant application de la restauration |
-| Robustesse / Tests | **Corrigé (P3)** | L'import différé de `StockLedgerService` dans `connection.ts` n'avait pas de `.catch()` → rejet non géré (sortie de tests ≠ 0) quand la connexion est déjà fermée | `.catch()` avec journalisation (non bloquant) |
-| Seed démo / install fraîche | **Corrigé (P2)** | `DemoDataService.seedIfEmpty` insérait dans `stock_movements` **sans `warehouse_id`** (NOT NULL) → le seed échouait à la PREMIÈRE installation ; invisible sur une base déjà peuplée. Trouvé en lançant le binaire packagé | ajout de `warehouse_id` (dépôt par défaut) + `movement_type='OPENING_BALANCE'` ; test `tests/demo-seed.test.ts` |
+| Tests | `npm test` | **57 fichiers · 538 tests · 538 PASS · 0 FAIL** · `EXIT=0` | ✅ PASS |
+| TypeScript (renderer) | `npx tsc --noEmit` | 0 erreur · `EXIT=0` | ✅ PASS |
+| TypeScript (main/electron) | `npx tsc -p tsconfig.node.json --noEmit` | 0 erreur · `EXIT=0` | ✅ PASS |
+| Build Vite (renderer) | `npm run build` | `built in 2.72s` | ✅ PASS |
+| Build Vite (main + preload) | `npm run build` | `built in 9.91s` / `1.47s` | ✅ PASS |
+| Build MCP standalone | `vite build --config vite.config.mcp.ts` | `dist-electron/mcp-server.js` · `built in 19ms` | ✅ PASS |
+| Packaging Windows | `electron-builder` | `release\StockLocal-1.0.0-setup.exe` produit · `EXIT=0` | ✅ PASS |
+| E2E Electron réel | `npm run e2e` | workflow IPC/SQLite validé · `EXIT=0` | ✅ PASS |
 
-## 4. Database Integrity — PASS
+**Compteur de tests : 538 tests dans 57 fichiers, 538 passent, 0 échoue.**
+C'est le seul compteur valide du dépôt. Tout autre chiffre (430/430, 165/165,
+155/155, 149, 147, 139, 93/94, 88/88, 85/85, 504…) est **obsolète**.
 
-- `src/database/schema/database.sql` reste la **source de vérité unique** d'une
-  base neuve (tables, index, contraintes, CHECK, UNIQUE, FK).
-- `upgradeLegacyDatabase()` = correctifs **additifs/idempotents** ; backup de
-  sécurité (`pre-migration-*.db`) créé AVANT toute migration ; `ADD COLUMN`
-  tolérant ; reconstruction de table transactionnelle préservant les données ;
-  `foreign_key_check` + `integrity_check` en fin de migration.
-- `inventory_balances` porte désormais l'invariant prouvé par test :
-  `inventory_balances == Σ stock_movements` **en session** (test
-  `tests/document-stock-consistency.test.ts`).
-- Reconstruction au démarrage (`rebuildBalances`) confirmée (connection.ts).
+---
 
-## 5. Financial Integrity — PASS
+## 3. Vérification métier (business engine)
 
-- Moteur monétaire unique `src/utils/money.ts` (`roundMoney`, `addMoney`,
-  `calculateRemaining`, `calculateLineAmounts`, …). Aucun `any`.
-- Les `toFixed(2)` restants sont **de l'affichage uniquement**.
-- TVA calculée ligne par ligne ; remises clampées 0‑100 ; reste dû jamais
-  négatif (`calculateRemaining` borne à 0).
-- Correctif retour : valorisation au coût (§3).
+Source de vérité : les fichiers de tests ci-dessous, exécutés dans la suite
+`npm test`.
 
-## 6. Stock Integrity — PASS (après correctif)
+| Domaine | Statut | Preuve (test exécuté) |
+|---|---|---|
+| **CMUP** (coût moyen pondéré mobile) | ✅ PASS | `tests/cmup-weighted-average.test.ts` (9), `tests/stock-engine.test.ts` |
+| **COGS / valorisation du stock** | ✅ PASS | `tests/cmup-weighted-average.test.ts`, `tests/profit.test.ts` |
+| **Solde client** (factures incluses) | ✅ PASS | `tests/client-balance.test.ts` (8), `tests/statement.test.ts` |
+| **Solde fournisseur** (commandes incluses) | ✅ PASS | `tests/client-balance.test.ts`, `tests/statement.test.ts` |
+| **Échéances** (due_date ≥ invoice_date) | ✅ PASS | `tests/credit-echeance.test.ts`, `tests/echeance-qa.test.ts`, `tests/date-only-safety.test.ts` |
+| **Retours / avoirs** | ✅ PASS | `tests/returns-credit-note.test.ts`, `tests/document-stock-consistency.test.ts` |
+| **Multi-dépôts** | ✅ PASS | `tests/multi-warehouse.test.ts`, `tests/warehouses.test.ts`, `tests/migration-legacy-warehouses.test.ts` |
+| **Caisse** (sessions, mouvements) | ✅ PASS | `tests/cash-expenses.test.ts`, `tests/cash-movement-types.test.ts`, `tests/held-carts.test.ts` |
+| **Dépenses** | ✅ PASS | `tests/expense-categories.test.ts`, `tests/cash-expenses.test.ts` |
+| **Marge / résultat** | ✅ PASS | `tests/profit.test.ts` |
+| **Inventaire** (versioning, corrections) | ✅ PASS | `tests/inventory-versioning.test.ts` |
+| **Lots / FEFO / péremption** | ✅ PASS | `tests/fefo-batches.test.ts`, `tests/product-batches.test.ts` |
+| **Achats / réceptions** | ✅ PASS | `tests/purchase-receiving.test.ts` |
+| **Devis → BL → facture** | ✅ PASS | `tests/quote-conversion.test.ts` |
+| **Recherche globale** | ✅ PASS | `tests/global-search.test.ts` |
+| **Conformité DGI** (UBL, lecture seule) | ✅ PASS | `tests/dgi-ubl.test.ts` |
+| **Assistant IA / MCP** | ✅ PASS | `tests/ai-assistant.test.ts`, `tests/ai-chat-e2e.test.ts` |
 
-- Écritures stock **atomiques** via `StockLedgerService.recordMovement`
-  (mouvement + solde dans la même transaction).
-- Sorties vérifiées dans le **dépôt concerné** ; stock négatif impossible.
-- Audit de stock (lecture seule) + réparation contrôlée (« Recalculer le
-  stock ») présents (`auditBalances` / `repairBalances`, `StockIntegrityPanel`).
-- Correctif §3 (cohérence solde/journal en session).
+### 3.1 CMUP — formule implémentée
 
-## 7. POS — PASS
+```text
+Entrée :  Nouveau CMUP = ((Qté_avant × CMUP_avant) + (Qté_entrée × Coût_entrée))
+                         / (Qté_avant + Qté_entrée)
 
-Recherche produit, code‑barres, quantité, remise, remise quantité, dépôt,
-client, paiement (espèces/partiel/crédit), monnaie rendue, ticket, paniers en
-attente (`useHeldCartsStore`, `tests/held-carts.test.ts`).
+Sortie :  Le CMUP NE CHANGE PAS. Une sortie valorise au CMUP courant
+          (colonne additive `stock_movements.unit_cost` = base du COGS).
 
-## 8. Documents — PASS
-
-Devis / BL / Facture / Avoir ; conversions Devis→BL/Facture et BL→Facture
-protégées contre la double conversion (statut `CONVERTED`) ; numérotation
-transactionnelle (`document_sequences`) ; stock géré une seule fois.
-
-## 9. Customers / Suppliers — PASS
-
-Relevés client et fournisseur calculés **depuis SQLite**
-(`StatementRepository`), solde cumulé, débits/crédits, échéances dérivées du
-moteur **unique** `evaluateCredit` (`Payée / À venir / À échéance / En retard`).
-
-## 10. Cash Register / Expenses / Profit — PASS
-
-- Caisse : formule documentée (fond + entrées espèces − sorties espèces ;
-  chèque/virement hors tiroir), session figée à la fermeture, garde anti
-  double‑fermeture, refus de mouvement sur session fermée
-  (`tests/cash-expenses.test.ts`).
-- Dépenses : catégorie/montant/date/moyen de paiement + effet caisse.
-- Profit : distinction **marge brute** (vente − coût marchandises) vs
-  **résultat estimé** (marge − dépenses) (`ProfitService`, `ProfitSummaryPanel`).
-
-## 11. Multi‑Depot — PASS
-
-Solde par `(product_id, warehouse_id)`, dépôt actif persisté, transferts
-**atomiques** (TRANSFER_OUT + TRANSFER_IN + ligne `stock_transfers` dans une
-seule transaction), migration legacy rattachant l'existant au dépôt par défaut.
-
-## 12. Backup / Restore — PASS (après correctif)
-
-- Sauvegarde : `VACUUM INTO` (+ fallback checkpoint+copie), checksum SHA‑256,
-  métadonnées de succès, rotation.
-- Validation : ouverture lecture seule + `integrity_check` + vérification
-  checksum ; inspection avant restauration (date, taille, compteurs).
-- Restauration : validation AVANT, backup de sécurité de l'état courant, puis
-  application au démarrage avec `integrity_check` **et rollback** si invalide.
-- Correctif §3 : purge des sidecars WAL/SHM avant écrasement.
-
-## 13. Security / IPC — PASS
-
-- Renderer durci : `contextIsolation: true`, `nodeIntegration: false`,
-  `sandbox: true`, `webSecurity: true`.
-- Navigation bloquée ; liens externes limités à `https?://`
-  (`will-navigate`, `setWindowOpenHandler`) ; `ai:openExternal` sur **allowlist**
-  stricte (2 URLs).
-- Validation IPC : helpers (`requireId`, `requireObject`, …), **confinement des
-  chemins** au dossier de données (`validatePathWithinDataDir`), limites de
-  taille de fichiers, échappement CSV anti‑injection de formule.
-- Schémas **Zod** sur toutes les frontières critiques (`src/validation/schemas.ts`).
-- Aucun `@ts-ignore` / `@ts-expect-error` / `ts-nocheck`. Aucun secret en
-  clair exposé au renderer. L'unique `eval` (`DataStorageService`) est un idiome
-  **gardé** `(0, eval)('require')('electron')` : chaîne littérale, jamais de
-  saisie utilisateur, conditionné à `process.versions.electron`.
-
-## 14. AI / MCP — PASS
-
-Architecture respectée : IA → **outil MCP validé** → service métier →
-repository → SQLite (jamais d'accès direct). Classification `READ / WRITE /
-FINANCIAL / DESTRUCTIVE`. Les outils WRITE/FINANCIAL/DESTRUCTIVE exigent
-`confirmed: true` (sinon `needsConfirmation`), READ immédiat ; toute écriture
-confirmée est **auditée**. Clé API jamais journalisée.
-
-## 15. Performance — PASS
-
-Requêtes bornées (LIMIT/OFFSET), index présents (`idx_stock_movements_*`,
-`idx_document_items_*`, …). Test de volumétrie vert : 10 000 produits →
-recherche paginée ; 50 000 mouvements → historique paginé
-(`tests/volumetry.test.ts`). Aucun backend/cache ajouté.
-
-## 16. Electron / Windows — PASS
-
-- Watcher Vite : données runtime exclues (`buildWatchIgnored`) ; `npm run dev`
-  démarre sans **EBUSY** (vérifié sur Windows 11). Test dédié :
-  `tests/vite-watch-ignored.test.ts`.
-- Démarrages répétés de `npm run dev` : plusieurs démarrages consécutifs propres,
-  **aucun EBUSY** (vérifié pendant l'audit).
-- **E2E Electron réel** (`npm run e2e`) : fenêtre réelle pilotée via CDP, workflow
-  produit+stock+recherche+audit — **PASS**.
-- **UI réelle inspectée** (capture d'écran via CDP — Phase 28) : layout correct
-  (sidebar groupée + raccourcis F1–F10, en-tête + bouton primaire, onglets
-  Devis/BL/Factures/Avoirs, états vides explicites, pied « Base de données active
-  · 100 % local ») ; aucun débordement ni texte illisible. Point mineur : un
-  libellé de menu est tronqué (« Commandes fourni… »).
-- Installeur NSIS produit et horodaté ; schéma embarqué via `extraResources`.
-- Lancement du binaire packagé **vérifié réellement** sur profil vierge
-  (démarrage, création DB, migration, backup automatique, 4 processus Electron).
-  ⚠️ Sur CETTE machine, un second lancement du binaire fraîchement reconstruit est
-  bloqué par une **politique Windows « Application Control »** (« An Application
-  Control policy has blocked this file ») — restriction d'environnement, pas un
-  défaut applicatif.
-
-## 17. Known Limitations
-
-1. **CMUP « cumul des entrées »** : `inventory_balances.average_cost` est
-   dérivé de la somme des entrées valorisées (prix de la ligne), il n'est pas
-   décrémenté par les sorties. C'est le modèle **constant** avec
-   `rebuildBalances()`. Une valorisation au coût strictement perpétuel
-   (décrément à chaque vente) n'est **pas** implémentée — changement de modèle
-   volontairement non introduit (impact historique massif).
-2. **Échéances vs crédits globaux** : le « reste dû » d'une **ligne facture** =
-   `total − paiements` ; il ne déduit pas les écritures globales
-   `client_credits` (avoirs/manuel). Le **solde du relevé**, lui, les déduit
-   correctement. Écart mineur d'affichage possible dans le cas « retour partiel
-   sur facture impayée ».
-3. **Chiffrement au repos** : base **non chiffrée** (décision produit
-   documentée dans `connection.ts` §1.5 — mono‑utilisateur local).
-4. **Typage frontière IPC** : deux composants (`AccountStatementPanel`,
-   `ExpensesPage`) déballent l'enveloppe IPC via `as unknown as` (sûr, mais
-   typage perfectible).
-
-> Note dead code : `DocumentRepository.cancelDocument` a été vérifié — il est
-> **référencé** par `tests/quote-conversion.test.ts` (donc conservé ; pas du
-> code mort).
-
-## 18. Release Recommendation
-
-**READY WITH LIMITATIONS.**
-
-Le produit est fonctionnel et sûr pour une mise en production **offline
-mono‑utilisateur Windows** : stock, argent, crédits/échéances, paiements,
-avoirs, caisse, sauvegarde/restauration sont corrects et vérifiés par tests ;
-aucun P0/P1 ouvert ; build et installeur OK. Les limitations du §17 sont des
-choix de modèle documentés (non bloquants) ; le point n°1 et le point n°2
-devront être **validés par le propriétaire produit** avant toute évolution.
-
-### Phase 27 — décision
-
-Le test de l'installeur sur un **profil Windows propre** n'est **pas réalisable
-sur cette machine** : une **politique Windows « Application Control »** bloque
-l'exécution du `.exe` fraîchement reconstruit (« An Application Control policy
-has blocked this file »), y compris via `Start-Process`. Ce n'est pas un défaut
-applicatif (le premier lancement du binaire packagé — avant reconstruction — a
-eu lieu et a servi à détecter le bug de seed). **Décision (propriétaire produit,
-Option 1) : considérer cette phase comme bloquée par l'environnement.** À refaire
-sur une machine/profil où la politique l'autorise.
-
-## Bugs
-
-```
-Severity: P1
-File:     src/repositories/DocumentRepository.ts
-Function: updateDocument, deleteDocument
-Root cause: suppression SQL brute de stock_movements sans recalcul de
-            inventory_balances (table maintenue de façon incrémentale) →
-            solde stocké ≠ journal jusqu'au prochain redémarrage.
-Fix:        StockLedgerService.recomputeBalancesForProducts() appelé après
-            l'édition/suppression, sur les produits anciens + nouveaux.
-Verification: tests/document-stock-consistency.test.ts (4 tests) — édition
-            quantité, remplacement de produit, suppression ; invariant
-            auditBalances().discrepancyCount === 0.
+Entrée sans coût : valorisée au CMUP courant (jamais 0).
+Rejeu du journal : ordre d'écriture (created_at, rowid) — la colonne `date`
+          mélange des formats et faussait l'ordre achat/vente du même jour.
+Transfert de dépôt : neutre en valeur (même CMUP des deux côtés).
 ```
 
-```
-Severity: P2
-File:     src/repositories/DocumentRepository.ts
-Function: createCreditNote
-Root cause: RETURN_IN valorisé au prix de VENTE → total_in_value / CMUP gonflés.
-Fix:        valorisation au coût — StockLedgerService.getAverageCost(product),
-            repli prix d'achat.
-Verification: tests/document-stock-consistency.test.ts — CMUP reste 60 (et non
-            ≈65.45) après retour.
+**Le prix de vente n'est jamais utilisé comme coût de stock.** Vérifié par
+`tests/cmup-weighted-average.test.ts` (achats multiples, vente, épuisement
+total, réachat, retour, transfert, rebuild).
+
+### 3.2 Solde client / fournisseur
+
+Le solde est défini par **une expression SQL unique** partagée
+(`clientBalanceSql` / `supplierBalanceSql`) incluant :
+
+```text
++ factures / bons de livraison non soldés (documents)
++ dettes manuelles (client_credits / supplier_credits)
++ achats (purchase_orders) côté fournisseur
+− paiements encaissés / règlements
+− avoirs (credit notes)
 ```
 
-```
-Severity: P2
-File:     src/database/config/connection.ts
-Function: applyPendingRestore
-Root cause: à la restauration au démarrage, les fichiers -wal/-shm de l'ancienne
-            base n'étaient pas supprimés avant d'écraser le fichier DB.
-Fix:        suppression des sidecars WAL/SHM avant copie de la base restaurée.
-Verification: inspection du chemin + tests backup-restore existants verts.
+La même expression sert au repository **et** à l'export et au relevé de compte,
+donc les trois valeurs coïncident toujours (vérifié par l'invariant de
+`tests/client-balance.test.ts` : « le solde du repository ÉGALE toujours le
+solde du relevé de compte »).
+
+### 3.3 Échéances — validation en couche métier
+
+`src/domain/credit/CreditStatus.ts` est la **source de vérité unique** :
+
+- `isValidDueDate(invoiceDate, dueDate)` → impose `due_date >= invoice_date`.
+  **Appelée dans `src/services/DocumentService.ts`** à la création (ligne 33)
+  et à la modification (ligne 63) — donc dans la couche service, pas seulement
+  dans l'UI.
+- `evaluateCredit(...)` → `PAYE` / `A_VENIR` / `A_ECHEANCE` / `EN_RETARD`, avec
+  comparaison **date-seule** (`compareDateOnly` / `daysBetweenDateOnly`) : aucune
+  bascule de fuseau horaire (`2026-09-13` ne devient jamais `2026-09-12`).
+
+---
+
+## 4. Données : base neuve, migration, sauvegarde, restauration
+
+| Contrôle | Statut | Preuve |
+|---|---|---|
+| Base **neuve** (schéma, index, contraintes) | ✅ PASS | `tests/database-schema.test.ts`, `tests/db-audit-schema.test.ts`, `tests/db-audit-indexes.test.ts` |
+| Dépôt par défaut auto-créé | ✅ PASS | E2E réel : `[DB] Dépôt par défaut créé : « Dépôt principal »` |
+| **Migration d'une base ancienne** | ✅ PASS | `tests/db-audit-migration.test.ts`, `tests/migration-legacy-warehouses.test.ts`, `tests/db-audit-integrity.test.ts` |
+| Pas de perte / doublon après migration | ✅ PASS | `tests/db-audit-integrity.test.ts`, `tests/stock-integrity.test.ts` |
+| Backup pré-migration automatique | ✅ PASS | E2E réel : `[DB] Backup de sécurité avant migration : …pre-migration-…db` |
+| **Sauvegarde** (VACUUM INTO + intégrité + checksum) | ✅ PASS | `tests/backup-restore.test.ts` · E2E réel : `[Backup] Sauvegarde marquée comme réussie (intégrité + checksum OK)` |
+| **Restauration** d'une sauvegarde valide | ✅ PASS | `tests/backup-restore.test.ts` (restauration appliquée au démarrage) |
+| **Sauvegarde invalide / corrompue** → base courante intacte | ✅ PASS | `tests/backup-restore.test.ts` + `applyPendingRestore()` : copie de sécurité → `integrity_check` → rollback automatique si invalide |
+| WAL / SHM gérés à la restauration | ✅ PASS | `applyPendingRestore()` supprime les sidecars `-wal`/`-shm` de l'ancienne base avant remplacement |
+| Persistance après **redémarrage manuel** | ⚠️ PARTIELLEMENT VÉRIFIÉ | La restauration différée et la migration s'exécutent au démarrage et sont couvertes par `tests/backup-restore.test.ts`. Le cycle manuel complet n'a pas été rejoué à la main. |
+
+---
+
+## 5. Exécution réelle (runtime Electron)
+
+`npm run e2e` (`scripts/e2e-electron.cjs`) — **exécution réelle, pas un test unitaire** :
+
+```text
+[E2E] dossier données : …\Temp\stocklocal-e2e-1789310682301
+[app] [DB] Schéma appliqué (database.sql).
+[app] [DB] Dépôt par défaut créé : « Dépôt principal ».
+[app] [DB] Balances de stock recalculées.
+[app] [Backup] Backup VACUUM INTO créé : …stocklocal-backup-….db
+[app] [Backup] Sauvegarde marquée comme réussie (intégrité + checksum OK).
+[E2E] renderer ciblé : file:///…/dist/index.html
+[E2E] workflow = {"createdId":"…","level":100,"foundCount":1,"discrepancy":0,"ok":true}
+[E2E]   ✔ produit créé
+[E2E]   ✔ stock = 100
+[E2E]   ✔ produit trouvé par recherche
+[E2E]   ✔ audit stock sans écart
+[E2E] SUCCÈS — workflow réel renderer→preload→IPC→SQLite validé.
+EXIT=0
 ```
 
-```
-Severity: P3
-File:     src/database/config/connection.ts
-Function: (import différé de StockLedgerService, top-niveau module)
-Root cause: import(...).then(...) sans .catch() → rejet non géré quand la
-            connexion est déjà fermée (teardown de tests) → sortie de suite ≠ 0.
-Fix:        .catch() journalisé (non bloquant).
-Verification: npm test → code de sortie 0, plus de « Unhandled Errors ».
-```
+**Chaîne réellement traversée** : fenêtre Electron → renderer (`dist/index.html`)
+→ `preload` (`contextBridge`) → IPC → SQLite (better-sqlite3), sur une base
+créée de zéro dans un dossier temporaire. Statut : ✅ **PASS**.
 
-```
-Severity: P2
-File:     src/services/DemoDataService.ts
-Function: seedIfEmpty
-Root cause: INSERT dans stock_movements sans warehouse_id (NOT NULL depuis le
-            multi-dépôts) → échec du seed sur une base NEUVE (1re installation).
-Fix:        warehouse_id = dépôt par défaut (StockLedgerService.getDefaultWarehouseId)
-            + movement_type='OPENING_BALANCE'.
-Verification: tests/demo-seed.test.ts (2 tests) — 6 produits créés, 0 mouvement
-            sans dépôt, auditBalances() sans écart.
-```
+> Les étapes métier du workflow complet (achat → vente → paiement → retour →
+> transfert → caisse → clôture) sont couvertes au niveau moteur par la suite de
+> tests (538 tests), et le canal renderer→IPC→SQLite est prouvé par cet E2E.
+> Le parcours **entièrement cliqué dans l'interface** au-delà de ce workflow :
+> `NON VÉRIFIÉ` en tant que scénario UI exhaustif.
 
-## Files changed
+---
 
-- `src/services/StockLedgerService.ts` — ajout `recomputeBalancesForProducts()`.
-- `src/repositories/DocumentRepository.ts` — `updateDocument`, `deleteDocument`,
-  `createCreditNote` (valorisation retour).
-- `src/database/config/connection.ts` — `applyPendingRestore` (purge WAL/SHM) ;
-  `.catch()` sur l'import différé.
-- `src/services/DemoDataService.ts` — `seedIfEmpty` (warehouse_id + movement_type).
-- `tests/document-stock-consistency.test.ts` — **nouveau** (4 tests).
-- `tests/demo-seed.test.ts` — **nouveau** (2 tests).
-- `scripts/e2e-electron.cjs` — **nouveau** (E2E Electron réel via CDP).
-- `package.json` — script `e2e`.
-- `FINAL_PRODUCTION_AUDIT.md` — **nouveau** (ce rapport).
+## 6. Packaging Windows
 
-## Database changes
+`npm run build` → `electron-builder` · `EXIT=0`.
 
-Aucune modification de schéma. Aucune nouvelle table, colonne, index ni
-contrainte. `database.sql` reste la source de vérité unique ; les bases
-existantes restent compatibles (aucune migration requise par ces correctifs).
+| Élément | Vérifié |
+|---|---|
+| Installateur NSIS | `release\StockLocal-1.0.0-setup.exe` (+ `.blockmap`, `latest.yml`) |
+| Cible | `nsis`, `arch=x64`, `oneClick=false`, `perMachine=false` |
+| Exécutable décompressé | `release\win-unpacked\StockLocal.exe` |
+| Schéma embarqué | `release\win-unpacked\resources\schema\database.sql` (`extraResources`) |
+| Application packagée | `resources\app.asar` + `resources\app.asar.unpacked` |
+| **Module natif déballé** | `app.asar.unpacked\node_modules\better-sqlite3` ✅ |
+| Assistant d'élévation | `resources\elevate.exe` |
+
+**Installation sur machine vierge : `NON VÉRIFIÉ`.** L'installateur est
+**produit et son contenu inspecté**, mais il n'a pas été installé sur une machine
+Windows « propre » dans cet environnement.
+
+---
+
+## 7. Sécurité
+
+| Contrôle | Valeur constatée | Statut |
+|---|---|---|
+| `contextIsolation` | `true` | ✅ |
+| `nodeIntegration` | `false` | ✅ |
+| `sandbox` | `true` | ✅ |
+| `webSecurity` | `true` (défaut) | ✅ |
+| CSP stricte (build prod) | `default-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'none'` | ✅ |
+| Navigation hors app | `will-navigate` bloqué ; liens http(s) → navigateur système | ✅ |
+| Fenêtres/popups | `setWindowOpenHandler` → `deny` | ✅ |
+| Preload | **allowlist** explicite (`contextBridge`), pas de `ipcRenderer` brut exposé | ✅ |
+| Confinement des chemins | `validatePathWithinDataDir` / `validatePathWithinSubDir` | ✅ |
+| Limites de taille de fichier | `FILE_LIMITS` (image 5 Mo, CSV 50 Mo) | ✅ |
+| Anti-injection CSV (formules) | `csvEscape()` préfixe `= + - @` | ✅ |
+| Erreurs SQLite → français | `toHumanError()` | ✅ |
+| `@ts-ignore` / `@ts-expect-error` | **0** | ✅ |
+| `as any` | **0** | ✅ |
+| `eval` | 1 occurrence (`DataStorageService`), gardée par `process.versions.electron` + `try/catch`, commentée | ⚠️ Accepté (documenté) |
+
+Aucun accès SQL arbitraire, shell arbitraire ou écriture filesystem arbitraire
+exposé au renderer.
+
+---
+
+## 8. Sécurité de typage
+
+Traitement de l'enveloppe IPC centralisé : **`src/utils/ipcResult.ts`**.
+
+Avant cette passe, 4 emplacements de code de production convertissaient une
+réponse IPC avec `as unknown as` (aucune vérification) :
+
+- `src/components/AccountStatementPanel.tsx` (×2)
+- `src/pages/ExpensesPage.tsx` (×2)
+- `src/usecases/stock/StockUseCases.ts` (×2 — cast inutile : `StockMovement`
+  **est** un alias de `StockMovementRow`)
+- `src/components/ui/Toaster.tsx` — `React.ComponentType<any>` → `LucideIcon`
+
+Après correction : un seul normalisateur typé, `toIpcResult<T>()`, couvert par
+**10 tests** (`tests/ipc-result.test.ts`) ; les composants n'effectuent plus
+aucune assertion non vérifiée.
+
+`npx tsc --noEmit` et `npx tsc -p tsconfig.node.json --noEmit` : **0 erreur**.
+
+---
+
+## 9. Chiffrement de la base au repos — LIMITATION DE RELEASE
+
+**Statut : NON IMPLÉMENTÉ.** `stocklocal.db` est **en clair** sur le disque.
+Aucune revendication de sécurité au repos ne doit être faite.
+
+### 9.1 Faisabilité — MESURÉE (pas supposée)
+
+La justification de refus qui figurait dans `src/database/config/connection.ts`
+était **factuellement fausse** (elle affirmait une incompatibilité d'ABI Electron
+et la nécessité de recompiler avec VS Build Tools). Vérifications réelles :
+
+| Point | Constat mesuré |
+|---|---|
+| Version du fork | `better-sqlite3-multiple-ciphers@13.0.3` = **même ligne de version** que `better-sqlite3@13.0.3` (drop-in) |
+| Binaires | prebuilds **N-API** fournis, dont `prebuilds\win32-x64.node` → **aucune compilation nécessaire** |
+| Création base chiffrée | `CREATE_OK` |
+| Réouverture avec `cipher` + `key` | `REOPEN_OK {"a":7}` |
+| Lecture **sans** clé | `NOKEY_REJECTED_OK: file is not a database` |
+| Lecture avec **mauvaise** clé | `BADKEY_REJECTED_OK: file is not a database` |
+| En-tête `SQLite format 3` dans le fichier | **absent** |
+| Chaîne en clair présente dans le fichier | **aucune** |
+
+**Conclusion : SQLCipher est réellement disponible et fonctionnel, sans
+compilation, sur cette pile (Electron 43.4.1 / better-sqlite3 13.0.3). Ce n'est
+pas un blocage technique.**
+
+### 9.2 Pourquoi ce n'est pas activé dans cette release
+
+C'est un **choix de périmètre de release**, pas un refus de principe. Son
+activation est un changement **de niveau architecture** (interdit dans une passe
+de stabilisation) et touche :
+
+1. **Pilote natif** : `better-sqlite3` → fork, sur le main process, le serveur MCP
+   autonome (`vite.config.mcp.ts`) et le `postinstall`
+   (`electron-builder install-app-deps`), plus `asarUnpack` du `.node`.
+2. **Gestion de clé — non écrite**. La clé doit être protégée par le coffre OS
+   (Electron `safeStorage` = DPAPI sur Windows). Jamais dans le code, le dépôt,
+   la base ou un fichier de configuration en clair.
+3. **Migration des bases existantes — non écrite** :
+   `vérif → sauvegarde → sqlcipher_export() → integrity_check → remplacement
+   atomique`, en conservant la base d'origine en cas d'échec.
+4. **Sauvegardes** : aujourd'hui des `VACUUM INTO` en clair ; elles devraient
+   hériter du même modèle de clé.
+
+**Livrer une implémentation partielle serait pire que l'absence de chiffrement** :
+fausse garantie de sécurité et risque de base client irrécupérable. La décision
+retenue est donc : non chiffré aujourd'hui, limitation **publiée**, chemin de
+migration documenté.
+
+### 9.3 Protections réellement en place (sans chiffrement au repos)
+
+Dossier de données utilisateur hors `Program Files` (permissions OS), renderer
+en sandbox, confinement des chemins IPC, allowlist IPC, validations Zod côté
+main, sauvegardes locales. **Cela ne remplace pas le chiffrement au repos.**
+
+---
+
+## 10. Rapports historiques (ne plus s'y fier)
+
+Ces fichiers décrivent des états **antérieurs**. Leurs compteurs de tests sont
+**périmés**. Ils sont conservés pour traçabilité uniquement.
+
+| Fichier | Statut | Compteur périmé qu'il contient |
+|---|---|---|
+| `FINAL_HARDENING_REPORT.md` | Historical / superseded | 139 → 155 tests |
+| `FINAL_AUDIT_REPORT.md` | Historical / superseded | 165/165 |
+| `AUDIT_DB_RESULT.md` | Historical / superseded | 504 tests |
+| `COMPLIANCE_AUDIT.md` | Historical / superseded | 88/88 |
+| `FINAL_AUDIT.md` | Historical / superseded | 88/88 |
+| `REFACTORING_REPORT.md` | Historical / superseded | 85/85 |
+| `SUMMARY.md` | Historical / superseded | 93/94 |
+| `docs/IMPLEMENTATION_PHASES_1_6.md` | Historical / superseded | 227/229 tests |
+| `ARCHITECTURE_AUDIT.md` | Historical / superseded | — |
+| `CAHIER_DES_CHARGES.md` | Référence fonctionnelle (hors audit) | — |
+| `LIMITATIONS_FIXED.md` | **SUPERSEDED par ce document** | 528/528 (déjà dépassé) |
+| `FINAL_REFACTORING_REPORT.md` | Historical / superseded | — |
+| `FINAL_PRODUCTION_AUDIT.md` | **AUTORITATIF — ce document** | **538/538** |
+
+**Là où ces fichiers sont en contradiction avec le présent document, ce dernier
+fait foi.**
+
+---
+
+## 11. Checklist de release
+
+### Automatisé
+- [x] `npm test` → 57 fichiers · 538 tests · 538 PASS · `EXIT=0`
+- [x] `npx tsc --noEmit` → 0 erreur
+- [x] `npx tsc -p tsconfig.node.json --noEmit` → 0 erreur
+- [x] `npm run build` (tsc + vite + MCP) → `EXIT=0`
+- [x] `vite build --config vite.config.mcp.ts` → `dist-electron/mcp-server.js`
+
+### Métier
+- [x] CMUP (moyenne pondérée mobile) — `cmup-weighted-average.test.ts`
+- [x] COGS / valorisation — `cmup-weighted-average.test.ts`, `profit.test.ts`
+- [x] Solde client — `client-balance.test.ts`, `statement.test.ts`
+- [x] Solde fournisseur — `client-balance.test.ts`, `statement.test.ts`
+- [x] Échéance (`due_date >= invoice_date`, en couche service) — `credit-echeance.test.ts`
+- [x] Retours / avoirs — `returns-credit-note.test.ts`
+- [x] Multi-dépôts — `multi-warehouse.test.ts`, `warehouses.test.ts`
+- [x] Caisse — `cash-expenses.test.ts`, `held-carts.test.ts`
+- [x] Dépenses — `expense-categories.test.ts`
+- [x] Marge / résultat — `profit.test.ts`
+
+### Données
+- [x] Base neuve — `database-schema.test.ts`
+- [x] Migration legacy — `db-audit-migration.test.ts`, `migration-legacy-warehouses.test.ts`
+- [x] Backup (VACUUM INTO + intégrité + checksum) — `backup-restore.test.ts` + E2E réel
+- [x] Restore (rollback si sauvegarde invalide) — `backup-restore.test.ts`
+- [ ] Persistance après redémarrage manuel — **PARTIELLEMENT VÉRIFIÉ**
+
+### Runtime
+- [x] E2E Electron réel (`npm run e2e`) → `EXIT=0`
+- [x] Packaging Windows (installateur NSIS produit)
+- [x] Contenu packagé inspecté (schéma + `.node` natif déballé)
+- [ ] Installation machine vierge — **NON VÉRIFIÉ**
+- [ ] Redémarrage après installation — **NON VÉRIFIÉ**
+
+### Sécurité
+- [x] IPC (allowlist + validation)
+- [x] preload (`contextBridge`, pas d'IPC brut)
+- [x] Filesystem (confinement des chemins)
+- [x] MCP (serveur autonome, outils restreints)
+- [x] Secrets (aucune clé en dur)
+- [x] Type safety (`as any`: 0, `@ts-ignore`: 0)
+- [x] **Chiffrement base** → ❌ **NON IMPLÉMENTÉ** (limitation publiée, §9)
+
+---
+
+## 12. Performance
+
+| Contrôle | Statut |
+|---|---|
+| Pagination SQL (`LIMIT/OFFSET`) sur historiques & exports | ✅ Requêtes bornées (`getAllHistory`, `documents:getAll`, exports par lots) |
+| Index sur les colonnes de jointure/filtre | ✅ `tests/db-audit-indexes.test.ts` |
+| Test de volumétrie | ✅ `tests/volumetry.test.ts` |
+| Jeu de données « réaliste » (500+ produits, 1000+ mouvements, centaines de clients/documents) chargé et chronométré de bout en bout | **NON VÉRIFIÉ** dans cet environnement |
+---
+
+## 13. DÉCISION FINALE
+
+### 🟡 RELEASE READY WITH LIMITATIONS
+
+Le moteur métier est vérifié de bout en bout par une suite réelle et par une
+exécution Electron réelle. Deux limitations sont **publiées** plutôt que
+dissimulées : le chiffrement au repos (non implémenté) et l'installation sur
+machine vierge (non testée ici).
+
+| Zone | Statut | Preuve |
+|---|---|---|
+| Tests | ✅ PASS | `npm test` → 57 fichiers · **538/538** · `EXIT=0` |
+| TypeScript | ✅ PASS | `tsc` (renderer) + `tsc -p tsconfig.node.json` → 0 erreur · `EXIT=0` |
+| Build | ✅ PASS | `npm run build` → `EXIT=0` (vite ×3 + MCP + electron-builder) |
+| CMUP | ✅ PASS | `tests/cmup-weighted-average.test.ts` (9) + `stock-engine` |
+| Customer Balance | ✅ PASS | `tests/client-balance.test.ts` (8) + `statement` |
+| Supplier Balance | ✅ PASS | `tests/client-balance.test.ts` + `statement` |
+| Échéance | ✅ PASS | `isValidDueDate` dans `DocumentService` + `credit-echeance.test.ts` |
+| Backup | ✅ PASS | `tests/backup-restore.test.ts` + E2E réel (VACUUM INTO + checksum OK) |
+| Restore | ✅ PASS | `tests/backup-restore.test.ts` + rollback auto sur sauvegarde invalide |
+| Encryption | ❌ **NON IMPLÉMENTÉ** | Faisabilité prouvée (§9.1) ; hors périmètre de cette release |
+| E2E | ✅ PASS | `npm run e2e` → `EXIT=0` (renderer→preload→IPC→SQLite) |
+| Installer | ⚠️ PRODUIT / NON INSTALLÉ | `release\StockLocal-1.0.0-setup.exe` généré ; installation machine vierge non testée |
+| Security | ✅ PASS (hors chiffrement) | sandbox + `contextIsolation` + allowlist IPC + confinement chemins |
+
+### Ce qui rend cette release « avec limitations » et non « prête »
+
+1. **Chiffrement au repos absent** — limitation produit documentée, avec
+   faisabilité technique démontrée et chemin de migration écrit.
+2. **Installation machine vierge non vérifiée** — l'installateur est produit et
+   inspecté, mais pas déployé sur un Windows propre dans cet environnement.
+
+### Ce qui n'est **pas** une limitation
+
+- Le moteur métier (CMUP, COGS, soldes, échéances, retours, multi-dépôts,
+  caisse, dépenses, marge) est couvert par des tests réels et **passe**.
+- Le canal renderer → preload → IPC → SQLite est **prouvé en Electron réel**.
+- Le typage est propre sur les deux configurations, sans aucune échappatoire
+  (`as any` : 0, `@ts-ignore` : 0).

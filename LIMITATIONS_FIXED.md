@@ -1,52 +1,58 @@
-# Limitations identifiées dans l'audit — traitées et vérifiées
+> [!WARNING] DOCUMENT HISTORIQUE - PERIME (Historical / superseded).
+> Le compteur de tests et le statut de production de ce fichier ne sont plus valides.
+> Rapport de reference : FINAL_PRODUCTION_AUDIT.md (57 fichiers, 538 tests, 538 PASS).
 
-Ce document récapitule les **4 limitations** relevées lors de l'audit du moteur
-de stock / du modèle financier, l'analyse de leur cause racine, le correctif
-appliqué et la **preuve de vérification** (tests + build).
+---
 
-État global : **528/528 tests verts (56 fichiers)**, **0 erreur TypeScript** sur
+# Limitations identifiÃ©es dans l'audit â€” traitÃ©es et vÃ©rifiÃ©es
+
+Ce document rÃ©capitule les **4 limitations** relevÃ©es lors de l'audit du moteur
+de stock / du modÃ¨le financier, l'analyse de leur cause racine, le correctif
+appliquÃ© et la **preuve de vÃ©rification** (tests + build).
+
+Ã‰tat global : **528/528 tests verts (56 fichiers)**, **0 erreur TypeScript** sur
 les deux configurations, **build de production OK** (`EXIT=0`).
 
 ---
 
-## Limitation 1 — CMUP : le coût moyen n'était pas une moyenne mobile
+## Limitation 1 â€” CMUP : le coÃ»t moyen n'Ã©tait pas une moyenne mobile
 
 ### Cause racine
-`inventory_balances.average_cost` était calculé comme un **cumul d'achats**
-(`total_in_value / total_in_qty`). Deux conséquences fausses :
+`inventory_balances.average_cost` Ã©tait calculÃ© comme un **cumul d'achats**
+(`total_in_value / total_in_qty`). Deux consÃ©quences fausses :
 
-1. Les **sorties ne « sortaient » pas de valeur** : après une vente, le coût
-   affiché restait la moyenne de TOUS les achats historiques, y compris ceux
-   déjà vendus. Le stock restant était sur-évalué et le COGS sous-évalué.
-2. Après **épuisement du stock puis ré-achat** à un prix différent, l'ancienne
-   moyenne continuait de « polluer » le nouveau coût
-   (ex. 100×10 puis épuisement puis 100×20 → 15 au lieu de 20).
+1. Les **sorties ne Â« sortaient Â» pas de valeur** : aprÃ¨s une vente, le coÃ»t
+   affichÃ© restait la moyenne de TOUS les achats historiques, y compris ceux
+   dÃ©jÃ  vendus. Le stock restant Ã©tait sur-Ã©valuÃ© et le COGS sous-Ã©valuÃ©.
+2. AprÃ¨s **Ã©puisement du stock puis rÃ©-achat** Ã  un prix diffÃ©rent, l'ancienne
+   moyenne continuait de Â« polluer Â» le nouveau coÃ»t
+   (ex. 100Ã—10 puis Ã©puisement puis 100Ã—20 â†’ 15 au lieu de 20).
 
 ### Correctif
-- `StockLedgerService.recordMovement` applique désormais la **moyenne pondérée
-  mobile perpétuelle** :
-  `CMUP = (qty_en_main × CMUP + qty_entrée × coût) / (qty_en_main + qty_entrée)`.
-- Une **sortie ne modifie jamais le CMUP** (les unités sortent au coût moyen) ;
-  une **entrée sans coût explicite est valorisée au CMUP courant** (jamais 0).
-- Nouvelle colonne additive `stock_movements.unit_cost` = coût de valorisation
-  de CHAQUE mouvement (entrées : coût d'acquisition ; sorties : CMUP au moment
-  de la sortie) → base exacte du COGS et de la valorisation.
-- `rebuildFromLedger` **rejoue le journal dans l'ordre d'écriture**
-  (`created_at`, `rowid`). Motif : la colonne `date` mélange des formats
+- `StockLedgerService.recordMovement` applique dÃ©sormais la **moyenne pondÃ©rÃ©e
+  mobile perpÃ©tuelle** :
+  `CMUP = (qty_en_main Ã— CMUP + qty_entrÃ©e Ã— coÃ»t) / (qty_en_main + qty_entrÃ©e)`.
+- Une **sortie ne modifie jamais le CMUP** (les unitÃ©s sortent au coÃ»t moyen) ;
+  une **entrÃ©e sans coÃ»t explicite est valorisÃ©e au CMUP courant** (jamais 0).
+- Nouvelle colonne additive `stock_movements.unit_cost` = coÃ»t de valorisation
+  de CHAQUE mouvement (entrÃ©es : coÃ»t d'acquisition ; sorties : CMUP au moment
+  de la sortie) â†’ base exacte du COGS et de la valorisation.
+- `rebuildFromLedger` **rejoue le journal dans l'ordre d'Ã©criture**
+  (`created_at`, `rowid`). Motif : la colonne `date` mÃ©lange des formats
   (`YYYY-MM-DD` d'un document et horodatage complet d'un mouvement direct) ;
   trier par `date` faisait passer une vente du jour AVANT l'achat du jour.
-  La **période comptable** reste portée par `documents.date`.
-- Le COGS (`DashboardRepository.getRevenueAndCost`) valorise chaque ligne à
-  `quantité × unit_cost` du mouvement, sur la période du **document**.
-- Un transfert entre dépôts reporte le coût moyen de la source (la valeur
-  totale du stock reste inchangée).
+  La **pÃ©riode comptable** reste portÃ©e par `documents.date`.
+- Le COGS (`DashboardRepository.getRevenueAndCost`) valorise chaque ligne Ã 
+  `quantitÃ© Ã— unit_cost` du mouvement, sur la pÃ©riode du **document**.
+- Un transfert entre dÃ©pÃ´ts reporte le coÃ»t moyen de la source (la valeur
+  totale du stock reste inchangÃ©e).
 
 ### Preuve
-- `tests/cmup-weighted-average.test.ts` — **9 tests** : A (100×10 + 100×20 =
-  15), B (13,33), C (sortie ≠ impact CMUP), C-2 (ré-achat = nouveau coût),
-  D (retour au coût), E (transfert neutre), F (séquence complète + idempotence
-  du rebuild), + 2 tests de cohérence **COGS ↔ valorisation**.
-- `tests/stock-engine.test.ts` : invariant de test corrigé (l'ancien invariant
+- `tests/cmup-weighted-average.test.ts` â€” **9 tests** : A (100Ã—10 + 100Ã—20 =
+  15), B (13,33), C (sortie â‰  impact CMUP), C-2 (rÃ©-achat = nouveau coÃ»t),
+  D (retour au coÃ»t), E (transfert neutre), F (sÃ©quence complÃ¨te + idempotence
+  du rebuild), + 2 tests de cohÃ©rence **COGS â†” valorisation**.
+- `tests/stock-engine.test.ts` : invariant de test corrigÃ© (l'ancien invariant
   `average_cost = total_in_value/total_in_qty` n'est plus valide par conception).
 - `tests/profit.test.ts`, `tests/stock-integrity.test.ts`,
   `tests/multi-warehouse.test.ts`, `tests/document-stock-consistency.test.ts` :
@@ -54,90 +60,90 @@ les deux configurations, **build de production OK** (`EXIT=0`).
 
 ---
 
-## Limitation 2 — Compte client / factures impayées : solde toujours à 0
+## Limitation 2 â€” Compte client / factures impayÃ©es : solde toujours Ã  0
 
 ### Cause racine
 `ClientRepository.getBalance()` (et le champ `balance` de la liste des clients,
 de la fiche client, de l'assistant IA et de l'export CSV) ne lisait QUE la table
-`client_credits`. Or **les factures ne sont jamais écrites dans cette table**
-(elles vivent dans `documents`) : un client endetté de 1 000 MAD par une vente à
-crédit affichait **0 MAD**. Conséquences réelles :
+`client_credits`. Or **les factures ne sont jamais Ã©crites dans cette table**
+(elles vivent dans `documents`) : un client endettÃ© de 1 000 MAD par une vente Ã 
+crÃ©dit affichait **0 MAD**. ConsÃ©quences rÃ©elles :
 
-- le **plafond de crédit n'était jamais appliqué** aux ventes (seules les
-  dettes saisies manuellement le déclenchaient) ;
-- l'**encaissement manuel** d'une facture était refusé à tort
-  (« le paiement dépasse la dette actuelle ») ;
-- le solde affiché **contredisait le relevé de compte** (qui, lui, incluait
+- le **plafond de crÃ©dit n'Ã©tait jamais appliquÃ©** aux ventes (seules les
+  dettes saisies manuellement le dÃ©clenchaient) ;
+- l'**encaissement manuel** d'une facture Ã©tait refusÃ© Ã  tort
+  (Â« le paiement dÃ©passe la dette actuelle Â») ;
+- le solde affichÃ© **contredisait le relevÃ© de compte** (qui, lui, incluait
   les factures).
 
-Le même défaut existait côté fournisseur (dette = `supplier_credits` seulement,
-commandes d'achat ignorées).
+Le mÃªme dÃ©faut existait cÃ´tÃ© fournisseur (dette = `supplier_credits` seulement,
+commandes d'achat ignorÃ©es).
 
 ### Correctif
-- Définition **unique** du solde, réutilisée partout via `clientBalanceSql()` :
-  `solde = factures & BL non annulés + crédits manuels − paiements − règlements`.
-- `supplierBalanceSql()` : `dette = commandes d'achat non annulées + crédits manuels − règlements`.
-- `ExportService.exportClients` / `exportSuppliers` réutilisent ces **mêmes
-  expressions** : un export ne peut plus diverger de l'écran.
-- Le message d'erreur de migration de la base inclut désormais **toujours la
-  cause réelle** (elle était masquée dès qu'un backup pré-migration existait),
+- DÃ©finition **unique** du solde, rÃ©utilisÃ©e partout via `clientBalanceSql()` :
+  `solde = factures & BL non annulÃ©s + crÃ©dits manuels âˆ’ paiements âˆ’ rÃ¨glements`.
+- `supplierBalanceSql()` : `dette = commandes d'achat non annulÃ©es + crÃ©dits manuels âˆ’ rÃ¨glements`.
+- `ExportService.exportClients` / `exportSuppliers` rÃ©utilisent ces **mÃªmes
+  expressions** : un export ne peut plus diverger de l'Ã©cran.
+- Le message d'erreur de migration de la base inclut dÃ©sormais **toujours la
+  cause rÃ©elle** (elle Ã©tait masquÃ©e dÃ¨s qu'un backup prÃ©-migration existait),
   ce qui a permis de diagnostiquer `incomplete input` (un `;` dans un commentaire
-  du schéma tronquait une instruction).
+  du schÃ©ma tronquait une instruction).
 
 ### Preuve
-- `tests/client-balance.test.ts` — **8 tests** : facture impayée = TTC, paiement
-  partiel, facture soldée = 0, dette + encaissement manuels, retour total d'une
-  facture impayée (avoir non crédité, facture annulée), **invariant solde
-  repository == solde du relevé**, plafond de crédit appliqué aux ventes, dette
-  fournisseur sur commande d'achat (+ commande annulée ignorée).
+- `tests/client-balance.test.ts` â€” **8 tests** : facture impayÃ©e = TTC, paiement
+  partiel, facture soldÃ©e = 0, dette + encaissement manuels, retour total d'une
+  facture impayÃ©e (avoir non crÃ©ditÃ©, facture annulÃ©e), **invariant solde
+  repository == solde du relevÃ©**, plafond de crÃ©dit appliquÃ© aux ventes, dette
+  fournisseur sur commande d'achat (+ commande annulÃ©e ignorÃ©e).
 
 ---
 
-## Limitation 3 — Chiffrement de la base de données
+## Limitation 3 â€” Chiffrement de la base de donnÃ©es
 
-### Décision (documentée, volontairement NON appliquée)
+### DÃ©cision (documentÃ©e, volontairement NON appliquÃ©e)
 Le chiffrement au repos via **SQLCipher** (`better-sqlite3-multiple-ciphers`) a
-été évalué et **écarté**, pour trois raisons documentées :
-1. Il remplace le module natif compilé pour l'ABI Electron 31 → recompilation
-   locale (VS Build Tools) exigée sur les machines non-dev ;
-2. La clé resterait stockée sur la même machine que la base : gain de sécurité
-   faible dans un modèle **mono-utilisateur 100 % local** assumé ;
-3. Chaque correctif ABI du fork devient un risque de build cassé pour toutes les
-   installations distribuées.
+Ã©tÃ© Ã©valuÃ© et **Ã©cartÃ©**, pour trois raisons documentÃ©es :
+1. Il remplace le module natif compilÃ© pour l'ABI Electron 31 â†’ recompilation
+   locale (VS Build Tools) exigÃ©e sur les machines non-dev ;
+2. La clÃ© resterait stockÃ©e sur la mÃªme machine que la base : gain de sÃ©curitÃ©
+   faible dans un modÃ¨le **mono-utilisateur 100 % local** assumÃ© ;
+3. Chaque correctif ABI du fork devient un risque de build cassÃ© pour toutes les
+   installations distribuÃ©es.
 
-La protection retenue repose sur le dossier de données utilisateur, la sandbox du
+La protection retenue repose sur le dossier de donnÃ©es utilisateur, la sandbox du
 renderer, le confinement des chemins IPC et les **backups** (`VACUUM INTO`).
 
 ### Emplacement
-- `src/database/config/connection.ts` — bloc de décision détaillé.
-- `README.md` — lignes 40 et 443 (section Sécurité).
+- `src/database/config/connection.ts` â€” bloc de dÃ©cision dÃ©taillÃ©.
+- `README.md` â€” lignes 40 et 443 (section SÃ©curitÃ©).
 
 ---
 
-## Limitation 4 — Sécurité de typage
+## Limitation 4 â€” SÃ©curitÃ© de typage
 
 ### Cause racine
 `tsconfig.node.json` (qui couvre `electron/`, `vite.config.ts`,
 `src/services`, `src/repositories`, `src/database`) **n'avait pas de `target`** :
-TypeScript retombait sous ES2015 et rejetait toute itération de `Map`/`Set`
-(TS2802) sur du code pourtant écrit pour ES2020. La vérification de ces dossiers
-était donc inexploitable.
+TypeScript retombait sous ES2015 et rejetait toute itÃ©ration de `Map`/`Set`
+(TS2802) sur du code pourtant Ã©crit pour ES2020. La vÃ©rification de ces dossiers
+Ã©tait donc inexploitable.
 
 ### Correctif
-- `target: "ES2020"` + `lib: ["ES2020"]` ajoutés à `tsconfig.node.json`,
+- `target: "ES2020"` + `lib: ["ES2020"]` ajoutÃ©s Ã  `tsconfig.node.json`,
   alignant les deux configurations.
 
 ### Preuve
-- `npx tsc --noEmit -p tsconfig.json` → **0 erreur**
-- `npx tsc --noEmit -p tsconfig.node.json` → **0 erreur**
+- `npx tsc --noEmit -p tsconfig.json` â†’ **0 erreur**
+- `npx tsc --noEmit -p tsconfig.node.json` â†’ **0 erreur**
 
 ---
 
-## Vérifications finales
+## VÃ©rifications finales
 
-| Vérification | Résultat |
+| VÃ©rification | RÃ©sultat |
 | --- | --- |
-| Suite de tests complète | **528 / 528** (56 fichiers) |
+| Suite de tests complÃ¨te | **528 / 528** (56 fichiers) |
 | TypeScript (`tsconfig.json`) | 0 erreur |
 | TypeScript (`tsconfig.node.json`) | 0 erreur |
 | Build de production (`tsc && vite build && vite build --config vite.config.mcp.ts`) | **EXIT=0** |

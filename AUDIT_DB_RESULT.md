@@ -1,4 +1,10 @@
-﻿# AUDIT COMPLET BASE DE DONNEES — StockLocal
+> [!WARNING] DOCUMENT HISTORIQUE - PERIME (Historical / superseded).
+> Le compteur de tests et le statut de production de ce fichier ne sont plus valides.
+> Rapport de reference : FINAL_PRODUCTION_AUDIT.md (57 fichiers, 538 tests, 538 PASS).
+
+---
+
+# AUDIT COMPLET BASE DE DONNEES — StockLocal
 *Execute le 2026-09-13 | Base sur des verifications REELLES*
 
 ## Resume executif

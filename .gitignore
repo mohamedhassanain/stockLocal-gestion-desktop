@@ -52,6 +52,9 @@ build_*.txt
 tsc_*.txt
 test_*.txt
 tmp_*
+tmp-*
+err.txt
+t-*.log
 e2e_out*.txt
 e2e-shot-*.png
 audit_after.json

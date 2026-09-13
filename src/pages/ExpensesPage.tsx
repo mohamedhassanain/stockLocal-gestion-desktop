@@ -4,6 +4,7 @@ import { toast } from '../stores/useToastStore';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { toLocalDateString } from '../utils/date';
 import type { Expense } from '../repositories/ExpenseRepository';
+import { toIpcResult } from '../utils/ipcResult';
 
 /**
  * §Phase 11 — Dépenses.
@@ -60,11 +61,12 @@ export const ExpensesPage: React.FC = () => {
       setCategories(safeCategories);
       setForm(prev => (safeCategories.includes(prev.category) ? prev : { ...prev, category: safeCategories[0] ?? 'Autres' }));
 
-      const payload = totalsResult as unknown as { success?: boolean; data?: { total: number; byCategory: CategoryTotal[] }; error?: string };
-      if (payload && payload.success === false) {
-        toast.error(payload.error ?? 'Totaux indisponibles.');
+      // Normalisation typée de l'enveloppe IPC (voir utils/ipcResult).
+      const result = toIpcResult<{ total: number; byCategory: CategoryTotal[] }>(totalsResult);
+      if (!result.success) {
+        toast.error(result.error ?? 'Totaux indisponibles.');
       } else {
-        const data = payload?.data ?? (totalsResult as unknown as { total: number; byCategory: CategoryTotal[] });
+        const data = result.data;
         setPeriodTotal(Number(data?.total ?? 0));
         setTotals(Array.isArray(data?.byCategory) ? data.byCategory : []);
       }

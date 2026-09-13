@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from './ui';
 import { toast } from '../stores/useToastStore';
 import type { Statement, StatementLine } from '../repositories/StatementRepository';
+import { toIpcResult } from '../utils/ipcResult';
 
 /**
  * §Phase 8 & 9 — Relevé de compte (CLIENT ou FOURNISSEUR).
@@ -56,14 +57,13 @@ export const AccountStatementPanel: React.FC<Props> = ({ entityKind, entityId })
         ? await window.api.clients.getStatement(entityId)
         : await window.api.suppliers.getStatement(entityId);
 
-      // Les handlers IPC répondent { success, data } ; on tolère aussi une
-      // réponse directe pour rester robuste.
-      const payload = response as unknown as { success?: boolean; data?: Statement; error?: string };
-      if (payload && payload.success === false) {
-        setError(payload.error ?? 'Impossible de charger le relevé.');
+      // Normalisation typée de l'enveloppe IPC (voir utils/ipcResult).
+      const result = toIpcResult<Statement>(response);
+      if (!result.success) {
+        setError(result.error ?? 'Impossible de charger le relevé.');
         setStatement(EMPTY);
       } else {
-        setStatement(payload?.data ?? (response as unknown as Statement) ?? EMPTY);
+        setStatement(result.data ?? EMPTY);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));

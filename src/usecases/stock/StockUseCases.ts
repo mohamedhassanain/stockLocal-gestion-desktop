@@ -57,7 +57,9 @@ export function addStockEntryUseCase(input: AddStockEntryInput): StockMovementRo
     date: new Date().toISOString(),
   });
   AuditService.log('STOCK_IN', 'stock', input.product_id, `Entrée de ${input.quantity} (${input.movement_type ?? 'PURCHASE_IN'})`);
-  return movement as unknown as StockMovementRow;
+  // `StockMovement` est un alias de `StockMovementRow` (StockMovementRepository) :
+  // aucun cast n'est nécessaire, le type de retour est déjà exact.
+  return movement;
 }
 
 /**
@@ -76,7 +78,8 @@ export function addStockExitUseCase(input: AddStockExitInput): StockMovementRow 
     date: new Date().toISOString(),
   });
   AuditService.log('STOCK_OUT', 'stock', input.product_id, `Sortie de ${input.quantity} (${input.exitType})`);
-  return movement as unknown as StockMovementRow;
+  // Idem : `StockMovement === StockMovementRow`.
+  return movement;
 }
 
 /**
