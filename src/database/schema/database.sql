@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     description TEXT,
+    -- §TVA — taux applicable à toute la catégorie (NULL = « utiliser le taux
+    -- par défaut de l'entreprise »). Un produit peut toujours le surcharger :
+    -- la résolution est produit → catégorie → défaut société.
+    vat_rate REAL DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -45,6 +49,10 @@ CREATE TABLE IF NOT EXISTS products (
     -- aucun changement de comportement pour les produits existants.
     batch_managed INTEGER NOT NULL DEFAULT 0,
     vat_rate REAL NOT NULL DEFAULT 20.0,
+    -- §TVA — si 1, le produit IGNORE son propre `vat_rate` et hérite du taux
+    -- défini sur sa catégorie (puis, à défaut, du taux par défaut de
+    -- l'entreprise). Par défaut 0 : aucune modification de comportement.
+    vat_inherit_from_category INTEGER NOT NULL DEFAULT 0,
     location TEXT,
     brand TEXT,
     supplier_id TEXT,
@@ -335,7 +343,14 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expected_date DATETIME,
     status TEXT NOT NULL DEFAULT 'DRAFT', -- DRAFT, CONFIRMED, RECEIVED, CANCELLED
+    -- `total` reste le total HORS TAXE (compatibilité historique : c'est la
+    -- somme qté × prix qui était déjà stockée). Les colonnes suivantes
+    -- décomposent la TVA sur achats, indispensable au calcul de la TVA
+    -- déductible (« TVA nette = collectée − déductible »).
     total REAL NOT NULL DEFAULT 0.0,
+    total_excl_tax REAL NOT NULL DEFAULT 0.0,
+    total_tax REAL NOT NULL DEFAULT 0.0,
+    total_incl_tax REAL NOT NULL DEFAULT 0.0,
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -350,6 +365,10 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     unit_price REAL NOT NULL,
     received_qty REAL NOT NULL DEFAULT 0,
     total REAL NOT NULL,
+    -- §TVA — taux FIGÉ au moment de la commande (comme `document_items.vat_rate`
+    -- pour les ventes) : un changement de TVA du produit ne réécrit pas
+    -- l'historique des achats déjà passés.
+    vat_rate REAL NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders (id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT

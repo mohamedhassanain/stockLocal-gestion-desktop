@@ -24,6 +24,9 @@ export const ProductCreateSchema = z.object({
   min_stock: z.number().min(0),
   max_stock: z.number().min(0).optional(),
   vat_rate: z.number().min(0).max(100).optional(),
+  // §TVA — 0/1 : hériter du taux de TVA de la CATÉGORIE du produit au lieu
+  // d'utiliser son propre taux.
+  vat_inherit_from_category: z.number().int().min(0).max(1).optional().default(0),
   // Phase 3 : 0/1 — produit géré par lots + date d'expiration.
   batch_managed: z.number().int().min(0).max(1).optional().default(0),
   status: z.enum(['ACTIVE', 'ARCHIVED', 'DISABLED']).default('ACTIVE'),
@@ -202,6 +205,8 @@ export const SupplierDebtSchema = z.object({
 export const CategorySchema = z.object({
   name: z.string().min(1, 'Le nom de la catégorie est obligatoire.').max(100),
   description: z.string().max(500).optional().nullable(),
+  // §TVA — taux par défaut de la catégorie (`null` = hériter du défaut société).
+  vat_rate: z.number().min(0, 'Le taux de TVA ne peut pas être négatif.').max(100, 'Le taux de TVA ne peut pas dépasser 100 %.').optional().nullable(),
 });
 
 export const SubcategorySchema = z.object({
@@ -386,6 +391,35 @@ export const SourcePathSchema = z.string().min(1, 'Le chemin source est obligato
  * AAAA-MM-JJ : une date-heure serait ambiguë (fuseau) et est rejetée.
  */
 export const DateRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de début invalide (format AAAA-MM-JJ).').optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de fin invalide (format AAAA-MM-JJ).').optional(),
+});
+
+// ─── §TVA — taux, catégories, périodes de rapport ────────────────────────────
+
+/** Un taux de TVA valide (pourcentage borné). */
+export const VatRateSchema = z.number()
+  .min(0, 'Le taux de TVA ne peut pas être négatif.')
+  .max(100, 'Le taux de TVA ne peut pas dépasser 100 %.');
+
+/** Corps d'un ajout/suppression de taux personnalisé. */
+export const VatRateValueSchema = z.object({ rate: VatRateSchema });
+
+/** §TVA — taux d'une catégorie (`null` = revenir au taux par défaut). */
+export const CategoryVatRateSchema = z.object({
+  categoryId: z.string().min(1, 'La catégorie est obligatoire.').max(64),
+  vatRate: VatRateSchema.nullable(),
+});
+
+/**
+ * Période d'un rapport de TVA. Les formats sont CALENDAIRES et STRICTS :
+ * une date-heure serait ambiguë (fuseau) et est rejetée. Au moins une des
+ * formes doit être fournie — la contrainte est vérifiée dans le handler
+ * (un `.refine` sur un objet partiel donnerait un message moins clair).
+ */
+export const TaxPeriodSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/, 'Mois invalide (format AAAA-MM).').optional(),
+  year: z.number().int().min(1900, 'Année invalide.').max(9999, 'Année invalide.').optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de début invalide (format AAAA-MM-JJ).').optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de fin invalide (format AAAA-MM-JJ).').optional(),
 });

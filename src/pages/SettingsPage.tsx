@@ -22,13 +22,23 @@ import {
 // Conformité fiscale DGI (Maroc) — constantes/traits PURS (sans accès base).
 import { DGI_MODULE_DISCLAIMER, DGI_STATUS_LABEL } from '../compliance/dgi/dgiStatus';
 // ─── Onglets ────────────────────────────────────────────────────────────────
-type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'clients' | 'etiquettes' | 'dgi' | 'alerts' | 'updates';
+type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'clients' | 'tva' | 'etiquettes' | 'dgi' | 'alerts' | 'updates';
 
 interface Category {
   id: string;
   name: string;
   description?: string;
+  /** §TVA — taux de la catégorie (`null` = hériter du taux par défaut). */
+  vat_rate?: number | null;
   subcategories?: Array<{ id: string; category_id: string; name: string; description?: string }>;
+}
+
+/** §TVA — un taux proposé (taux légal marocain ou taux personnalisé). */
+interface VatRateOption {
+  rate: number;
+  label: string;
+  shortLabel: string;
+  isPreset: boolean;
 }
 
 interface VolumeDiscount {
@@ -880,6 +890,71 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  // ─── §TVA — catalogue de taux + taux par catégorie ─────────────────────────
+  const [vatCatalog, setVatCatalog] = useState<VatRateOption[]>([]);
+  const [newVatRate, setNewVatRate] = useState('');
+
+  const loadVatCatalog = async () => {
+    try {
+      setVatCatalog(await window.api.tax.listRates());
+    } catch { /* diagnostic non bloquant : la liste légale reste affichable */ }
+  };
+
+  useEffect(() => {
+    if (tab === 'tva') loadVatCatalog().then();
+  }, [tab]);
+
+  const addVatRate = async () => {
+    const rate = Number(newVatRate.replace(',', '.'));
+    if (!Number.isFinite(rate) || newVatRate.trim() === '') {
+      notify('⚠️ Saisissez un taux numérique (ex : 5,5)');
+      return;
+    }
+    try {
+      const result = await window.api.tax.addRate(rate);
+      if (result?.success) {
+        setNewVatRate('');
+        await loadVatCatalog();
+        notify(`✅ Taux ${rate} % ajouté`);
+      } else {
+        notify(`❌ ${result?.error ?? 'Ajout impossible'}`);
+      }
+    } catch (e: unknown) {
+      notify(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const removeVatRate = async (rate: number) => {
+    try {
+      const result = await window.api.tax.removeRate(rate);
+      if (result?.success) {
+        await loadVatCatalog();
+        notify(`🗑️ Taux ${rate} % retiré`);
+      } else {
+        notify(`❌ ${result?.error ?? 'Suppression impossible'}`);
+      }
+    } catch (e: unknown) {
+      notify(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  /** §TVA — définit (ou efface avec `null`) le taux TVA d'une catégorie produit. */
+  const setCategoryVatRate = async (categoryId: string, vatRate: number | null) => {
+    try {
+      const result = await window.api.tax.setCategoryRate(categoryId, vatRate);
+      if (result?.success) {
+        setCategories(prev => prev.map(c => (c.id === categoryId ? { ...c, vat_rate: vatRate } : c)));
+        notify(vatRate === null
+          ? '✅ La catégorie utilisera le taux par défaut'
+          : `✅ Taux de la catégorie : ${vatRate} %`);
+      } else {
+        notify(`❌ ${result?.error ?? 'Enregistrement impossible'}`);
+      }
+    } catch (e: unknown) {
+      notify(`❌ ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const tabs: Array<{ id: Tab; label: string; icon: string }> = [
     { id: 'company', label: 'Entreprise', icon: '🏢' },
     { id: 'categories', label: 'Catégories', icon: '🏷️' },
@@ -888,6 +963,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'cash', label: 'Caisse', icon: '💵' },
     { id: 'expenses', label: 'Dépenses', icon: '🧾' },
     { id: 'clients', label: 'Catégories clients', icon: '🤝' },
+    { id: 'tva', label: 'Taux de TVA', icon: '🧮' },
     { id: 'etiquettes', label: 'Étiquettes', icon: '🏷️' },
     { id: 'dgi', label: 'Conformité DGI', icon: '🇲🇦' },
     { id: 'alerts', label: 'Alertes', icon: '🔔' },
@@ -1488,6 +1564,103 @@ export const SettingsPage: React.FC = () => {
             </p>
             <Button onClick={saveGlobalSettings} className="mt-4">💾 Enregistrer</Button>
           </Card>
+          </div>
+        )}
+
+        {tab === 'tva' && (
+          <div style={{ maxWidth: 820 }}>
+            <Card padding className="mb-4">
+              <SectionTitle icon="🧮" title="Taux de TVA proposés" />
+              <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
+                Ces taux sont proposés dans le formulaire produit et dans les commandes d'achat.
+                Les 5 taux légaux marocains (0, 7, 10, 14 et 20 %) restent toujours disponibles et
+                ne peuvent pas être retirés ; ajoutez ici vos propres taux si nécessaire.
+              </p>
+
+              <div className="flex gap-2 mb-4" style={{ alignItems: 'flex-end' }}>
+                <Input
+                  label="Nouveau taux (%)"
+                  placeholder="Ex : 5,5"
+                  value={newVatRate}
+                  onChange={e => setNewVatRate(e.target.value)}
+                  className="flex-1"
+                />
+                <Button onClick={addVatRate}>+ Ajouter</Button>
+              </div>
+
+              {vatCatalog.length === 0 ? (
+                <div className="text-muted text-center" style={{ padding: 16 }}>Aucun taux chargé.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {vatCatalog.map(r => (
+                    <span key={r.rate} className={`badge ${r.isPreset ? 'badge-info' : 'badge-success'}`}>
+                      {r.shortLabel}
+                      {!r.isPreset && (
+                        <DeleteButton size="xs" onClick={() => removeVatRate(r.rate)} title={`Retirer ${r.shortLabel}`} />
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4" style={{ maxWidth: 320 }}>
+                <Input
+                  label="Taux par défaut de l'entreprise (%)"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={globalSettings.default_vat_rate}
+                  onChange={e => setGlobalSettings({ ...globalSettings, default_vat_rate: Number(e.target.value) })}
+                />
+                <p className="text-xs text-muted" style={{ marginTop: 4 }}>
+                  Appliqué à un produit sans taux propre et sans taux de catégorie.
+                </p>
+              </div>
+
+              <Button onClick={saveGlobalSettings} className="mt-4">💾 Enregistrer</Button>
+            </Card>
+
+            <Card padding>
+              <SectionTitle icon="🏷️" title="TVA par catégorie de produits" />
+              <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 16 }}>
+                Un produit peut hériter du taux de sa catégorie (case « Hériter la TVA de la
+                catégorie » du formulaire produit). Laissez « Taux par défaut » pour ne rien imposer.
+              </p>
+              {categories.length === 0 ? (
+                <div className="text-muted text-center" style={{ padding: 16 }}>
+                  Aucune catégorie. Créez-en dans l'onglet « Catégories ».
+                </div>
+              ) : (
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Catégorie</th>
+                      <th style={{ width: 240 }}>Taux de TVA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map(cat => (
+                      <tr key={cat.id}>
+                        <td className="font-semibold">{cat.name}</td>
+                        <td>
+                          <select
+                            className="input"
+                            value={cat.vat_rate == null ? '' : String(cat.vat_rate)}
+                            onChange={e => setCategoryVatRate(cat.id, e.target.value === '' ? null : Number(e.target.value))}
+                          >
+                            <option value="">Taux par défaut ({globalSettings.default_vat_rate} %)</option>
+                            {vatCatalog.map(r => (
+                              <option key={r.rate} value={String(r.rate)}>{r.label}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Card>
           </div>
         )}
 

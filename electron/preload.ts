@@ -22,6 +22,8 @@ export interface ProductCreateInput {
   min_stock: number;
   max_stock?: number;
   vat_rate?: number;
+  // §TVA — 0/1 : hériter du taux de TVA de la CATÉGORIE du produit.
+  vat_inherit_from_category?: number;
   location?: string | null;
   brand?: string | null;
   supplier_id?: string | null;
@@ -136,6 +138,44 @@ export interface PaymentInput {
 export interface CategoryInput {
   name: string;
   description?: string | null;
+  // §TVA — taux par défaut de la catégorie (`null` = revenir au défaut société).
+  vat_rate?: number | null;
+}
+
+// ── §TVA — rapport fiscal ──
+/** Ventilation d'un taux : base hors taxe cumulée + TVA correspondante. */
+export interface VatRateBreakdown {
+  rate: number;
+  exclTax: number;
+  tax: number;
+}
+
+/** Totaux d'un flux (ventes ou achats) : HT, TVA, TTC + nombre de documents. */
+export interface VatFlowTotals {
+  exclTax: number;
+  tax: number;
+  inclTax: number;
+  count: number;
+}
+
+/** Rapport de TVA d'une période (bornes incluses, format AAAA-MM-JJ). */
+export interface VatReport {
+  from: string;
+  to: string;
+  sales: VatFlowTotals;
+  purchases: VatFlowTotals;
+  /** TVA nette = collectée − déductible (négative = crédit de TVA). */
+  netVat: number;
+  salesByRate: VatRateBreakdown[];
+  purchasesByRate: VatRateBreakdown[];
+}
+
+/** Un taux de TVA du catalogue avec ses libellés d'affichage. */
+export interface VatRateOption {
+  rate: number;
+  label: string;
+  shortLabel: string;
+  isPreset: boolean;
 }
 
 // ── Remises par volume ──
@@ -241,6 +281,8 @@ export interface GlobalSettingsInput {
   // §Étiquettes — dimensions d'une étiquette produit (mm).
   label_width_mm?: number;
   label_height_mm?: number;
+  // §TVA — taux proposés dans l'application (taux légaux + personnalisés).
+  vat_rates?: number[];
   // §Fidélité — 1 point par N MAD dépensés (0 = désactivé) + valeur d'un point.
   loyalty_mad_per_point?: number;
   loyalty_point_value_mad?: number;
@@ -378,6 +420,28 @@ export const api = {
     addSub: (categoryId: string, data: CategoryInput) => ipcRenderer.invoke('categories:addSub', { categoryId, data }),
     updateSub: (id: string, data: CategoryInput) => ipcRenderer.invoke('categories:updateSub', { id, data }),
     deleteSub: (id: string) => ipcRenderer.invoke('categories:deleteSub', id),
+  },
+
+  // ─── §TVA — catalogue, taux de catégorie, rapport fiscal ──────────────────
+  tax: {
+    getCatalog: () => ipcRenderer.invoke('tax:getCatalog'),
+    addRate: (rate: number) => ipcRenderer.invoke('tax:addRate', { rate }),
+    removeRate: (rate: number) => ipcRenderer.invoke('tax:removeRate', { rate }),
+    setCategoryRate: (categoryId: string, vatRate: number | null) =>
+      ipcRenderer.invoke('tax:setCategoryRate', { categoryId, vatRate }),
+    // Rapport de TVA : période par priorité from+to → month → year → mois courant.
+    getReport: (period?: { month?: string; year?: number; from?: string; to?: string }) =>
+      ipcRenderer.invoke('tax:getReport', period ?? {}),
+    // Catalogue des taux proposés (taux légaux + personnalisés).
+    listRates: async (): Promise<VatRateOption[]> => {
+      const res = await ipcRenderer.invoke('tax:getCatalog');
+      return (res?.rates ?? []) as VatRateOption[];
+    },
+    // Taux par défaut de l'entreprise (dernier repli de la résolution).
+    getDefaultRate: async (): Promise<number> => {
+      const res = await ipcRenderer.invoke('tax:getCatalog');
+      return Number(res?.defaultRate ?? 20);
+    },
   },
 
   // ─── Remises ───────────────────────────────────────────────────────────────

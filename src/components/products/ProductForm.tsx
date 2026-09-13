@@ -19,6 +19,9 @@ const productSchema = z.object({
   selling_price: z.number().min(0, 'Le prix de vente doit être positif'),
   wholesale_price: z.number().min(0, 'Le prix de gros doit être positif'),
   min_stock: z.number().min(0, 'Le stock minimum doit être positif'),
+  // §TVA — taux du produit (pourcentage) + héritage éventuel du taux de la catégorie.
+  vat_rate: z.number().min(0, 'Le taux de TVA ne peut pas être négatif').max(100, 'Le taux de TVA ne peut pas dépasser 100 %'),
+  vat_inherit_from_category: z.number().int().min(0).max(1).optional(),
   batch_managed: z.number().int().min(0).max(1).optional(),
 }).refine(data => data.selling_price >= data.purchase_price, {
   message: "Le prix de vente ne peut pas être inférieur au prix d'achat",
@@ -28,7 +31,17 @@ const productSchema = z.object({
 interface Category {
   id: string;
   name: string;
+  /** §TVA — taux de la catégorie (`null` = aucun taux imposé par la catégorie). */
+  vat_rate?: number | null;
   subcategories?: Array<{ id: string; category_id: string; name: string }>;
+}
+
+/** §TVA — un taux proposé (taux légal marocain ou taux personnalisé). */
+interface VatRateOption {
+  rate: number;
+  label: string;
+  shortLabel: string;
+  isPreset: boolean;
 }
 
 interface ProductFormProps {
@@ -63,9 +76,13 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     selling_price: editingProduct?.selling_price ?? 0,
     wholesale_price: editingProduct?.wholesale_price ?? 0,
     min_stock: editingProduct?.min_stock ?? 5,
+    // §TVA — taux du produit et héritage de la catégorie (0 = non, 1 = oui).
+    vat_rate: editingProduct?.vat_rate ?? 20,
+    vat_inherit_from_category: editingProduct?.vat_inherit_from_category ? 1 : 0,
     batch_managed: editingProduct?.batch_managed ? 1 : 0,
     initial_stock: 0,
   });
+  const [vatRates, setVatRates] = useState<VatRateOption[]>([]);
 
   useEffect(() => {
     window.api.categories.getAll().then(setCategories).catch(() => {});
@@ -73,6 +90,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
     window.api.globalSettings.get().then((gs: { product_units?: string[] }) => {
       if (gs?.product_units?.length) setUnits(gs.product_units);
     }).catch(() => {});
+    // §TVA — catalogue des taux proposés (légaux + personnalisés, Paramètres).
+    window.api.tax.listRates().then(setVatRates).catch(() => {});
     if (editingProduct) {
       window.api.stock.getLevel(editingProduct.id).then((level: number) => {
         setCurrentStock(level);
@@ -112,6 +131,13 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, category_id: e.target.value, subcategory_id: '' }));
+  };
+
+  // §TVA — un `<select>` renvoie une CHAÎNE : on convertit explicitement en
+  // nombre, sinon la validation Zod (`z.number()`) rejetterait le formulaire.
+  const handleVatRateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const rate = Number(e.target.value);
+    setFormData(prev => ({ ...prev, vat_rate: Number.isFinite(rate) ? rate : 0 }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -287,6 +313,45 @@ export const ProductForm: React.FC<ProductFormProps> = ({ onClose, editingProduc
               />
             </div>
           </div>
+
+          {/* §TVA — taux du produit, ou héritage du taux de la catégorie. */}
+          <div className="flex gap-3">
+            <div style={{ flex: 1 }}>
+              <Select
+                label="Taux de TVA"
+                name="vat_rate"
+                value={String(formData.vat_rate)}
+                onChange={handleVatRateChange}
+                disabled={formData.vat_inherit_from_category === 1}
+                error={errors.vat_rate}
+              >
+                {!vatRates.some(r => r.rate === formData.vat_rate) && (
+                  <option value={String(formData.vat_rate)}>{formData.vat_rate} %</option>
+                )}
+                {vatRates.map(r => <option key={r.rate} value={String(r.rate)}>{r.label}</option>)}
+              </Select>
+            </div>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', paddingTop: 22 }}>
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary">
+                <input
+                  type="checkbox"
+                  checked={formData.vat_inherit_from_category === 1}
+                  onChange={e => setFormData(pr => ({ ...pr, vat_inherit_from_category: e.target.checked ? 1 : 0 }))}
+                  style={{ width: 18, height: 18, accentColor: 'var(--primary)' }}
+                />
+                Hériter la TVA de la catégorie
+              </label>
+            </div>
+          </div>
+          {formData.vat_inherit_from_category === 1 && (
+            <p className="text-xs text-muted" style={{ marginTop: 0, marginBottom: 'var(--space-4)' }}>
+              {selectedCategory
+                ? (selectedCategory.vat_rate == null
+                  ? `La catégorie « ${selectedCategory.name} » n'impose aucun taux : le taux par défaut de l'entreprise s'appliquera.`
+                  : `Taux appliqué : celui de la catégorie « ${selectedCategory.name} » (${String(selectedCategory.vat_rate).replace('.', ',')} %).`)
+                : 'Aucune catégorie sélectionnée : le taux par défaut de l\'entreprise s\'appliquera.'}
+            </p>
+          )}
 
           <div style={{ marginBottom: 'var(--space-4)' }}>
             <span className="form-label">Image du produit</span>

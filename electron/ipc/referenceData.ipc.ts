@@ -19,6 +19,9 @@ import { GlobalSettingsService } from '../../src/services/GlobalSettingsService'
 import { ImportService, type ImportDuplicateStrategy } from '../../src/services/ImportService';
 import { ExportService } from '../../src/services/ExportService';
 import { AccountingExportService } from '../../src/services/AccountingExportService';
+// §TVA — catalogue de taux + rapport fiscal (TVA collectée / déductible / nette).
+import { TaxService } from '../../src/services/TaxService';
+import { todayDateOnly } from '../../src/utils/date';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
 import { BackupService } from '../../src/services/BackupService';
@@ -38,6 +41,9 @@ import {
   CompanySettingsSchema,
   GlobalSettingsSchema,
   DateRangeSchema,
+  VatRateValueSchema,
+  CategoryVatRateSchema,
+  TaxPeriodSchema,
 } from '../../src/validation/schemas';
 import { shell } from 'electron';
 
@@ -76,6 +82,14 @@ function buildProductInput(
     selling_price: pick(patch.selling_price, current.selling_price),
     wholesale_price: pick(patch.wholesale_price, current.wholesale_price),
     min_stock: pick(patch.min_stock, current.min_stock),
+    // §TVA — le taux du produit et le choix d'hériter de la catégorie doivent
+    // traverser la frontière IPC : `ProductRepository.update` les persiste et
+    // `TaxService.resolveRate` s'appuie dessus.
+    vat_rate: pick(patch.vat_rate, current.vat_rate ?? undefined),
+    vat_inherit_from_category: pick(
+      patch.vat_inherit_from_category,
+      current.vat_inherit_from_category ?? 0,
+    ),
     batch_managed: pick(patch.batch_managed, current.batch_managed ?? 0),
     status: pick(patch.status, current.status),
   };
@@ -273,6 +287,66 @@ export function registerReferenceDataHandlers(): void {
       const safeId = requireId(id, 'id sous-catégorie');
       CategoryRepository.removeSubcategory(safeId);
       return { success: true };
+    });
+  });
+
+  // ─── §TVA — catalogue, taux de catégorie et rapport fiscal ────────────────
+  ipcMain.handle('tax:getCatalog', async () => {
+    return {
+      success: true,
+      rates: TaxService.getCatalog(),
+      defaultRate: TaxService.getDefaultRate(),
+    };
+  });
+
+  ipcMain.handle('tax:addRate', async (_, payload: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(VatRateValueSchema, payload, 'Ajout de taux de TVA');
+      const rates = TaxService.addRate(safe.rate);
+      AuditService.log('VAT_RATE_ADD', 'settings', 'vat_rates', `Taux de TVA ajouté : ${safe.rate} %`);
+      return { success: true, rates };
+    });
+  });
+
+  ipcMain.handle('tax:removeRate', async (_, payload: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(VatRateValueSchema, payload, 'Suppression de taux de TVA');
+      const rates = TaxService.removeRate(safe.rate);
+      AuditService.log('VAT_RATE_REMOVE', 'settings', 'vat_rates', `Taux de TVA retiré : ${safe.rate} %`);
+      return { success: true, rates };
+    });
+  });
+
+  ipcMain.handle('tax:setCategoryRate', async (_, payload: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(CategoryVatRateSchema, payload, 'Taux de TVA de la catégorie');
+      const vatRate = CategoryRepository.setVatRate(safe.categoryId, safe.vatRate);
+      AuditService.log(
+        'CATEGORY_VAT',
+        'category',
+        safe.categoryId,
+        vatRate === null ? 'Taux de TVA de catégorie effacé' : `Taux de TVA de catégorie : ${vatRate} %`,
+      );
+      return { success: true, data: { categoryId: safe.categoryId, vatRate } };
+    });
+  });
+
+  // §TVA — rapport fiscal : TVA collectée, TVA déductible, TVA nette et
+  // ventilation par taux. La période est résolue par priorité :
+  //   from+to → mois → année → mois courant (repli le plus utile).
+  ipcMain.handle('tax:getReport', async (_, payload: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(TaxPeriodSchema, payload ?? {}, 'Période du rapport de TVA');
+      if (safe.from && safe.to) {
+        return { success: true, data: TaxService.getReportForRange(safe.from, safe.to) };
+      }
+      if (safe.month) {
+        return { success: true, data: TaxService.getReportForMonth(safe.month) };
+      }
+      if (typeof safe.year === 'number') {
+        return { success: true, data: TaxService.getReportForYear(safe.year) };
+      }
+      return { success: true, data: TaxService.getReportForMonth(todayDateOnly().slice(0, 7)) };
     });
   });
 

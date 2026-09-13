@@ -609,6 +609,49 @@ function upgradeLegacyDatabase(): void {
   // recalcul des soldes (StockLedgerService.rebuildBalances).
   addColumnIfMissing('stock_movements', 'unit_cost', 'REAL NOT NULL DEFAULT 0');
 
+  // ── §TVA — Taux par catégorie et TVA sur achats (TVA déductible) ───────────
+  //
+  // MÊME RAISON que `unit_cost` ci-dessus : ces colonnes sont ajoutées APRÈS
+  // toutes les reconstructions de table. `rebuildIfQtyInteger('purchase_order_items',
+  // 'quantity', …)` recopie une liste EXPLICITE de colonnes ; ajouter `vat_rate`
+  // avant ce rebuild la ferait disparaître sur une base ancienne.
+  addColumnIfMissing('categories', 'vat_rate', 'REAL DEFAULT NULL');
+  addColumnIfMissing('products', 'vat_inherit_from_category', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing('purchase_order_items', 'vat_rate', 'REAL NOT NULL DEFAULT 0');
+  addColumnIfMissing('purchase_orders', 'total_excl_tax', 'REAL NOT NULL DEFAULT 0.0');
+  addColumnIfMissing('purchase_orders', 'total_tax', 'REAL NOT NULL DEFAULT 0.0');
+  addColumnIfMissing('purchase_orders', 'total_incl_tax', 'REAL NOT NULL DEFAULT 0.0');
+
+  // Backfill UNIQUE des commandes d'achat ANTÉRIEURES (avant l'existence de la
+  // TVA sur achats). La condition `total_incl_tax = 0 AND total <> 0` identifie
+  // exactement ces lignes et rend l'opération idempotente : dès qu'une commande
+  // a été décomposée, elle n'est plus retouchée (une commande légitimement à
+  // 0 MAD n'a rien à décomposer).
+  try {
+    db.exec(`
+      UPDATE purchase_order_items
+      SET vat_rate = COALESCE(
+        (SELECT p.vat_rate FROM products p WHERE p.id = purchase_order_items.product_id), 0
+      )
+      WHERE purchase_order_id IN (
+        SELECT id FROM purchase_orders WHERE total_incl_tax = 0 AND total <> 0
+      );
+
+      UPDATE purchase_orders
+      SET total_excl_tax = COALESCE(
+            (SELECT ROUND(SUM(poi.total), 2) FROM purchase_order_items poi
+             WHERE poi.purchase_order_id = purchase_orders.id), total),
+          total_tax = COALESCE(
+            (SELECT ROUND(SUM(poi.total * poi.vat_rate / 100.0), 2) FROM purchase_order_items poi
+             WHERE poi.purchase_order_id = purchase_orders.id), 0)
+      WHERE total_incl_tax = 0 AND total <> 0;
+
+      UPDATE purchase_orders
+      SET total_incl_tax = ROUND(total_excl_tax + total_tax, 2)
+      WHERE total_incl_tax = 0 AND total <> 0;
+    `);
+  } catch { /* backfill non bloquant : les écritures futures renseignent les colonnes */ }
+
   // Recréer les index qui peuvent avoir disparu après les rebuilds ci-dessus.
   try {
     db.exec(`

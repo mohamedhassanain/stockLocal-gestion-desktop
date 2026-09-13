@@ -8,6 +8,39 @@ import { useWarehouseStore } from '../stores/useWarehouseStore';
 // heures du 1er du mois. On utilise le helper de date locale.
 import { todayDateOnly } from '../utils/date';
 
+/** §TVA — ventilation d'un taux : base hors taxe cumulée + TVA correspondante. */
+interface VatRateBreakdown {
+  rate: number;
+  exclTax: number;
+  tax: number;
+}
+
+/** §TVA — totaux d'un flux (ventes ou achats). */
+interface VatFlowTotals {
+  exclTax: number;
+  tax: number;
+  inclTax: number;
+  count: number;
+}
+
+/** §TVA — rapport fiscal d'une période. */
+interface VatReport {
+  from: string;
+  to: string;
+  sales: VatFlowTotals;
+  purchases: VatFlowTotals;
+  /** TVA nette (négative = crédit de TVA reportable). */
+  netVat: number;
+  salesByRate: VatRateBreakdown[];
+  purchasesByRate: VatRateBreakdown[];
+}
+
+/** Formate un taux de TVA (« Exonéré » pour 0 %). */
+function formatRate(rate: number): string {
+  if (rate === 0) return 'Exonéré';
+  return `${String(rate).replace('.', ',')} %`;
+}
+
 const RankBadge: React.FC<{ rank: number; variant?: 'primary' | 'accent' }> = ({ rank, variant = 'primary' }) => (
   <span
     className="flex items-center text-xs font-semibold"
@@ -110,6 +143,30 @@ export const ReportsPage: React.FC = () => {
 
   // §Phase 2.2 — le mois du rapport est une date MÉTIER : jamais via UTC.
   const month = todayDateOnly().slice(0, 7);
+
+  // ─── §TVA — déclaration de TVA (collectée / déductible / nette) ────────────
+  // Période dédiée, par défaut le mois en cours : c'est la maille de déclaration
+  // habituelle. Les bornes sont des dates MÉTIER (AAAA-MM-JJ), jamais des instants.
+  const [vatFrom, setVatFrom] = useState(`${month}-01`);
+  const [vatTo, setVatTo] = useState(todayDateOnly());
+  const [vatReport, setVatReport] = useState<VatReport | null>(null);
+  const [vatLoading, setVatLoading] = useState(false);
+
+  const loadVatReport = async () => {
+    setVatLoading(true);
+    try {
+      const result = await window.api.tax.getReport({ from: vatFrom, to: vatTo });
+      if (result?.success && result.data) setVatReport(result.data as VatReport);
+      else toast.error(result?.error ?? 'Impossible de calculer la TVA.');
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Impossible de calculer la TVA : ${message}`);
+    } finally {
+      setVatLoading(false);
+    }
+  };
+
+  useEffect(() => { loadVatReport(); }, []);
 
   // ─── Donut (Répartition des encaissements par mode de paiement) ────────────
   const donutChart = (() => {
@@ -260,6 +317,145 @@ export const ReportsPage: React.FC = () => {
               CA, TVA, marge, dépenses, encaissements, achats et créances/dettes — CSV lisible par Excel.
             </span>
           </div>
+        </Card>
+
+        {/* §TVA — déclaration de TVA : collectée, déductible, nette + ventilation par taux. */}
+        <Card padding>
+          <div className="flex items-center gap-3 flex-wrap" style={{ marginBottom: 14 }}>
+            <h2 className="section-title" style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>
+              🧮 TVA — collectée, déductible et nette
+            </h2>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-secondary font-semibold" htmlFor="vat-from">Du</label>
+              <input
+                id="vat-from"
+                type="date"
+                className="input"
+                style={{ width: 155 }}
+                value={vatFrom}
+                max={vatTo || undefined}
+                onChange={e => setVatFrom(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-secondary font-semibold" htmlFor="vat-to">Au</label>
+              <input
+                id="vat-to"
+                type="date"
+                className="input"
+                style={{ width: 155 }}
+                value={vatTo}
+                min={vatFrom || undefined}
+                onChange={e => setVatTo(e.target.value)}
+              />
+            </div>
+            <Button onClick={loadVatReport}>{vatLoading ? 'Calcul…' : 'Calculer la TVA'}</Button>
+          </div>
+
+          {!vatReport ? (
+            <div className="state-box"><div className="state-text">Aucune donnée de TVA chargée.</div></div>
+          ) : (
+            <>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Flux</th>
+                    <th style={{ textAlign: 'right' }}>Base HT</th>
+                    <th style={{ textAlign: 'right' }}>TVA</th>
+                    <th style={{ textAlign: 'right' }}>Total TTC</th>
+                    <th style={{ textAlign: 'right' }}>Documents</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="font-semibold">Ventes (TVA collectée)</td>
+                    <td className="money" style={{ textAlign: 'right' }}>{vatReport.sales.exclTax.toFixed(2)}</td>
+                    <td className="money" style={{ textAlign: 'right' }}>{vatReport.sales.tax.toFixed(2)}</td>
+                    <td className="money" style={{ textAlign: 'right' }}>{vatReport.sales.inclTax.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right' }}>{vatReport.sales.count}</td>
+                  </tr>
+                  <tr>
+                    <td className="font-semibold">Achats (TVA déductible)</td>
+                    <td className="money" style={{ textAlign: 'right' }}>{vatReport.purchases.exclTax.toFixed(2)}</td>
+                    <td className="money" style={{ textAlign: 'right' }}>{vatReport.purchases.tax.toFixed(2)}</td>
+                    <td className="money" style={{ textAlign: 'right' }}>{vatReport.purchases.inclTax.toFixed(2)}</td>
+                    <td style={{ textAlign: 'right' }}>{vatReport.purchases.count}</td>
+                  </tr>
+                  <tr>
+                    <td className="font-semibold">
+                      TVA nette {vatReport.netVat >= 0 ? '(à payer)' : '(crédit de TVA reportable)'}
+                    </td>
+                    <td />
+                    <td
+                      className="money font-semibold"
+                      style={{ textAlign: 'right', color: vatReport.netVat >= 0 ? 'var(--danger)' : 'var(--success)' }}
+                    >
+                      {vatReport.netVat.toFixed(2)}
+                    </td>
+                    <td colSpan={2} />
+                  </tr>
+                </tbody>
+              </table>
+
+              <p className="text-xs text-muted" style={{ marginTop: 8 }}>
+                TVA nette = TVA collectée − TVA déductible. Un montant négatif est un crédit de TVA
+                reportable. Les avoirs sont déduits des ventes et les documents annulés sont exclus.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 16 }}>
+                <div>
+                  <h4 style={{ margin: '0 0 8px' }}>Ventilation des ventes par taux</h4>
+                  {vatReport.salesByRate.length === 0 ? (
+                    <div className="text-xs text-muted">Aucune vente sur la période.</div>
+                  ) : (
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Taux</th>
+                          <th style={{ textAlign: 'right' }}>Base HT</th>
+                          <th style={{ textAlign: 'right' }}>TVA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vatReport.salesByRate.map(r => (
+                          <tr key={`s-${r.rate}`}>
+                            <td>{formatRate(r.rate)}</td>
+                            <td className="money" style={{ textAlign: 'right' }}>{r.exclTax.toFixed(2)}</td>
+                            <td className="money" style={{ textAlign: 'right' }}>{r.tax.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                <div>
+                  <h4 style={{ margin: '0 0 8px' }}>Ventilation des achats par taux</h4>
+                  {vatReport.purchasesByRate.length === 0 ? (
+                    <div className="text-xs text-muted">Aucun achat sur la période.</div>
+                  ) : (
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Taux</th>
+                          <th style={{ textAlign: 'right' }}>Base HT</th>
+                          <th style={{ textAlign: 'right' }}>TVA</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vatReport.purchasesByRate.map(r => (
+                          <tr key={`p-${r.rate}`}>
+                            <td>{formatRate(r.rate)}</td>
+                            <td className="money" style={{ textAlign: 'right' }}>{r.exclTax.toFixed(2)}</td>
+                            <td className="money" style={{ textAlign: 'right' }}>{r.tax.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </Card>
 
         {isLoading ? (

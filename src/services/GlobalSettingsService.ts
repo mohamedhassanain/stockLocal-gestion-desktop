@@ -12,6 +12,8 @@ import {
   DEFAULT_CLIENT_CATEGORIES,
   parseClientCategories,
 } from '../domain/clients/clientCategories';
+// §TVA — catalogue de taux (module PUR : aucune I/O, aucun cycle).
+import { VAT_PRESET_RATES, parseVatRates } from '../domain/tax/vatRates';
 
 export interface GlobalSettings {
   low_stock_threshold_multiplier: number;
@@ -50,6 +52,9 @@ export interface GlobalSettings {
   desktop_notification_due_days: number;
   // §Notifications — seuil d'anticipation des péremptions de lots (jours).
   desktop_notification_expiry_days: number;
+  // §TVA — taux de TVA proposés dans l'application (les taux légaux marocains
+  // 0/7/10/14/20 sont TOUJOURS inclus + éventuels taux personnalisés).
+  vat_rates: number[];
   // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
   ai_provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
   ai_provider_name: string;
@@ -94,6 +99,7 @@ const DEFAULTS: GlobalSettings = {
   desktop_notifications_enabled: true,
   desktop_notification_due_days: 7,
   desktop_notification_expiry_days: 30,
+  vat_rates: [...VAT_PRESET_RATES],
   ai_provider: 'anthropic',
   ai_provider_name: '',
   ai_base_url: '',
@@ -163,6 +169,7 @@ export const GlobalSettingsService = {
       desktop_notifications_enabled: (map['desktop_notifications_enabled'] ?? 'true') === 'true',
       desktop_notification_due_days: parseInt(map['desktop_notification_due_days'] ?? String(DEFAULTS.desktop_notification_due_days), 10),
       desktop_notification_expiry_days: parseInt(map['desktop_notification_expiry_days'] ?? String(DEFAULTS.desktop_notification_expiry_days), 10),
+      vat_rates: parseVatRates(map['vat_rates']),
       ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'openai-compatible' | 'custom',
       ai_provider_name: map['ai_provider_name'] ?? DEFAULTS.ai_provider_name,
       ai_base_url: map['ai_base_url'] ?? DEFAULTS.ai_base_url,
