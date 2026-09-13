@@ -37,6 +37,19 @@ export interface GlobalSettings {
   expense_categories: string[];
   // Catégories de clients définies par l'utilisateur (Détail, Grossiste, VIP…).
   client_categories: string[];
+  // §Étiquettes — dimensions imprimées d'une étiquette produit (en millimètres).
+  label_width_mm: number;
+  label_height_mm: number;
+  // §Fidélité — 1 point crédité pour N MAD dépensés (0 = programme désactivé).
+  loyalty_mad_per_point: number;
+  // §Fidélité — valeur en MAD d'un point utilisé comme remise à la vente.
+  loyalty_point_value_mad: number;
+  // §Notifications — notifications système desktop activées.
+  desktop_notifications_enabled: boolean;
+  // §Notifications — délai d'anticipation des échéances client (jours).
+  desktop_notification_due_days: number;
+  // §Notifications — seuil d'anticipation des péremptions de lots (jours).
+  desktop_notification_expiry_days: number;
   // ─── Assistant IA (Phase B) ──────────────────────────────────────────────
   ai_provider: 'anthropic' | 'openai' | 'openai-compatible' | 'custom';
   ai_provider_name: string;
@@ -74,6 +87,13 @@ const DEFAULTS: GlobalSettings = {
   cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
   expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
   client_categories: [...DEFAULT_CLIENT_CATEGORIES],
+  label_width_mm: 50,
+  label_height_mm: 30,
+  loyalty_mad_per_point: 10,
+  loyalty_point_value_mad: 1,
+  desktop_notifications_enabled: true,
+  desktop_notification_due_days: 7,
+  desktop_notification_expiry_days: 30,
   ai_provider: 'anthropic',
   ai_provider_name: '',
   ai_base_url: '',
@@ -136,6 +156,13 @@ export const GlobalSettingsService = {
       cash_movement_types: parseCashMovementTypes(map['cash_movement_types']),
       expense_categories: parseExpenseCategories(map['expense_categories']),
       client_categories: parseClientCategories(map['client_categories']),
+      label_width_mm: parseFloat(map['label_width_mm'] ?? String(DEFAULTS.label_width_mm)),
+      label_height_mm: parseFloat(map['label_height_mm'] ?? String(DEFAULTS.label_height_mm)),
+      loyalty_mad_per_point: parseFloat(map['loyalty_mad_per_point'] ?? String(DEFAULTS.loyalty_mad_per_point)),
+      loyalty_point_value_mad: parseFloat(map['loyalty_point_value_mad'] ?? String(DEFAULTS.loyalty_point_value_mad)),
+      desktop_notifications_enabled: (map['desktop_notifications_enabled'] ?? 'true') === 'true',
+      desktop_notification_due_days: parseInt(map['desktop_notification_due_days'] ?? String(DEFAULTS.desktop_notification_due_days), 10),
+      desktop_notification_expiry_days: parseInt(map['desktop_notification_expiry_days'] ?? String(DEFAULTS.desktop_notification_expiry_days), 10),
       ai_provider: (map['ai_provider'] ?? DEFAULTS.ai_provider) as 'anthropic' | 'openai' | 'openai-compatible' | 'custom',
       ai_provider_name: map['ai_provider_name'] ?? DEFAULTS.ai_provider_name,
       ai_base_url: map['ai_base_url'] ?? DEFAULTS.ai_base_url,

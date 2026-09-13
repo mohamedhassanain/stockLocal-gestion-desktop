@@ -3,6 +3,8 @@ import path from 'path';
 import ExcelJS from 'exceljs';
 import { DataStorageService } from './DataStorageService';
 import { DashboardRepository } from '../repositories/DashboardRepository';
+// Primitives CSV partagées (échappement anti-injection, BOM UTF-8, séparateur `;`).
+import { appendCsvLines, createCsvFile, csvRow } from './csvUtils';
 import { db } from '../database/config/connection';
 // §Solde client — l'export réutilise l'expression de solde UNIQUE du repository
 // (factures incluses). Aucune recopie : un export ne peut pas diverger de l'écran.
@@ -20,42 +22,6 @@ import { supplierBalanceSql } from '../repositories/SupplierRepository';
  * Aucun plafond silencieux n'est appliqué : le fichier contient TOUTES les
  * données. La protection anti-injection de formule CSV est conservée.
  */
-
-// ─── Helpers CSV ─────────────────────────────────────────────────────────────
-
-function csvEscape(val: unknown): string {
-  let s = String(val ?? '');
-  // Anti-injection de formule CSV (§1.4) : une valeur (nom client, fournisseur,
-  // produit…) commençant par =, +, - ou @ est préfixée d'une apostrophe pour
-  // empêcher Excel/LibreOffice de l'interpréter comme une formule.
-  if (/^[=+\-@]/.test(s)) {
-    s = `'${s}`;
-  }
-  if (s.includes(';') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
-
-function csvRow(cols: unknown[]): string {
-  return cols.map(csvEscape).join(';');
-}
-
-/** Crée le fichier CSV avec BOM UTF-8 et le header, retourne le chemin. */
-function createCsvFile(filename: string, header: unknown[]): string {
-  const exportsDir = DataStorageService.getExportsPath();
-  if (!fs.existsSync(exportsDir)) fs.mkdirSync(exportsDir, { recursive: true });
-  const filePath = path.join(exportsDir, filename);
-  // BOM UTF-8 pour Excel + première ligne (header)
-  fs.writeFileSync(filePath, '\uFEFF' + csvRow(header) + '\r\n', 'utf-8');
-  return filePath;
-}
-
-/** Ajoute des lignes CSV à la fin du fichier (append, batch par batch). */
-function appendCsvLines(filePath: string, lines: string[]): void {
-  if (lines.length === 0) return;
-  fs.appendFileSync(filePath, lines.join('\r\n') + '\r\n', 'utf-8');
-}
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 

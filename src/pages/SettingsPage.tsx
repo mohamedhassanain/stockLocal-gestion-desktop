@@ -22,7 +22,7 @@ import {
 // Conformité fiscale DGI (Maroc) — constantes/traits PURS (sans accès base).
 import { DGI_MODULE_DISCLAIMER, DGI_STATUS_LABEL } from '../compliance/dgi/dgiStatus';
 // ─── Onglets ────────────────────────────────────────────────────────────────
-type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'clients' | 'dgi' | 'alerts' | 'updates';
+type Tab = 'company' | 'categories' | 'discounts' | 'data' | 'backups' | 'audit' | 'units' | 'cash' | 'expenses' | 'clients' | 'etiquettes' | 'dgi' | 'alerts' | 'updates';
 
 interface Category {
   id: string;
@@ -79,6 +79,16 @@ interface GlobalSettings {
   cash_movement_types: CashMovementTypeDef[];
   expense_categories: string[];
   client_categories: string[];
+  // §Étiquettes — dimensions imprimées d'une étiquette produit (mm).
+  label_width_mm: number;
+  label_height_mm: number;
+  // §Notifications système desktop (Electron Notification).
+  desktop_notifications_enabled: boolean;
+  desktop_notification_due_days: number;
+  desktop_notification_expiry_days: number;
+  // §Fidélité — barème du programme de points (gain + valeur d'échange).
+  loyalty_mad_per_point: number;
+  loyalty_point_value_mad: number;
   dgi_compliance_enabled: boolean;
 }
 
@@ -137,6 +147,13 @@ export const SettingsPage: React.FC = () => {
     cash_movement_types: [...DEFAULT_CASH_MOVEMENT_TYPES],
     expense_categories: [...DEFAULT_EXPENSE_CATEGORIES],
     client_categories: [...DEFAULT_CLIENT_CATEGORIES],
+    label_width_mm: 50,
+    label_height_mm: 30,
+    desktop_notifications_enabled: true,
+    desktop_notification_due_days: 7,
+    desktop_notification_expiry_days: 30,
+    loyalty_mad_per_point: 10,
+    loyalty_point_value_mad: 1,
     dgi_compliance_enabled: false,
   });
   const [newUnit, setNewUnit] = useState('');
@@ -871,6 +888,7 @@ export const SettingsPage: React.FC = () => {
     { id: 'cash', label: 'Caisse', icon: '💵' },
     { id: 'expenses', label: 'Dépenses', icon: '🧾' },
     { id: 'clients', label: 'Catégories clients', icon: '🤝' },
+    { id: 'etiquettes', label: 'Étiquettes', icon: '🏷️' },
     { id: 'dgi', label: 'Conformité DGI', icon: '🇲🇦' },
     { id: 'alerts', label: 'Alertes', icon: '🔔' },
     { id: 'data', label: 'Données', icon: '💾' },
@@ -1349,7 +1367,44 @@ export const SettingsPage: React.FC = () => {
           </Card>
         )}
 
+        {tab === 'etiquettes' && (
+          <Card padding style={{ maxWidth: 720 }}>
+            <SectionTitle icon="🏷️" title="Étiquettes produits" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Dimensions utilisées par « Produits → 🏷️ Imprimer étiquette » et par l'impression
+              groupée. Les codes-barres imprimés sont de vrais codes (EAN-13 lorsque la clé de
+              contrôle est valide, sinon CODE 128) générés à partir du champ « code-barres » du
+              produit : un produit sans code-barres exploitable est signalé, aucune étiquette
+              vide n'est imprimée.
+            </p>
+            <div className="form-row">
+              <Input
+                label="Largeur (mm)"
+                type="number"
+                min="20"
+                max="210"
+                value={globalSettings.label_width_mm}
+                onChange={e => setGlobalSettings({ ...globalSettings, label_width_mm: Number(e.target.value) })}
+              />
+              <Input
+                label="Hauteur (mm)"
+                type="number"
+                min="15"
+                max="297"
+                value={globalSettings.label_height_mm}
+                onChange={e => setGlobalSettings({ ...globalSettings, label_height_mm: Number(e.target.value) })}
+              />
+            </div>
+            <p className="text-xs text-muted" style={{ marginTop: 4 }}>
+              Formats courants : 40 × 30 mm, 50 × 25 mm, 50 × 30 mm (bornes : 20-210 mm de large,
+              15-297 mm de haut). Les étiquettes sont réparties automatiquement sur des pages A4.
+            </p>
+            <Button onClick={saveGlobalSettings} className="mt-4">💾 Enregistrer</Button>
+          </Card>
+        )}
+
         {tab === 'clients' && (
+          <div style={{ maxWidth: 720 }}>
           <Card padding style={{ maxWidth: 720 }}>
             <SectionTitle icon="🤝" title="Catégories de clients" />
             <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
@@ -1383,6 +1438,57 @@ export const SettingsPage: React.FC = () => {
               Les clients existants conservent leur catégorie même si vous la supprimez de cette liste.
             </p>
           </Card>
+
+          {/* §Fidélité — barème du programme de points (gain + échange). */}
+          <Card padding style={{ marginTop: 16 }}>
+            <SectionTitle icon="⭐" title="Programme de fidélité (points)" />
+            <p className="text-sm text-secondary" style={{ marginTop: 0, marginBottom: 20 }}>
+              Chaque FACTURE crédite des points au client, qu'il peut ensuite échanger contre un
+              crédit sur son compte (cela réduit ce qu'il doit, comme un encaissement). Laissez
+              « Points par tranche » à 0 pour désactiver entièrement le programme.
+            </p>
+            <div className="form-row mb-4">
+              <div>
+                <Input
+                  label="Points par tranche (MAD)"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={globalSettings.loyalty_mad_per_point}
+                  onChange={e => setGlobalSettings({ ...globalSettings, loyalty_mad_per_point: Number(e.target.value) })}
+                />
+                <p className="text-xs text-muted" style={{ margin: 0 }}>
+                  1 point gagné par N MAD d'achat TTC (0 = désactivé).
+                </p>
+              </div>
+              <div>
+                <Input
+                  label="Valeur d'un point (MAD)"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={globalSettings.loyalty_point_value_mad}
+                  onChange={e => setGlobalSettings({ ...globalSettings, loyalty_point_value_mad: Number(e.target.value) })}
+                />
+                <p className="text-xs text-muted" style={{ margin: 0 }}>
+                  Crédit accordé par point échangé.
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-muted" style={{ marginBottom: 8 }}>
+              {(() => {
+                const madPerPoint = Number(globalSettings.loyalty_mad_per_point);
+                if (!(madPerPoint > 0)) {
+                  return 'Programme désactivé : aucune facture ne créditera de points.';
+                }
+                const points = Math.floor(1000 / madPerPoint);
+                const value = points * Number(globalSettings.loyalty_point_value_mad);
+                return `Exemple : un achat de 1 000 MAD TTC rapporte ${points} point(s), soit ${value.toFixed(2)} MAD de crédit.`;
+              })()}
+            </p>
+            <Button onClick={saveGlobalSettings} className="mt-4">💾 Enregistrer</Button>
+          </Card>
+          </div>
         )}
 
         {tab === 'alerts' && (
@@ -1406,6 +1512,47 @@ export const SettingsPage: React.FC = () => {
                 <p className="text-xs text-muted" style={{ margin: 0 }}>Utilisé pour les documents et calculs</p>
               </div>
             </div>
+
+            {/* §Notifications système desktop — alertes hors application. */}
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0 20px' }} />
+            <h3 style={{ margin: '0 0 12px', fontSize: 'var(--font-size-md)' }}>
+              🔔 Notifications système (hors application)
+            </h3>
+            <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary mb-4">
+              <input
+                type="checkbox"
+                checked={globalSettings.desktop_notifications_enabled}
+                onChange={e => setGlobalSettings({ ...globalSettings, desktop_notifications_enabled: e.target.checked })}
+                style={{ width: 18, height: 18, accentColor: 'var(--primary)' }}
+              />
+              Afficher les notifications système (échéances, lots, retards, stock bas)
+            </label>
+            <div className="form-row mb-4">
+              <div>
+                <Input
+                  label="Anticipation des échéances clients (jours)"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={globalSettings.desktop_notification_due_days}
+                  onChange={e => setGlobalSettings({ ...globalSettings, desktop_notification_due_days: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <Input
+                  label="Anticipation des péremptions de lots (jours)"
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={globalSettings.desktop_notification_expiry_days}
+                  onChange={e => setGlobalSettings({ ...globalSettings, desktop_notification_expiry_days: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted" style={{ marginBottom: 20 }}>
+              Une notification agrégée est affichée au démarrage puis toutes les 6 heures. Cliquer
+              dessus ramène la fenêtre au premier plan. Désactivé, aucune notification n'est émise.
+            </p>
 
             <div className="flex flex-col gap-3 mb-4">
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-secondary">

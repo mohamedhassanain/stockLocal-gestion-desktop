@@ -14,6 +14,8 @@ export interface Customer {
   credit_limit: number;
   // Catégorie libre définie par l'utilisateur (Paramètres → Catégories clients).
   category: string;
+  // §Fidélité — points cumulés (0 si le programme est désactivé).
+  loyalty_points?: number;
   created_at?: string;
   updated_at?: string;
   // Calculé dynamiquement
@@ -108,6 +110,20 @@ const stmtAddCredit = db.prepare<[string, string, string, number, string | null]
 // il ignorait les factures. Le solde provient désormais de l'expression unique
 // `clientBalanceSql`, PARTAGÉE avec l'export CSV (ExportService.exportClients)
 // pour qu'un export ne puisse jamais afficher un solde différent de l'écran.
+
+// §Fidélité — incrément / décrément ATOMIQUE des points (jamais de lecture
+// puis écriture séparées : deux échanges simultanés ne peuvent pas se perdre).
+// La clause `loyalty_points >= ?` rend impossible un solde négatif côté SQL.
+const stmtAddPoints = db.prepare<[number, string]>(`
+  UPDATE customers SET loyalty_points = loyalty_points + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+`);
+
+const stmtRedeemPoints = db.prepare<[number, string, number]>(`
+  UPDATE customers SET loyalty_points = loyalty_points - ?, updated_at = CURRENT_TIMESTAMP
+  WHERE id = ? AND loyalty_points >= ?
+`);
+
+const stmtGetPoints = db.prepare<[string]>('SELECT loyalty_points FROM customers WHERE id = ?');
 
 const stmtDelete = db.prepare('DELETE FROM customers WHERE id = ?');
 
@@ -204,6 +220,45 @@ export const ClientRepository = {
   getBalance(customerId: string): number {
     const row = stmtGetById.get(customerId) as Customer | undefined;
     return roundMoney(Number(row?.balance ?? 0));
+  },
+
+  /** §Fidélité — solde de points du client (0 si inconnu). */
+  getLoyaltyPoints(customerId: string): number {
+    const row = stmtGetPoints.get(customerId) as { loyalty_points: number } | undefined;
+    return Math.max(0, Math.floor(Number(row?.loyalty_points ?? 0)));
+  },
+
+  /** §Fidélité — crédite des points (delta > 0 uniquement). Renvoie le nouveau solde. */
+  addLoyaltyPoints(customerId: string, points: number): number {
+    const delta = Math.floor(Number(points));
+    const existing = this.getById(customerId);
+    if (!existing) throw new Error('Client introuvable.');
+    if (!Number.isFinite(delta) || delta <= 0) return this.getLoyaltyPoints(customerId);
+    stmtAddPoints.run(delta, customerId);
+    return this.getLoyaltyPoints(customerId);
+  },
+
+  /**
+   * §Fidélité — débite des points. REFUSE (erreur explicite) si le solde est
+   * insuffisant : la condition est appliquée DANS la requête SQL, donc aucune
+   * course entre la vérification et l'écriture.
+   */
+  redeemLoyaltyPoints(customerId: string, points: number): number {
+    const delta = Math.floor(Number(points));
+    const existing = this.getById(customerId);
+    if (!existing) throw new Error('Client introuvable.');
+    if (!Number.isFinite(delta) || delta <= 0) {
+      throw new Error('Le nombre de points à échanger doit être supérieur à 0.');
+    }
+    const available = this.getLoyaltyPoints(customerId);
+    if (delta > available) {
+      throw new Error(`Points fidélité insuffisants : ${available} disponible(s), ${delta} demandé(s).`);
+    }
+    const result = stmtRedeemPoints.run(delta, customerId, delta);
+    if (result.changes === 0) {
+      throw new Error('Points fidélité insuffisants.');
+    }
+    return this.getLoyaltyPoints(customerId);
   },
 
   addCredit(data: { customer_id: string; type: 'CREDIT' | 'PAYMENT'; amount: number; description?: string }): ClientCredit {

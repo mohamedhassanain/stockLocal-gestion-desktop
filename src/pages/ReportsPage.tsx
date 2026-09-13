@@ -82,6 +82,21 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
+  // §Export comptable simplifié — période choisie (défaut : mois en cours).
+  const [accountingFrom, setAccountingFrom] = useState(`${todayDateOnly().slice(0, 7)}-01`);
+  const [accountingTo, setAccountingTo] = useState(todayDateOnly());
+
+  const handleAccountingExport = async () => {
+    try {
+      const result = await window.api.export.accounting(accountingFrom || undefined, accountingTo || undefined);
+      if (!result.success) throw new Error(result.error);
+      toast.success(`Export comptable généré : ${result.filePath}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      toast.error(`Erreur : ${message}`);
+    }
+  };
+
   const handleReportCsv = async () => {
     try {
       const result = await window.api.reports.exportCsv({ stats, topProducts, topClients, lowStock: [], dues: [] });
@@ -210,6 +225,43 @@ export const ReportsPage: React.FC = () => {
       />
 
       <div className="page-content">
+        {/* §Export comptable simplifié — synthèse par période pour le comptable. */}
+        <Card padding>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="section-title" style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>
+              🧾 Export comptable (période)
+            </h2>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-secondary font-semibold" htmlFor="acct-from">Du</label>
+              <input
+                id="acct-from"
+                type="date"
+                className="input"
+                style={{ width: 155 }}
+                value={accountingFrom}
+                max={accountingTo || undefined}
+                onChange={e => setAccountingFrom(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-secondary font-semibold" htmlFor="acct-to">Au</label>
+              <input
+                id="acct-to"
+                type="date"
+                className="input"
+                style={{ width: 155 }}
+                value={accountingTo}
+                min={accountingFrom || undefined}
+                onChange={e => setAccountingTo(e.target.value)}
+              />
+            </div>
+            <Button variant="success" onClick={handleAccountingExport}>📄 Générer le CSV</Button>
+            <span className="text-xs text-muted">
+              CA, TVA, marge, dépenses, encaissements, achats et créances/dettes — CSV lisible par Excel.
+            </span>
+          </div>
+        </Card>
+
         {isLoading ? (
           <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
             {Array.from({ length: 4 }).map((_, i) => (

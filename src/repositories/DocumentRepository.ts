@@ -4,6 +4,9 @@ import { StockLedgerService } from '../services/StockLedgerService';
 import { nextSequence } from '../services/DocumentSequenceService';
 // §Phase 1 — moteur monétaire central : plus aucun arrondi flottant local.
 import { roundMoney as round2, calculateLineAmounts } from '../utils/money';
+// §Fidélité — attribution des points à la facturation (service SANS cycle :
+// il n'importe ni DocumentRepository ni StockLedgerService).
+import { LoyaltyService } from '../services/LoyaltyService';
 // §Phase 2 — dates « calendaires » : jamais de conversion UTC (new Date().toISOString()).
 import { toLocalDateString } from '../utils/date';
 
@@ -339,6 +342,15 @@ export const DocumentRepository = {
           item.quantity, item.unit_price, item.discount,
           itemTotals[i].totals.lineExclTax, vatRate
         );
+      }
+
+      // 4. §Fidélité — points gagnés par le client.
+      //    FACTURES UNIQUEMENT : créditer aussi les devis/BL doublerait les
+      //    points d'une même vente (un BL converti en facture repasse ici).
+      //    `entity_id` vide (vente comptoir) ou programme désactivé → aucun
+      //    point, sans jamais faire échouer la vente (voir LoyaltyService).
+      if (data.type === 'INVOICE') {
+        LoyaltyService.awardForInvoice(data.entity_id, totalInclTax);
       }
     });
 

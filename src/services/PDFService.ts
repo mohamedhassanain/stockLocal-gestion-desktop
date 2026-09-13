@@ -9,6 +9,7 @@ import type { Document, Payment } from '../repositories/DocumentRepository';
 import type { Product } from '../repositories/ProductRepository';
 import { CompanySettingsService } from './CompanySettingsService';
 import { DashboardRepository } from '../repositories/DashboardRepository';
+import { encodeBarcode, barsFromModules, moduleCount } from '../domain/barcode/labelBarcode';
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.substring(0, max) + '…' : text;
@@ -557,69 +558,6 @@ export const PDFService = {
   },
 
   /**
-   * Génère une planche d'étiquettes avec codes-barres (cahier des charges §3).
-   */
-  async generateBarcodeLabels(productIds: string[]): Promise<string> {
-    const settings = CompanySettingsService.getAll();
-    const { ProductRepository } = await import('../repositories/ProductRepository');
-    const products: Product[] = productIds
-      .map(id => ProductRepository.findById(id))
-      .filter((p): p is Product => !!p);
-
-    if (products.length === 0) throw new Error('Aucun produit sélectionné pour les étiquettes.');
-
-    const pdfDoc = await PDFDocument.create();
-    const { width, height } = pdfDoc.addPage().getSize();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    const cols = 2;
-    const rows = 4;
-    const labelW = width / cols;
-    const labelH = height / rows;
-
-    products.forEach((product, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols) % rows;
-      const pageIndex = Math.floor(i / (cols * rows));
-
-      // Crée les pages supplémentaires au besoin
-      while (pdfDoc.getPageCount() <= pageIndex) {
-        pdfDoc.addPage();
-      }
-      const page = pdfDoc.getPage(pageIndex);
-      const x0 = col * labelW + 10;
-      const yTop = height - row * labelH - 10;
-
-      if (settings.show_company_name_on_documents) {
-        page.drawText(settings.name || 'StockLocal', { x: x0, y: yTop, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
-      }
-      page.drawText(truncate(product.designation, 28), { x: x0, y: yTop - 16, size: 11, font: boldFont });
-      page.drawText(`Réf : ${product.reference}`, { x: x0, y: yTop - 32, size: 9, font });
-      page.drawText(`${product.selling_price.toFixed(2)} MAD`, { x: x0, y: yTop - 48, size: 13, font: boldFont, color: rgb(0.1, 0.2, 0.4) });
-      // Représentation du code-barres (rectangles) — codes-barres ZXing en V2
-      const barcode = product.barcode || product.reference;
-      page.drawText(barcode, { x: x0, y: yTop - 62, size: 9, font });
-      for (let b = 0; b < 24; b++) {
-        page.drawRectangle({
-          x: x0 + b * 2,
-          y: yTop - 80,
-          width: b % 2 === 0 ? 1.6 : 0.6,
-          height: 14,
-          color: b % 2 === 0 ? rgb(0, 0, 0) : rgb(1, 1, 1),
-        });
-      }
-    });
-
-    const pdfBytes = await pdfDoc.save();
-    const documentsPath = app.getPath('documents');
-    const filePath = path.join(documentsPath, `Etiquettes_${Date.now()}.pdf`);
-
-    fs.writeFileSync(filePath, pdfBytes);
-    return filePath;
-  },
-
-  /**
    * Rapport mensuel du tableau de bord (cahier des charges §8).
    */
   async generateMonthlyReport(month?: string): Promise<string> {
@@ -806,6 +744,144 @@ export const PDFService = {
     const documentsPath = app.getPath('documents');
     const prefix = doc.document_number.replace(/[^a-z0-9]/gi, '_');
     const filePath = path.join(documentsPath, `Ticket_${prefix}.pdf`);
+    fs.writeFileSync(filePath, pdfBytes);
+    return filePath;
+  },
+
+  /**
+   * Génère une planche d'ÉTIQUETTES PRODUIT (une par produit) au format
+   * configuré dans Paramètres (largeur/hauteur en mm), prête pour une
+   * imprimante d'étiquettes ou une imprimante A4 (plusieurs étiquettes/page).
+   *
+   * Chaque étiquette contient : désignation (2 lignes max), prix de vente et
+   * le code-barres du produit (`barcode`) dessiné en VRAIES barres vectorielles
+   * (EAN-13 si la clé est valide, sinon CODE 128) avec sa valeur lisible.
+   *
+   * ⚠️ Aucun code-barres vide n'est jamais produit : si un produit n'a pas de
+   * code-barres encodable, la génération ÉCHOUE avec la liste des références
+   * concernées (l'utilisateur sait exactement quoi corriger).
+   */
+  async generateProductLabels(
+    products: Product[],
+    options: { widthMm: number; heightMm: number },
+  ): Promise<string> {
+    if (products.length === 0) {
+      throw new Error('Aucun produit sélectionné pour l\'impression d\'étiquettes.');
+    }
+
+    // 1. Encoder TOUS les codes-barres AVANT de dessiner : on refuse l'ensemble
+    //    plutôt que de produire une planche partielle silencieuse.
+    const missing: string[] = [];
+    const encoded = products.map(product => {
+      try {
+        return { product, barcode: encodeBarcode(product.barcode) };
+      } catch {
+        missing.push(product.reference || product.designation);
+        return null;
+      }
+    });
+    if (missing.length > 0) {
+      const list = missing.slice(0, 10).join(', ');
+      const extra = missing.length > 10 ? ` (+${missing.length - 10} autres)` : '';
+      throw new Error(
+        `Impossible d'imprimer les étiquettes : ${missing.length} produit(s) sans code-barres exploitable. ` +
+        `Renseignez un code-barres avant l'impression. Concerné(s) : ${list}${extra}.`,
+      );
+    }
+
+    const MM = 2.8346;
+    const widthMm = Math.min(Math.max(options.widthMm, 20), 210);
+    const heightMm = Math.min(Math.max(options.heightMm, 15), 297);
+    const labelW = widthMm * MM;
+    const labelH = heightMm * MM;
+
+    // Page A4 (210 × 297 mm) : plusieurs étiquettes par page quand elles tiennent.
+    const pageW = 210 * MM;
+    const pageH = 297 * MM;
+    const outerMargin = 6;
+    const gap = 2 * MM;
+    const cols = Math.max(1, Math.floor((pageW - 2 * outerMargin + gap) / (labelW + gap)));
+    const rows = Math.max(1, Math.floor((pageH - 2 * outerMargin + gap) / (labelH + gap)));
+    const perPage = cols * rows;
+
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const innerPad = 1.5 * MM;
+    const lineGap = 1;
+
+    for (let index = 0; index < encoded.length; index++) {
+      const entry = encoded[index];
+      if (!entry) continue;
+
+      const cell = index % perPage;
+      if (cell === 0) pdfDoc.addPage([pageW, pageH]);
+      const page = pdfDoc.getPages()[pdfDoc.getPageCount() - 1];
+
+      const col = cell % cols;
+      const row = Math.floor(cell / cols);
+      // Coordonnée PDF : origine en bas à gauche → on descend depuis le haut.
+      const x0 = outerMargin + col * (labelW + gap);
+      const y0 = pageH - outerMargin - labelH - row * (labelH + gap);
+      const innerW = labelW - innerPad * 2;
+
+      // Cadre léger : aide à découper l'étiquette.
+      page.drawRectangle({
+        x: x0, y: y0, width: labelW, height: labelH,
+        borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 0.4,
+      });
+
+      let cursorY = y0 + labelH - innerPad;
+
+      // ── Désignation (2 lignes max) ──
+      const nameSize = 6.5;
+      const nameLines = wrapText(entry.product.designation, font, nameSize, innerW).slice(0, 2);
+      for (const line of nameLines) {
+        cursorY -= nameSize + lineGap;
+        page.drawText(line, { x: x0 + innerPad, y: cursorY, size: nameSize, font, color: rgb(0.05, 0.05, 0.05) });
+      }
+
+      // ── Prix de vente ──
+      const priceSize = 8;
+      cursorY -= priceSize + 2;
+      page.drawText(`${entry.product.selling_price.toFixed(2)} MAD`, {
+        x: x0 + innerPad, y: cursorY, size: priceSize, font: boldFont, color: rgb(0.1, 0.2, 0.4),
+      });
+
+      // ── Code-barres : barres vectorielles centrées, hauteur = tiers restant ──
+      const textSize = 5.5;
+      const usableH = cursorY - y0 - innerPad - textSize - 2;
+      const barH = Math.max(6, Math.min(usableH, labelH * 0.42));
+      const bars = barsFromModules(entry.barcode.modules);
+      const totalModules = moduleCount(entry.barcode.modules);
+      const moduleW = innerW / totalModules;
+      const barsBottom = y0 + innerPad + textSize + 2;
+      const barsStartX = x0 + innerPad;
+      for (const bar of bars) {
+        page.drawRectangle({
+          x: barsStartX + bar.x * moduleW,
+          y: barsBottom,
+          width: Math.max(bar.width * moduleW, 0.35),
+          height: barH,
+          color: rgb(0, 0, 0),
+        });
+      }
+
+      // ── Valeur lisible sous les barres ──
+      const textW = font.widthOfTextAtSize(entry.barcode.text, textSize);
+      page.drawText(entry.barcode.text, {
+        x: x0 + Math.max(innerPad, (labelW - textW) / 2),
+        y: y0 + innerPad - 1,
+        size: textSize,
+        font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    const documentsPath = app.getPath('documents');
+    const filePath = path.join(documentsPath, `Etiquettes_${Date.now()}.pdf`);
     fs.writeFileSync(filePath, pdfBytes);
     return filePath;
   }

@@ -18,6 +18,7 @@ import { CompanySettingsService } from '../../src/services/CompanySettingsServic
 import { GlobalSettingsService } from '../../src/services/GlobalSettingsService';
 import { ImportService, type ImportDuplicateStrategy } from '../../src/services/ImportService';
 import { ExportService } from '../../src/services/ExportService';
+import { AccountingExportService } from '../../src/services/AccountingExportService';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
 import { BackupService } from '../../src/services/BackupService';
@@ -36,6 +37,7 @@ import {
   TransferCreateSchema,
   CompanySettingsSchema,
   GlobalSettingsSchema,
+  DateRangeSchema,
 } from '../../src/validation/schemas';
 import { shell } from 'electron';
 
@@ -132,6 +134,34 @@ export function registerReferenceDataHandlers(): void {
       const product = ProductService.updateProductWithStock(safeId, buildProductInput(current, safeData), adjustment);
       AuditService.log('PRODUCT_UPDATE', 'product', safeId, `Modification produit ${product.reference}${adjustment !== 0 ? ` (stock ajusté de ${adjustment})` : ''}`);
       return { success: true, data: product };
+    });
+  });
+
+  // §Étiquettes — imprime une planche d'étiquettes pour les produits sélectionnés.
+  //
+  // Les barres sont de VRAIS codes-barres (EAN-13 ou CODE 128) dessinés en
+  // vectoriel : jamais de motif décoratif. Si un produit n'a pas de code-barres
+  // exploitable, PDFService lève une erreur explicite qui remonte ici — l'UI
+  // affiche alors précisément quels produits corriger (aucun code vide imprimé).
+  ipcMain.handle('products:printLabels', async (_, productIds: unknown) => {
+    return humanError(async () => {
+      if (!Array.isArray(productIds) || productIds.length === 0) {
+        throw new Error('Sélectionnez au moins un produit à imprimer.');
+      }
+      const ids = productIds.slice(0, 500).map(id => requireId(id, 'id produit'));
+      const products = ids
+        .map(id => ProductRepository.findById(id))
+        .filter((p): p is Product => !!p);
+      if (products.length === 0) throw new Error('Aucun produit sélectionné n\'existe.');
+
+      const settings = GlobalSettingsService.getAll();
+      const filePath = await PDFService.generateProductLabels(products, {
+        widthMm: settings.label_width_mm,
+        heightMm: settings.label_height_mm,
+      });
+      shell.openPath(filePath);
+      AuditService.log('PRODUCT_LABELS', 'product', ids[0], `Impression de ${products.length} étiquette(s)`);
+      return { success: true, filePath, count: products.length };
     });
   });
 
@@ -605,17 +635,21 @@ export function registerReferenceDataHandlers(): void {
     });
   });
 
-  ipcMain.handle('products:printLabels', async (_, productIds: unknown) => {
-    return humanError(async () => {
-      const ids = Array.isArray(productIds) ? productIds.slice(0, 500).filter((p): p is string => typeof p === 'string') : [];
-      if (ids.length === 0) throw new Error('Aucun produit sélectionné.');
-      const filePath = await PDFService.generateBarcodeLabels(ids);
+  // ─── Exports ───────────────────────────────────────────────────────────────
+  // §Export comptable simplifié — synthèse par période (CA, TVA, marge, dépenses,
+  // encaissements, achats, créances/dettes). Bornes de période validées par Zod
+  // (format AAAA-MM-JJ) : une date-heure ambiguë est rejetée côté processus principal.
+  ipcMain.handle('export:accounting', async (_, range: unknown) => {
+    return humanError(() => {
+      const safe = safeParse(DateRangeSchema, range ?? {}, 'Période de l\'export comptable');
+      const filePath = AccountingExportService.exportAccountingSummary(safe.from, safe.to);
       shell.openPath(filePath);
+      AuditService.log('ACCOUNTING_EXPORT', 'export', 'accounting',
+        `Export comptable du ${safe.from ?? 'début'} au ${safe.to ?? 'aujourd\'hui'}`);
       return { success: true, filePath };
     });
   });
 
-  // ─── Exports ───────────────────────────────────────────────────────────────
   ipcMain.handle('export:products', async () => {
     return humanError(() => {
       const filePath = ExportService.exportProducts();

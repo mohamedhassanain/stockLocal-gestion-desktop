@@ -5,6 +5,7 @@ import { StockLedgerService } from '../../src/services/StockLedgerService';
 import { StockMovementRepository } from '../../src/repositories/StockMovementRepository';
 import { ClientService } from '../../src/services/ClientService';
 import { ClientRepository } from '../../src/repositories/ClientRepository';
+import { LoyaltyService } from '../../src/services/LoyaltyService';
 import { SupplierService } from '../../src/services/SupplierService';
 import { SupplierRepository } from '../../src/repositories/SupplierRepository';
 import { DocumentService } from '../../src/services/DocumentService';
@@ -202,6 +203,38 @@ export function registerBusinessDataHandlers(): void {
       const filePath = await PDFService.generateClientStatement(client, history);
       shell.openPath(filePath);
       return { success: true, filePath };
+    });
+  });
+
+  // §Fidélité — solde de points du client + barème en vigueur (lecture seule).
+  ipcMain.handle('clients:getLoyalty', async (_, customerId: unknown) => {
+    return run(() => {
+      const safeId = requireId(customerId, 'id client');
+      const customer = ClientRepository.getById(safeId);
+      if (!customer) throw new Error('Client introuvable.');
+      return {
+        success: true,
+        points: ClientRepository.getLoyaltyPoints(safeId),
+        valuePerPoint: LoyaltyService.valueOfPoints(1),
+        enabled: LoyaltyService.isEnabled(),
+      };
+    });
+  });
+
+  // §Fidélité — échange de points contre un crédit client (réduit le solde dû).
+  // L'opération est atomique côté service : jamais de débit sans crédit.
+  ipcMain.handle('clients:redeemLoyalty', async (_, payload: unknown) => {
+    return run(() => {
+      const body = (payload ?? {}) as { customerId?: unknown; points?: unknown };
+      const safeId = requireId(body.customerId, 'id client');
+      const points = Math.floor(Number(body.points));
+      if (!Number.isFinite(points) || points <= 0) {
+        throw new Error('Le nombre de points à échanger doit être supérieur à 0.');
+      }
+      const result = LoyaltyService.redeemPoints(safeId, points);
+      AuditService.log('LOYALTY_REDEEM', 'customer', safeId,
+        `Échange de ${points} point(s) fidélité → ${result.value.toFixed(2)} MAD de crédit client`);
+      return { success: true, value: result.value, remaining: result.remaining };
     });
   });
 

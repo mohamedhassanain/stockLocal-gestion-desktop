@@ -282,6 +282,17 @@ export const GlobalSettingsSchema = z.object({
   expense_categories: z.array(z.string().min(1, 'La catégorie est obligatoire.').max(50)).max(100).optional(),
   // Catégories de clients définies par l'utilisateur (Clients → Nouveau Client).
   client_categories: z.array(z.string().min(1, 'La catégorie est obligatoire.').max(50)).max(100).optional(),
+  // §Étiquettes — dimensions imprimées d'une étiquette produit (en mm).
+  label_width_mm: z.number().min(20, 'Largeur minimale : 20 mm.').max(210, 'Largeur maximale : 210 mm.').optional(),
+  label_height_mm: z.number().min(15, 'Hauteur minimale : 15 mm.').max(297, 'Hauteur maximale : 297 mm.').optional(),
+  // §Fidélité — 1 point par N MAD dépensés (0 = programme désactivé) et valeur
+  // en MAD d'un point utilisé comme remise.
+  loyalty_mad_per_point: z.number().min(0).max(100000).optional(),
+  loyalty_point_value_mad: z.number().min(0).max(100000).optional(),
+  // §Notifications système desktop (Electron Notification).
+  desktop_notifications_enabled: z.boolean().optional(),
+  desktop_notification_due_days: z.number().int().min(1).max(365).optional(),
+  desktop_notification_expiry_days: z.number().int().min(1).max(365).optional(),
   // Multi-dépôts : dépôt actif (persisté dans global_settings).
   active_warehouse_id: z.string().max(64).optional(),
   // Conformité fiscale DGI (Maroc) — facturation électronique. Désactivé par
@@ -366,6 +377,18 @@ export const BackupDestDirSchema = z.string().min(1, 'Le dossier de sauvegarde e
 
 /** Chemin d'une ancienne base à migrer. */
 export const SourcePathSchema = z.string().min(1, 'Le chemin source est obligatoire.').max(500);
+
+// ─── Export comptable — période ──────────────────────────────────────────────
+
+/**
+ * Période d'un export comptable. Les deux bornes sont OPTIONNELLES (sans
+ * bornes, l'export couvre tout l'historique). Format calendaire strict
+ * AAAA-MM-JJ : une date-heure serait ambiguë (fuseau) et est rejetée.
+ */
+export const DateRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de début invalide (format AAAA-MM-JJ).').optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de fin invalide (format AAAA-MM-JJ).').optional(),
+});
 
 // ─── IDs ─────────────────────────────────────────────────────────────────────
 

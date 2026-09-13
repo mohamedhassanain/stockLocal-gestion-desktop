@@ -238,6 +238,16 @@ export interface GlobalSettingsInput {
   expense_categories?: string[];
   // Catégories de clients définies par l'utilisateur (Détail, Grossiste, VIP…).
   client_categories?: string[];
+  // §Étiquettes — dimensions d'une étiquette produit (mm).
+  label_width_mm?: number;
+  label_height_mm?: number;
+  // §Fidélité — 1 point par N MAD dépensés (0 = désactivé) + valeur d'un point.
+  loyalty_mad_per_point?: number;
+  loyalty_point_value_mad?: number;
+  // §Notifications système desktop.
+  desktop_notifications_enabled?: boolean;
+  desktop_notification_due_days?: number;
+  desktop_notification_expiry_days?: number;
   // Multi-dépôts : dépôt actif (persisté).
   active_warehouse_id?: string;
   // Conformité fiscale DGI (Maroc) — facturation électronique. Désactivé par
@@ -443,6 +453,9 @@ export const api = {
     addPayment: (customerId: string, amount: number, description: string) =>
       ipcRenderer.invoke('clients:addPayment', { customerId, amount, description }),
     exportStatement: (customerId: string) => ipcRenderer.invoke('clients:exportStatement', customerId),
+    // §Fidélité — points du client + échange contre un crédit client.
+    getLoyalty: (customerId: string) => ipcRenderer.invoke('clients:getLoyalty', customerId),
+    redeemLoyalty: (customerId: string, points: number) => ipcRenderer.invoke('clients:redeemLoyalty', { customerId, points }),
   },
 
   // ─── Fournisseurs ──────────────────────────────────────────────────────────
@@ -600,6 +613,8 @@ export const api = {
     stock: (productId?: string) => ipcRenderer.invoke('export:stock', productId),
     documents: (type?: string) => ipcRenderer.invoke('export:documents', type),
     dashboard: () => ipcRenderer.invoke('export:dashboard'),
+    // §Export comptable simplifié — période optionnelle (bornes AAAA-MM-JJ).
+    accounting: (from?: string, to?: string) => ipcRenderer.invoke('export:accounting', { from, to }),
   },
 
   // ─── Global Settings ───────────────────────────────────────────────────────

@@ -393,6 +393,10 @@ function upgradeLegacyDatabase(): void {
   addColumnIfMissing('documents', 'discount_amount', 'REAL NOT NULL DEFAULT 0.0');
   addColumnIfMissing('customers', 'category', "TEXT NOT NULL DEFAULT 'DÉTAIL'");
   addColumnIfMissing('customers', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
+  // §Fidélité — points cumulés (colonne ADDITIVE, 0 par défaut : les bases
+  // existantes ne changent pas de comportement tant que le programme est
+  // désactivé via `loyalty_mad_per_point = 0`).
+  addColumnIfMissing('customers', 'loyalty_points', 'INTEGER NOT NULL DEFAULT 0');
   addColumnIfMissing('suppliers', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
   addColumnIfMissing('products', 'unit', "TEXT NOT NULL DEFAULT 'PIÈCE'");
   addColumnIfMissing('products', 'vat_rate', 'REAL DEFAULT 20.0');

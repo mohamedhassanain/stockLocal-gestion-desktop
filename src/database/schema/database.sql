@@ -124,6 +124,12 @@ CREATE TABLE IF NOT EXISTS customers (
     payment_conditions TEXT,
     credit_limit REAL DEFAULT 0.0,
     category TEXT NOT NULL DEFAULT 'DÉTAIL',
+    -- §Fidélité — points cumulés par le client sur ses achats. Alimenté
+    -- automatiquement à la création d'une facture (1 point par tranche de
+    -- `loyalty_mad_per_point` MAD TTC), échangé ensuite contre un crédit
+    -- client. Colonne ADDITIVE : 0 par défaut, aucun impact si le programme
+    -- est désactivé (`loyalty_mad_per_point = 0`).
+    loyalty_points INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE / ARCHIVED
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

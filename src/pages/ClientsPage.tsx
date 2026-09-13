@@ -224,6 +224,9 @@ export const ClientsPage: React.FC = () => {
                 client={selectedClient}
                 onDebt={(a: number, d: string) => addDebt(selectedClient.id, a, d).catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))}
                 onPayment={(a: number, d: string) => addPayment(selectedClient.id, a, d).catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))}
+                // §Fidélité — après un échange de points, le solde dû a changé :
+                // on recharge la liste pour que la fiche affiche le bon solde.
+                onRefresh={() => { loadClients().catch(() => {}); }}
               />
             </>
           )}

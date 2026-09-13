@@ -53,6 +53,17 @@ export const ProductsPage: React.FC = () => {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [imageCache, setImageCache] = useState<Record<string, string>>({});
+  // §Étiquettes — sélection multiple pour l'impression groupée d'étiquettes.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Phase 5 — chargement des images à la demande (lazy) : on ne charge que les
   // images visibles (celles rendues par le virtualizer), jamais tout le catalogue.
@@ -157,16 +168,37 @@ export const ProductsPage: React.FC = () => {
     });
   };
 
-  const handlePrintLabels = async () => {
-    if (filteredProducts.length === 0) { toast.warning('Aucun produit à imprimer.'); return; }
+  /**
+   * §Étiquettes — impression d'une planche (codes-barres réels, taille
+   * configurée dans Paramètres). L'IPC refuse l'impression si un produit n'a
+   * pas de code-barres exploitable : le message remonte tel quel dans le toast.
+   */
+  const printLabels = async (ids: string[], label: string) => {
+    if (ids.length === 0) { toast.warning('Aucun produit à imprimer.'); return; }
     try {
-      const result = await window.api.products.printLabels(filteredProducts.map(p => p.id));
+      const result = await window.api.products.printLabels(ids);
       if (!result.success) throw new Error(result.error);
-      toast.success(`Étiquettes générées pour ${filteredProducts.length} produit(s).`);
+      toast.success(`Étiquettes générées pour ${label}.`);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       toast.error(message);
     }
+  };
+
+  // Action par produit (bouton 🏷️ de la ligne).
+  const handlePrintOne = (product: Product) =>
+    printLabels([product.id], `« ${product.designation} »`);
+
+  // Action groupée : la SÉLECTION si elle est non vide, sinon tous les
+  // produits affichés (filtre de recherche + catégorie appliqués).
+  const handlePrintLabels = () => {
+    const ids = selectedIds.size > 0
+      ? [...selectedIds]
+      : filteredProducts.map(p => p.id);
+    const label = selectedIds.size > 0
+      ? `${ids.length} produit(s) sélectionné(s)`
+      : `${ids.length} produit(s) filtré(s)`;
+    void printLabels(ids, label);
   };
 
   // §Phase 14 — produit dont l'historique complet est ouvert.
@@ -207,8 +239,20 @@ export const ProductsPage: React.FC = () => {
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </div>
+          {selectedIds.size > 0 && (
+            <span className="badge badge-info" style={{ whiteSpace: 'nowrap' }}>
+              {selectedIds.size} sélectionné(s)
+              <button
+                className="icon-btn icon-btn-xs"
+                style={{ marginLeft: 6 }}
+                onClick={() => setSelectedIds(new Set())}
+                title="Tout désélectionner"
+                aria-label="Tout désélectionner"
+              >✕</button>
+            </span>
+          )}
           <Button variant="success" size="lg" onClick={handlePrintLabels} style={{ whiteSpace: 'nowrap' }}>
-            🖨️ Imprimer Étiquettes
+            🖨️ Imprimer {selectedIds.size > 0 ? 'la sélection' : 'Étiquettes'}
           </Button>
         </div>
 
@@ -225,6 +269,21 @@ export const ProductsPage: React.FC = () => {
             ) : (
               <div style={{ position: 'relative' }}>
                 <div className="pdg-grid pdg-header" style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                  <div style={{ padding: '10px 4px', display: 'flex', justifyContent: 'center' }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Tout sélectionner"
+                      title="Tout sélectionner / désélectionner"
+                      checked={filteredProducts.length > 0 && filteredProducts.every(p => selectedIds.has(p.id))}
+                      onChange={e => {
+                        const next = new Set(selectedIds);
+                        if (e.target.checked) filteredProducts.forEach(p => next.add(p.id));
+                        else filteredProducts.forEach(p => next.delete(p.id));
+                        setSelectedIds(next);
+                      }}
+                      style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }}
+                    />
+                  </div>
                   <div>Image</div>
                   <div>Réf</div>
                   <div>Désignation</div>
@@ -253,6 +312,16 @@ export const ProductsPage: React.FC = () => {
                           cursor: 'pointer',
                         }}
                       >
+                        <div style={{ padding: '10px 4px', display: 'flex', justifyContent: 'center' }}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Sélectionner ${p.designation}`}
+                            title="Sélectionner pour l'impression groupée"
+                            checked={selectedIds.has(p.id)}
+                            onChange={() => toggleSelected(p.id)}
+                            style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer' }}
+                          />
+                        </div>
                         <div>
                           {imgSrc
                             ? <img src={imgSrc} alt="" style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', objectFit: 'cover', border: '1px solid var(--border)' }} />
@@ -272,6 +341,7 @@ export const ProductsPage: React.FC = () => {
                         <div><Badge variant={statusBadge.variant}>{statusBadge.label}</Badge></div>
                         <div className="pdg-actions">
                           <div className="flex gap-2 items-center">
+                            <Button variant="secondary" size="sm" onClick={() => handlePrintOne(p)} title="Imprimer l'étiquette de ce produit">🏷️</Button>
                             <Button variant="secondary" size="sm" onClick={() => setHistoryProduct(p)} title="Historique du produit">📊</Button>
                             <Button variant="secondary" size="sm" onClick={() => setConversionProduct(p)} title="Conversions d'unités">🔢</Button>
                             <Button variant="secondary" size="sm" onClick={() => handleEdit(p)}>✏️</Button>

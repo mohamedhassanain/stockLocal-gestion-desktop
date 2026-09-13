@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { setIpcContext } from './ipc/ipcContext';
 import { registerReferenceDataHandlers } from './ipc/referenceData.ipc';
+import { scheduleDesktopNotifications } from './notifications';
 import { registerBusinessDataHandlers } from './ipc/businessData.ipc';
 import { registerOperationsHandlers } from './ipc/operations.ipc';
 import { registerSystemHandlers } from './ipc/system.ipc';
@@ -185,4 +186,9 @@ app.whenReady().then(() => {
   BackupService.checkAndBackupIfDue();
   BackupService.scheduleAutoBackup();
   createWindow();
+
+  // §Notifications système desktop — vérification périodique (échéances clients,
+  // lots à péremption proche, retards, stock bas). Pilotée par les paramètres :
+  // si l'option est désactivée, le module ne fait strictement rien.
+  scheduleDesktopNotifications();
 });

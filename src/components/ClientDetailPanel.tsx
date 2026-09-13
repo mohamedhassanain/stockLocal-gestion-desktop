@@ -38,29 +38,70 @@ interface Props {
   client: Customer;
   onDebt: (amount: number, desc: string) => void;
   onPayment: (amount: number, desc: string) => void;
+  /** §Fidélité — rafraîchit la fiche client (solde) après un échange de points. */
+  onRefresh?: () => void;
 }
 
-export const ClientDetailPanel: React.FC<Props> = ({ client, onDebt, onPayment }) => {
+export const ClientDetailPanel: React.FC<Props> = ({ client, onDebt, onPayment, onRefresh }) => {
   const [clientHistory, setClientHistory] = useState<ClientCredit[]>([]);
   const [docs, setDocs] = useState<ClientDocument[]>([]);
   const [amount, setAmount] = useState(0);
   const [desc, setDesc] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'documents' | 'due' | 'statement'>('overview');
+  // §Fidélité — points cumulés + barème en vigueur (Paramètres → Fidélité).
+  const [loyalty, setLoyalty] = useState<{ points: number; valuePerPoint: number; enabled: boolean }>({
+    points: 0,
+    valuePerPoint: 0,
+    enabled: false,
+  });
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [isRedeeming, setIsRedeeming] = useState(false);
 
   const loadData = async () => {
     try {
-      const [history, documents] = await Promise.all([
+      const [history, documents, loyaltyInfo] = await Promise.all([
         window.api.clients.getHistory(client.id),
         window.api.clients.getDocuments(client.id),
+        window.api.clients.getLoyalty(client.id),
       ]);
       setClientHistory(history);
       setDocs(documents);
+      if (loyaltyInfo?.success) {
+        setLoyalty({
+          points: Number(loyaltyInfo.points ?? 0),
+          valuePerPoint: Number(loyaltyInfo.valuePerPoint ?? 0),
+          enabled: Boolean(loyaltyInfo.enabled),
+        });
+      }
     } catch {
       // silently fail
     }
   };
 
   useEffect(() => { loadData(); }, [client.id]);
+
+  /** §Fidélité — échange des points contre un crédit client (réduit le solde dû). */
+  const handleRedeemPoints = async () => {
+    if (!(pointsToRedeem > 0)) return;
+    setIsRedeeming(true);
+    try {
+      const result = await window.api.clients.redeemLoyalty(client.id, pointsToRedeem);
+      if (!result.success) {
+        toast.error(result.error || 'Échange impossible.');
+        return;
+      }
+      toast.success(
+        `${pointsToRedeem} point(s) échangés → ${Number(result.value).toFixed(2)} MAD de crédit client.`,
+      );
+      setPointsToRedeem(0);
+      await loadData();
+      onRefresh?.();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Échange impossible.');
+    } finally {
+      setIsRedeeming(false);
+    }
+  };
 
   // Compute stats
   const invoices = docs.filter(d => d.type === 'INVOICE');
@@ -91,6 +132,41 @@ export const ClientDetailPanel: React.FC<Props> = ({ client, onDebt, onPayment }
             <div style={{ height: '8px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${creditUsedPct}%`, background: creditColor, borderRadius: '4px', transition: 'width 0.3s' }} />
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── §Fidélité — points cumulés et échange ── */}
+      <div style={{ background: 'white', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: '13px', color: '#6b7280' }}>⭐ Points fidélité</div>
+            <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#0f172a' }}>{loyalty.points} pt</div>
+            <div style={{ fontSize: '11px', color: '#9ca3af' }}>
+              {loyalty.enabled
+                ? `1 point = ${loyalty.valuePerPoint.toFixed(2)} MAD · valeur disponible : ${(loyalty.points * loyalty.valuePerPoint).toFixed(2)} MAD`
+                : 'Programme désactivé (Paramètres → Fidélité)'}
+            </div>
+          </div>
+        </div>
+        {loyalty.enabled && loyalty.points > 0 && loyalty.valuePerPoint > 0 && (
+          <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+            <input
+              type="number"
+              min={1}
+              max={loyalty.points}
+              placeholder={`Points à échanger (max ${loyalty.points})`}
+              value={pointsToRedeem || ''}
+              onChange={e => setPointsToRedeem(Number(e.target.value))}
+              style={{ flex: 1, minWidth: 0, padding: '10px', fontSize: '14px', border: '2px solid #e5e7eb', borderRadius: '8px', boxSizing: 'border-box' }}
+            />
+            <button
+              disabled={isRedeeming || !(pointsToRedeem > 0)}
+              onClick={handleRedeemPoints}
+              style={{ padding: '10px 16px', background: isRedeeming || !(pointsToRedeem > 0) ? '#9ca3af' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', cursor: isRedeeming || !(pointsToRedeem > 0) ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
+            >
+              {isRedeeming ? 'Échange…' : '⭐ Échanger'}
+            </button>
           </div>
         )}
       </div>
