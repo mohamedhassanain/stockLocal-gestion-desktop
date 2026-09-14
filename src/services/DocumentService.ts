@@ -17,6 +17,8 @@ export const DocumentService = {
     date: string;
     due_date?: string;
     notes?: string;
+    // §B4 — vendeur/commercial associé (facultatif).
+    seller_id?: string;
     items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
   }): Document {
     // entity_id peut être vide pour les ventes comptoir (POS)
@@ -91,6 +93,37 @@ export const DocumentService = {
       AuditService.log('DOCUMENT_PAYMENT', 'document', data.document_id, `Paiement ${data.amount} MAD`);
     });
     txn();
+  },
+
+  /**
+   * §B2 — Encaisse PLUSIEURS lignes de paiement en une seule opération
+   * (ex. 500 espèces + 700 carte + 300 crédit). La somme des lignes ne peut
+   * jamais dépasser le reste dû. La validation et l'insertion sont atomiques :
+   * si une ligne est invalide, RIEN n'est enregistré.
+   */
+  addPayments(
+    documentId: string,
+    payments: Array<{ amount: number; payment_method: PaymentMethod; reference?: string | null }>,
+  ): void {
+    if (!Array.isArray(payments) || payments.length === 0) {
+      throw new Error('Au moins une ligne de paiement est requise.');
+    }
+    const doc = DocumentRepository.getById(documentId);
+    if (!doc) throw new Error('Document introuvable.');
+    if (doc.status === 'PAID') throw new Error('Ce document est déjà intégralement payé.');
+
+    const txn = db.transaction(() => {
+      DocumentRepository.addPayments(documentId, payments);
+    });
+    txn();
+
+    const total = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    AuditService.log(
+      'DOCUMENT_PAYMENT',
+      'document',
+      documentId,
+      `Paiement multi-modes : ${payments.length} ligne(s), ${total.toFixed(2)} MAD au total`,
+    );
   },
 
   convertBLToInvoice(deliveryNoteId: string): Document {

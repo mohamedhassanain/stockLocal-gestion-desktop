@@ -1,6 +1,8 @@
 > [!WARNING] DOCUMENT HISTORIQUE - PERIME (Historical / superseded).
-> Le compteur de tests et le statut de production de ce fichier ne sont plus valides.
-> Rapport de reference : FINAL_PRODUCTION_AUDIT.md (57 fichiers, 538 tests, 538 PASS).
+> HISTORIQUE / PÉRIMÉ — voir `FINAL_PRODUCTION_AUDIT.md` pour l'état actuel.
+> Ce document décrit un état ANTÉRIEUR du projet ; son compteur de tests et son
+> statut de production ne sont plus valides (le compteur de tests réel est tenu à
+> jour dans `FINAL_PRODUCTION_AUDIT.md`).
 
 ---
 

@@ -20,13 +20,14 @@ import { PaymentsPage } from './pages/PaymentsPage';
 import { ClientCreditsPage } from './pages/ClientCreditsPage';
 import { AiAssistantPage } from './pages/AiAssistantPage';
 import { WarehousesPage } from './pages/WarehousesPage';
+import { SellersPage } from './pages/SellersPage';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { DiskWarning } from './components/DiskWarning';
 import { Toaster } from './components/ui/Toaster';
 import { toast } from './stores/useToastStore';
 import { useWarehouseStore } from './stores/useWarehouseStore';
 
-export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant' | 'warehouses' | 'expenses';
+export type Page = 'dashboard' | 'products' | 'stock' | 'clients' | 'suppliers' | 'invoices' | 'devis' | 'delivery-notes' | 'credit-notes' | 'settings' | 'pos' | 'purchases' | 'inventory' | 'reports' | 'stock-alerts' | 'receivings' | 'client-credits' | 'payments' | 'cash-register' | 'ai-assistant' | 'warehouses' | 'expenses' | 'sellers';
 
 
 const PAGE_SHORTCUTS: Record<string, Page> = {
@@ -130,7 +131,7 @@ export const App: React.FC = () => {
       'dashboard', 'products', 'stock', 'clients', 'suppliers', 'invoices',
       'devis', 'delivery-notes', 'credit-notes', 'settings', 'pos',
       'purchases', 'inventory', 'reports', 'stock-alerts',
-      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant', 'warehouses', 'expenses',
+      'receivings', 'client-credits', 'payments', 'cash-register', 'ai-assistant', 'warehouses', 'expenses', 'sellers',
     ]);
 
     const handleNavigate = (e: Event) => {
@@ -228,6 +229,7 @@ export const App: React.FC = () => {
       {currentPage === 'ai-assistant' && <AiAssistantPage />}
       {currentPage === 'warehouses' && <WarehousesPage />}
       {currentPage === 'expenses' && <ExpensesPage />}
+      {currentPage === 'sellers' && <SellersPage />}
       <Toaster />
     </div>
   );

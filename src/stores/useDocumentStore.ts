@@ -3,7 +3,7 @@ import type { Document, DocumentType, PaymentMethod } from '../repositories/Docu
 
 // Types d'entrée IPC (cohérents avec electron/preload.ts).
 interface SaleItemInput { product_id: string; quantity: number; unit_price: number; discount?: number; }
-interface SaleCreateInput { type: 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE'; entity_id: string; date: string; due_date?: string | null; notes?: string | null; items: SaleItemInput[]; }
+interface SaleCreateInput { type: 'QUOTE' | 'DELIVERY_NOTE' | 'INVOICE' | 'CREDIT_NOTE'; entity_id: string; date: string; due_date?: string | null; notes?: string | null; seller_id?: string | null; items: SaleItemInput[]; }
 interface DocumentUpdateInput { entity_id: string; date: string; due_date?: string | null; notes?: string | null; items: SaleItemInput[]; }
 
 interface DocumentState {

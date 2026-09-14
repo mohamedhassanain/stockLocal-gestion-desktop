@@ -3,7 +3,7 @@ import {
   LayoutDashboard, ShoppingCart, FileText, FileCheck2, Truck, Undo2,
   Package, ArrowLeftRight, ClipboardList, AlertTriangle, ShoppingBag,
   PackageCheck, Factory, Users, CreditCard, Wallet, BarChart3, Settings,
-  Boxes, Bot, Warehouse, Receipt,
+  Boxes, Bot, Warehouse, Receipt, UserCheck,
 } from 'lucide-react';
 import type { Page } from '../../App';
 import { WarehouseSelector } from './WarehouseSelector';
@@ -65,6 +65,8 @@ const NAV_SECTIONS: NavSectionConfig[] = [
     items: [
       { page: 'clients', icon: Users, label: 'Clients', shortcut: 'F4' },
       { page: 'client-credits', icon: CreditCard, label: 'Crédits & échéances' },
+      // §B4 — fiches vendeurs (aucun compte utilisateur).
+      { page: 'sellers', icon: UserCheck, label: 'Vendeurs' },
     ],
   },
   {

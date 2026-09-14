@@ -51,6 +51,8 @@ export interface Document {
   discount_amount: number;
   status: DocumentStatus;
   notes?: string;
+  // §B4 — Vendeur/commercial associé (fiche, pas un compte utilisateur).
+  seller_id?: string | null;
   created_at?: string;
   updated_at?: string;
   items?: DocumentItem[];
@@ -155,9 +157,9 @@ const stmtGetPayments = db.prepare<[string]>(`
   SELECT * FROM payments WHERE document_id = ? ORDER BY date DESC
 `);
 
-const stmtInsertDoc = db.prepare<[string, string, string, string, string | null, string, string | null, number, number, number, number, string, string | null]>(`
-  INSERT INTO documents (id, type, document_number, entity_id, original_document_id, date, due_date, total_excl_tax, total_tax, total_incl_tax, discount_amount, status, notes)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const stmtInsertDoc = db.prepare<[string, string, string, string, string | null, string, string | null, number, number, number, number, string, string | null, string | null]>(`
+  INSERT INTO documents (id, type, document_number, entity_id, original_document_id, date, due_date, total_excl_tax, total_tax, total_incl_tax, discount_amount, status, notes, seller_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const stmtInsertItem = db.prepare<[string, string, string, number, number, number, number, number]>(`
@@ -276,6 +278,8 @@ export const DocumentRepository = {
     due_date?: string;
     items: ItemInput[];
     notes?: string;
+    // §B4 — vendeur associé (facultatif).
+    seller_id?: string | null;
     manageStock?: boolean;
   }): Document {
     const id = randomUUID();
@@ -330,7 +334,8 @@ export const DocumentRepository = {
         null, // original_document_id
         data.date, data.due_date ?? null,
         totalExclTax, totalTax, totalInclTax, discountAmount,
-        'UNPAID', data.notes ?? null
+        'UNPAID', data.notes ?? null,
+        data.seller_id ?? null
       );
 
       // 3. Créer les lignes
@@ -502,7 +507,8 @@ export const DocumentRepository = {
         data.original_invoice_id,
         data.date, null,
         totalExclTax, totalTax, totalInclTax, 0,
-        avoirStatus, notes
+        avoirStatus, notes,
+        originalInvoice?.seller_id ?? null
       );
 
       // 3. Enregistrer les références de retour (credit_note_id existe désormais)
@@ -592,6 +598,68 @@ export const DocumentRepository = {
       else if (newPaid > 0) newStatus = 'PARTIAL';
 
       stmtUpdateStatus.run(newStatus, data.document_id);
+    });
+  },
+
+  /**
+   * §B2 — Enregistre PLUSIEURS lignes de paiement en UNE SEULE transaction
+   * (ex. 500 espèces + 700 carte + 300 crédit en un encaissement).
+   *
+   * RÈGLES (identiques au paiement simple, appliquées au TOTAL) :
+   *   - au moins une ligne, chaque montant > 0 ;
+   *   - la SOMME des lignes ne peut pas dépasser le reste dû (+ 1 centime) ;
+   *   - le statut est recalculé une seule fois, à la fin.
+   *
+   * ATOMICITÉ : si une ligne échoue, AUCUNE n'est enregistrée (rollback).
+   */
+  addPayments(
+    documentId: string,
+    payments: Array<{ amount: number; payment_method: PaymentMethod; reference?: string | null }>,
+  ): void {
+    if (!Array.isArray(payments) || payments.length === 0) {
+      throw new Error('Au moins une ligne de paiement est requise.');
+    }
+
+    const doc = stmtGetById.get(documentId) as Document | undefined;
+    if (!doc) throw new Error('Document introuvable.');
+    if (doc.status === 'PAID') throw new Error('Ce document est déjà intégralement payé.');
+    if (doc.status === 'CANCELLED') throw new Error('Ce document est annulé, aucun paiement possible.');
+
+    let total = 0;
+    for (const p of payments) {
+      const amount = Number(p.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('Chaque montant de paiement doit être supérieur à 0.');
+      }
+      total += amount;
+    }
+    total = round2(total);
+
+    const paidRow = stmtGetPaidTotal.get(documentId) as { total: number };
+    const paid = Number(paidRow.total ?? 0);
+    const remaining = round2(doc.total_incl_tax - paid);
+    if (total > remaining + 0.01) {
+      throw new Error(
+        `Le total des paiements (${total.toFixed(2)} MAD) dépasse le reste dû (${remaining.toFixed(2)} MAD).`
+      );
+    }
+
+    runInTransaction(() => {
+      const now = new Date().toISOString();
+      for (const p of payments) {
+        stmtInsertPayment.run(
+          randomUUID(), documentId, round2(Number(p.amount)), p.payment_method,
+          now, p.reference ?? null,
+        );
+      }
+
+      const newPaidRow = stmtGetPaidTotal.get(documentId) as { total: number };
+      const newPaid = Number(newPaidRow.total ?? 0);
+      let newStatus: DocumentStatus = 'UNPAID';
+      if (newPaid >= doc.total_incl_tax - 0.01) newStatus = 'PAID';
+      else if (newPaid > 0) newStatus = 'PARTIAL';
+
+      stmtUpdateStatus.run(newStatus, documentId);
     });
   },
 

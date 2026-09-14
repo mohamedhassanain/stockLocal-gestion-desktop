@@ -13,6 +13,9 @@ import { DocumentRepository, type DocumentType } from '../../src/repositories/Do
 import { StatementRepository } from '../../src/repositories/StatementRepository';
 import { AuditService } from '../../src/services/AuditService';
 import { PDFService } from '../../src/services/PDFService';
+// §B4 — Vendeurs (fiches) + §B3 — Niveaux de prix.
+import { SellerService } from '../../src/services/SellerService';
+import { PricingService } from '../../src/services/PricingService';
 import {
   safeParse,
   nullToUndefined,
@@ -22,6 +25,7 @@ import {
   SaleSchema,
   DocumentUpdateSchema,
   PaymentSchema,
+  PaymentsBatchSchema,
   CreditNoteCreateSchema,
   ClientCreateSchema,
   ClientUpdateSchema,
@@ -29,6 +33,15 @@ import {
   SupplierCreateSchema,
   SupplierUpdateSchema,
   SupplierDebtSchema,
+  SellerCreateSchema,
+  SellerUpdateSchema,
+  SellerActiveSchema,
+  SellerPeriodSchema,
+  ProductLevelPriceSchema,
+  CustomerPriceSchema,
+  LevelKeySchema,
+  CustomerProductKeySchema,
+  ResolvePriceSchema,
 } from '../../src/validation/schemas';
 import { shell } from 'electron';
 
@@ -346,6 +359,7 @@ export function registerBusinessDataHandlers(): void {
         date: safe.date,
         due_date: safe.due_date ?? undefined,
         notes: safe.notes ?? undefined,
+        seller_id: safe.seller_id ?? undefined,
         items: safe.items.map(i => ({
           product_id: i.product_id,
           quantity: i.quantity,
@@ -363,6 +377,20 @@ export function registerBusinessDataHandlers(): void {
       const safe = nullToUndefined(safeParse(PaymentSchema, data, 'Paiement document'));
       DocumentService.addPayment(safe);
       AuditService.log('DOCUMENT_PAYMENT', 'document', safe.document_id, `Paiement ${safe.amount} MAD`);
+      return { success: true };
+    });
+  });
+
+  // §B2 — Paiement RÉPARTI sur plusieurs modes en une seule transaction.
+  // Zod valide la structure ; le SERVICE valide la somme contre le reste dû.
+  ipcMain.handle('documents:addPayments', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(PaymentsBatchSchema, payload, 'Paiement multi-modes');
+      DocumentService.addPayments(safe.document_id, safe.payments.map(p => ({
+        amount: p.amount,
+        payment_method: p.payment_method,
+        reference: p.reference ?? null,
+      })));
       return { success: true };
     });
   });
@@ -482,6 +510,132 @@ export function registerBusinessDataHandlers(): void {
       });
       AuditService.log('DOCUMENT_UPDATE', 'document', safeId, `${doc.type} ${doc.document_number} modifié`);
       return { success: true, data: doc };
+    });
+  });
+
+  // ─── §B4 — Vendeurs / commerciaux (FICHES, aucun compte utilisateur) ──────
+  ipcMain.handle('sellers:getAll', async () => SellerService.getAllSellers());
+
+  ipcMain.handle('sellers:getActive', async () => SellerService.getActiveSellers());
+
+  ipcMain.handle('sellers:create', async (_, data: unknown) => {
+    return run(() => {
+      const safe = nullToUndefined(safeParse(SellerCreateSchema, data, 'Création vendeur'));
+      const seller = SellerService.createSeller(safe);
+      AuditService.log('SELLER_CREATE', 'seller', seller.id, `Vendeur ${seller.name}`);
+      return { success: true, data: seller };
+    });
+  });
+
+  ipcMain.handle('sellers:update', async (_, { id, data }: { id: unknown; data: unknown }) => {
+    return run(() => {
+      const safeId = requireId(id, 'id vendeur');
+      const safe = nullToUndefined(safeParse(SellerUpdateSchema, data, 'Modification vendeur'));
+      return { success: true, data: SellerService.updateSeller(safeId, safe) };
+    });
+  });
+
+  ipcMain.handle('sellers:setActive', async (_, payload: unknown) => {
+    return run(() => {
+      const body = (payload ?? {}) as { id?: unknown; active?: unknown };
+      const safeId = requireId(body.id, 'id vendeur');
+      const safe = safeParse(SellerActiveSchema, { active: body.active }, 'Activation vendeur');
+      SellerService.setSellerActive(safeId, safe.active);
+      AuditService.log('SELLER_ACTIVE', 'seller', safeId, safe.active ? 'Vendeur activé' : 'Vendeur désactivé');
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('sellers:delete', async (_, id: unknown) => {
+    return run(() => {
+      const safeId = requireId(id, 'id vendeur');
+      SellerService.deleteSeller(safeId);
+      AuditService.log('SELLER_DELETE', 'seller', safeId, 'Vendeur supprimé');
+      return { success: true };
+    });
+  });
+
+  // §B4 — rapport ventes + commission (période : from+to → mois → année → mois courant).
+  ipcMain.handle('sellers:getReport', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(SellerPeriodSchema, payload ?? {}, 'Période du rapport vendeurs');
+      if (safe.from && safe.to) return { success: true, data: SellerService.getReportForRange(safe.from, safe.to) };
+      if (safe.month) return { success: true, data: SellerService.getReportForMonth(safe.month) };
+      if (typeof safe.year === 'number') return { success: true, data: SellerService.getReportForYear(safe.year) };
+      const now = new Date();
+      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      return { success: true, data: SellerService.getReportForMonth(month) };
+    });
+  });
+
+  // ─── §B3 — Niveaux de prix (résolution + gestion) ─────────────────────────
+  ipcMain.handle('pricing:listLevels', async () => PricingService.listLevels());
+
+  ipcMain.handle('pricing:resolve', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(ResolvePriceSchema, payload, 'Résolution de prix');
+      return {
+        success: true,
+        data: PricingService.resolveProductPrice({
+          productId: safe.productId,
+          customerId: safe.customerId ?? null,
+          quantity: safe.quantity ?? 1,
+        }),
+      };
+    });
+  });
+
+  ipcMain.handle('pricing:listProductLevels', async (_, productId: unknown) => {
+    return PricingService.listProductLevels(requireId(productId, 'id produit'));
+  });
+
+  ipcMain.handle('pricing:setLevelPrice', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(ProductLevelPriceSchema, payload, 'Prix par niveau');
+      PricingService.setLevelPrice(safe.productId, safe.level, safe.price);
+      AuditService.log('PRICE_LEVEL_SET', 'product', safe.productId, `Prix niveau ${safe.level} : ${safe.price} MAD`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('pricing:deleteLevelPrice', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(LevelKeySchema, payload, 'Suppression prix de niveau');
+      PricingService.deleteLevelPrice(safe.productId, safe.level);
+      AuditService.log('PRICE_LEVEL_DELETE', 'product', safe.productId, `Prix niveau ${safe.level} supprimé`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('pricing:setCustomerPrice', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(CustomerPriceSchema, payload, 'Prix spécifique client');
+      PricingService.setCustomerPrice(safe.customerId, safe.productId, safe.price);
+      AuditService.log('CUSTOMER_PRICE_SET', 'customer', safe.customerId, `Prix spécifique produit ${safe.productId} : ${safe.price} MAD`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('pricing:deleteCustomerPrice', async (_, payload: unknown) => {
+    return run(() => {
+      const safe = safeParse(CustomerProductKeySchema, payload, 'Suppression prix client');
+      PricingService.deleteCustomerPrice(safe.customerId, safe.productId);
+      AuditService.log('CUSTOMER_PRICE_DELETE', 'customer', safe.customerId, `Prix spécifique produit ${safe.productId} supprimé`);
+      return { success: true };
+    });
+  });
+
+  ipcMain.handle('pricing:getCustomerLevel', async (_, customerId: unknown) => {
+    return { success: true, level: PricingService.getCustomerLevel(requireId(customerId, 'id client')) };
+  });
+
+  ipcMain.handle('pricing:setCustomerLevel', async (_, payload: unknown) => {
+    return run(() => {
+      const body = (payload ?? {}) as { customerId?: unknown; level?: unknown };
+      const safeId = requireId(body.customerId, 'id client');
+      const level = PricingService.setCustomerLevel(safeId, body.level);
+      AuditService.log('CUSTOMER_LEVEL_SET', 'customer', safeId, `Niveau de prix : ${level}`);
+      return { success: true, level };
     });
   });
 }

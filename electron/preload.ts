@@ -90,6 +90,8 @@ export interface ClientCreateInput {
   // Catégorie libre : définie par l'utilisateur dans Paramètres → Catégories clients
   // (valeur par défaut historique : 'DÉTAIL').
   category?: string;
+  // §B3 — Niveau de prix du client (RETAIL / WHOLESALE / VIP…).
+  price_level?: string;
 }
 export type ClientUpdateInput = Partial<ClientCreateInput>;
 
@@ -116,6 +118,8 @@ export interface SaleCreateInput {
   date: string;
   due_date?: string | null;
   notes?: string | null;
+  // §B4 — vendeur/commercial associé (facultatif).
+  seller_id?: string | null;
   items: SaleItemInput[];
 }
 
@@ -132,6 +136,61 @@ export interface PaymentInput {
   amount: number;
   payment_method: 'CASH' | 'CHECK' | 'TRANSFER';
   reference?: string | null;
+}
+
+/** §B2 — Une ligne d'un paiement réparti sur plusieurs modes. */
+export interface PaymentLineInput {
+  amount: number;
+  payment_method: 'CASH' | 'CHECK' | 'TRANSFER';
+  reference?: string | null;
+}
+
+/** §B2 — Paiement multi-modes d'un même document. */
+export interface PaymentsBatchInput {
+  document_id: string;
+  payments: PaymentLineInput[];
+}
+
+/** §B4 — Fiche vendeur / commercial (aucun compte utilisateur). */
+export interface SellerCreateInput {
+  name: string;
+  phone?: string | null;
+  commission_rate: number;
+  active?: number;
+  notes?: string | null;
+}
+export type SellerUpdateInput = Partial<SellerCreateInput>;
+
+/** §B4 — Rapport de commission d'un vendeur. */
+export interface SellerCommissionRow {
+  id: string;
+  name: string;
+  commission_rate: number;
+  active: number;
+  sales_count: number;
+  revenue: number;
+  commission: number;
+}
+export interface SellerReport {
+  from: string;
+  to: string;
+  rows: SellerCommissionRow[];
+  totalRevenue: number;
+  totalCommission: number;
+}
+
+/** §B3 — Niveau de prix du catalogue. */
+export interface PriceLevelOption {
+  key: string;
+  label: string;
+}
+
+/** §B3 — Résultat d'une résolution de prix (POS / facture). */
+export interface ResolvedPrice {
+  unitPrice: number;
+  discountPct: number;
+  source: 'CUSTOMER' | 'LEVEL' | 'VOLUME' | 'STANDARD';
+  reason: string;
 }
 
 // ── Catégories ──
@@ -545,6 +604,8 @@ export const api = {
     getById: (id: string) => ipcRenderer.invoke('documents:getById', id),
     create: (data: SaleCreateInput) => ipcRenderer.invoke('documents:create', data),
     addPayment: (data: PaymentInput) => ipcRenderer.invoke('documents:addPayment', data),
+    // §B2 — paiement réparti sur plusieurs modes en une seule transaction.
+    addPayments: (data: PaymentsBatchInput) => ipcRenderer.invoke('documents:addPayments', data),
     convertBL: (deliveryNoteId: string) => ipcRenderer.invoke('documents:convertBL', deliveryNoteId),
     convertQuoteToDeliveryNote: (quoteId: string) => ipcRenderer.invoke('documents:convertQuoteToDeliveryNote', quoteId),
     convertQuoteToInvoice: (quoteId: string) => ipcRenderer.invoke('documents:convertQuoteToInvoice', quoteId),
@@ -559,6 +620,38 @@ export const api = {
     delete: (id: string) => ipcRenderer.invoke('documents:delete', id),
     updateNotes: (id: string, notes: string) => ipcRenderer.invoke('documents:updateNotes', { id, notes }),
     update: (id: string, data: DocumentUpdateInput) => ipcRenderer.invoke('documents:update', { id, data }),
+  },
+
+  // ─── §B4 — Vendeurs / commerciaux (fiches) ─────────────────────────────────
+  sellers: {
+    getAll: () => ipcRenderer.invoke('sellers:getAll'),
+    getActive: () => ipcRenderer.invoke('sellers:getActive'),
+    create: (data: SellerCreateInput) => ipcRenderer.invoke('sellers:create', data),
+    update: (id: string, data: SellerUpdateInput) => ipcRenderer.invoke('sellers:update', { id, data }),
+    setActive: (id: string, active: boolean) => ipcRenderer.invoke('sellers:setActive', { id, active }),
+    delete: (id: string) => ipcRenderer.invoke('sellers:delete', id),
+    // Rapport ventes + commission (période par priorité from+to → month → year).
+    getReport: (period?: { month?: string; year?: number; from?: string; to?: string }) =>
+      ipcRenderer.invoke('sellers:getReport', period ?? {}),
+  },
+
+  // ─── §B3 — Niveaux de prix ─────────────────────────────────────────────────
+  pricing: {
+    listLevels: () => ipcRenderer.invoke('pricing:listLevels'),
+    resolve: (payload: { productId: string; customerId?: string | null; quantity?: number }) =>
+      ipcRenderer.invoke('pricing:resolve', payload),
+    listProductLevels: (productId: string) => ipcRenderer.invoke('pricing:listProductLevels', productId),
+    setLevelPrice: (productId: string, level: string, price: number) =>
+      ipcRenderer.invoke('pricing:setLevelPrice', { productId, level, price }),
+    deleteLevelPrice: (productId: string, level: string) =>
+      ipcRenderer.invoke('pricing:deleteLevelPrice', { productId, level }),
+    setCustomerPrice: (customerId: string, productId: string, price: number) =>
+      ipcRenderer.invoke('pricing:setCustomerPrice', { customerId, productId, price }),
+    deleteCustomerPrice: (customerId: string, productId: string) =>
+      ipcRenderer.invoke('pricing:deleteCustomerPrice', { customerId, productId }),
+    getCustomerLevel: (customerId: string) => ipcRenderer.invoke('pricing:getCustomerLevel', customerId),
+    setCustomerLevel: (customerId: string, level: string) =>
+      ipcRenderer.invoke('pricing:setCustomerLevel', { customerId, level }),
   },
 
   // ─── Dashboard ─────────────────────────────────────────────────────────────

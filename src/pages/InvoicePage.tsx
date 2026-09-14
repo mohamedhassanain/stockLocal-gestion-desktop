@@ -20,6 +20,8 @@ interface NewDocumentData {
   date: string;
   due_date?: string;
   notes: string;
+  // §B4 — fiche vendeur associée (facultatif, aucun compte utilisateur).
+  seller_id?: string | null;
   items: Array<{ product_id: string; quantity: number; unit_price: number; discount: number }>;
 }
 
@@ -227,26 +229,60 @@ const NewDocumentModal: React.FC<{
   const [productSearch, setProductSearch] = useState('');
   // Phase 4 : paliers de remise par quantité.
   const [discountRules, setDiscountRules] = useState<VolumeDiscountRule[]>([]);
+  // §B4 — vendeur associé (fiche, facultatif).
+  const [sellerId, setSellerId] = useState('');
+  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
     loadClients();
     loadProducts();
     window.api.discounts.getAll().then((r: VolumeDiscountRule[]) => setDiscountRules(r ?? [])).catch(() => {});
+    window.api.sellers.getActive().then((r: Array<{ id: string; name: string }>) => setSellers(r ?? [])).catch(() => {});
   }, []);
+
+  // §B3 — prix résolu par le BACKEND selon le client (client > niveau > quantité > standard).
+  const resolvePrice = async (productId: string, quantity: number) => {
+    try {
+      const res = await window.api.pricing.resolve({ productId, customerId: entityId || null, quantity });
+      if (res?.success && res.data) {
+        return res.data as { unitPrice: number; discountPct: number; source: string; reason: string };
+      }
+    } catch { /* repli standard */ }
+    return null;
+  };
+
+  // §B3 — changement de client : re-résout le prix de toutes les lignes.
+  const handleClientChange = async (clientId: string) => {
+    setEntityId(clientId);
+    if (items.length === 0) return;
+    const resolved = await Promise.all(items.map(async (it) => {
+      const d = await resolvePrice(it.product_id, it.quantity);
+      return d ? { id: it.product_id, d } : null;
+    }));
+    const map = new Map(resolved.filter((r): r is NonNullable<typeof r> => r !== null).map(r => [r.id, r.d]));
+    setItems(prev => prev.map(it => {
+      const hit = map.get(it.product_id);
+      return hit ? { ...it, unit_price: hit.unitPrice, discount: it._manual ? it.discount : hit.discountPct } : it;
+    }));
+  };
 
   const filteredProducts = products.filter(p =>
     productSearch === '' || p.designation.toLowerCase().includes(productSearch.toLowerCase()) || p.reference.toLowerCase().includes(productSearch.toLowerCase())
   );
 
   const addLine = (product: Product) => {
-    setItems(prev => [...prev, {
-      product_id: product.id,
-      quantity: 1,
-      unit_price: product.selling_price ?? 0,
-      discount: 0,
-      _name: `${product.reference} — ${product.designation}`
-    }]);
-    setProductSearch('');
+    void (async () => {
+      // §B3 — prix résolu selon le client sélectionné.
+      const priced = await resolvePrice(product.id, 1);
+      setItems(prev => [...prev, {
+        product_id: product.id,
+        quantity: 1,
+        unit_price: priced ? priced.unitPrice : (product.selling_price ?? 0),
+        discount: priced ? priced.discountPct : 0,
+        _name: `${product.reference} — ${product.designation}`
+      }]);
+      setProductSearch('');
+    })();
   };
 
   const updateLine = (idx: number, key: string, val: number) => {
@@ -274,7 +310,15 @@ const NewDocumentModal: React.FC<{
   };
 
   const handleSave = () => {
-    onSave({ type, entity_id: entityId, date, due_date: dueDate || undefined, notes, items: items.map(({ _name, ...rest }) => rest) });
+    onSave({
+      type,
+      entity_id: entityId,
+      date,
+      due_date: dueDate || undefined,
+      notes,
+      seller_id: sellerId || null,
+      items: items.map(({ _name, ...rest }) => rest),
+    });
   };
 
   return (
@@ -292,7 +336,7 @@ const NewDocumentModal: React.FC<{
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Client *</label>
-              <select value={entityId} onChange={e => setEntityId(e.target.value)}
+              <select value={entityId} onChange={e => { void handleClientChange(e.target.value); }}
                 className="select">
                 <option value="">— Sélectionnez un client —</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -310,6 +354,13 @@ const NewDocumentModal: React.FC<{
                   className="input" />
               </div>
             )}
+            <div>
+              <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Vendeur</label>
+              <select value={sellerId} onChange={e => setSellerId(e.target.value)} className="select">
+                <option value="">— Aucun —</option>
+                {sellers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
             <div style={{ gridColumn: type === 'INVOICE' ? '2 / 3' : '1 / 3' }}>
               <label style={{ display: 'block', marginBottom: '6px', fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Notes</label>
               <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Remarques, instructions..."
@@ -568,9 +619,17 @@ const EditDocumentModal: React.FC<{
 
 // ─── Détail d'un document ─────────────────────────────────────────────────────
 
+// §B2 — une ligne de paiement (mode + montant), pour encaisser un document en
+// plusieurs modes d'un coup.
+interface InvoicePaymentLine {
+  method: PaymentMethod;
+  amount: number;
+  reference: string;
+}
+
 const DocumentDetailPanel: React.FC<{
   doc: Document;
-  onPayment: (amount: number, method: string) => void;
+  onPayments: (lines: Array<{ amount: number; payment_method: PaymentMethod; reference?: string | null }>) => void;
   onConvert?: () => void;
   onConvertToBL?: () => void;
   onConvertToInvoice?: () => void;
@@ -578,9 +637,9 @@ const DocumentDetailPanel: React.FC<{
   onCreditNote?: () => void;
   onDelete?: () => void;
   onEdit?: () => void;
-}> = ({ doc, onPayment, onConvert, onConvertToBL, onConvertToInvoice, onPrint, onCreditNote, onDelete, onEdit }) => {
-  const [payAmount, setPayAmount] = useState(0);
-  const [payMethod, setPayMethod] = useState('CASH');
+}> = ({ doc, onPayments, onConvert, onConvertToBL, onConvertToInvoice, onPrint, onCreditNote, onDelete, onEdit }) => {
+  const [payLines, setPayLines] = useState<InvoicePaymentLine[]>([{ method: 'CASH', amount: 0, reference: '' }]);
+  const payTotal = payLines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const isCreditNote = doc.type === 'CREDIT_NOTE';
   const remaining = doc.total_incl_tax - (doc.amount_paid ?? 0);
   const statusInfo = STATUS_LABELS[doc.status] || STATUS_LABELS.DRAFT;
@@ -657,25 +716,66 @@ const DocumentDetailPanel: React.FC<{
         </div>
       )}
 
-      {/* Paiement (uniquement si document pas encore payé) */}
+      {/* §B2 — Paiement : plusieurs lignes (modes) possibles en une fois. */}
       {doc.status !== 'PAID' && doc.status !== 'CANCELLED' && doc.type !== 'CREDIT_NOTE' && (
         <div className="card card-body">
           <h3 style={{ marginTop: 0 }}>Encaisser un paiement</h3>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <input type="number" placeholder={`Max : ${remaining.toFixed(2)} MAD`} value={payAmount || ''}
-              onChange={e => setPayAmount(Number(e.target.value))}
-              className="input" />
-            <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
-              className="select">
-              <option value="CASH">💵 Espèces</option>
-              <option value="CHECK">🏦 Chèque</option>
-              <option value="TRANSFER">📤 Virement</option>
-            </select>
-            <button onClick={() => { if (payAmount > 0) { onPayment(payAmount, payMethod); setPayAmount(0); } }}
-              className="btn btn-success">
-              ✓ Encaisser
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {payLines.map((line, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: '8px' }}>
+                <select
+                  value={line.method}
+                  onChange={e => setPayLines(prev => prev.map((l, i) => i === idx ? { ...l, method: e.target.value as PaymentMethod } : l))}
+                  className="select" style={{ width: 140 }}>
+                  <option value="CASH">Espèces</option>
+                  <option value="CHECK">Chèque</option>
+                  <option value="TRANSFER">Virement</option>
+                </select>
+                <input type="number" min={0} step={0.01}
+                  placeholder={`Max : ${remaining.toFixed(2)} MAD`}
+                  value={line.amount || ''}
+                  onChange={e => setPayLines(prev => prev.map((l, i) => i === idx ? { ...l, amount: Number(e.target.value) } : l))}
+                  className="input" style={{ flex: 1, textAlign: 'right' }} />
+                <input type="text" placeholder="Référence" value={line.reference}
+                  onChange={e => setPayLines(prev => prev.map((l, i) => i === idx ? { ...l, reference: e.target.value } : l))}
+                  className="input" style={{ width: 140 }} />
+                <button
+                  onClick={() => setPayLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx))}
+                  disabled={payLines.length === 1}
+                  className="btn btn-ghost" style={{ color: 'var(--danger)', fontSize: '18px' }}>×</button>
+              </div>
+            ))}
           </div>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary"
+              onClick={() => setPayLines(prev => [...prev, { method: 'CASH', amount: 0, reference: '' }])}>
+              + Ajouter un mode
+            </button>
+            <button className="btn btn-secondary" disabled={remaining - payTotal <= 0}
+              onClick={() => setPayLines(prev => prev.map((l, i) => i === prev.length - 1
+                ? { ...l, amount: Math.max(0, Number((remaining - (payTotal - (Number(l.amount) || 0))).toFixed(2))) }
+                : l))}>
+              Compléter le reste
+            </button>
+            <span style={{ marginLeft: 'auto', fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Encaissé : <strong>{payTotal.toFixed(2)}</strong> / {doc.total_incl_tax.toFixed(2)} MAD
+            </span>
+          </div>
+          {payTotal > remaining + 0.01 && (
+            <div style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '6px' }}>
+              Le total encaissé dépasse le reste dû.
+            </div>
+          )}
+          <button
+            className="btn btn-success" style={{ marginTop: '12px' }}
+            disabled={payTotal <= 0 || payTotal > remaining + 0.01}
+            onClick={() => {
+              onPayments(payLines.filter(l => Number(l.amount) > 0)
+                .map(l => ({ amount: Number(l.amount), payment_method: l.method, reference: l.reference || null })));
+              setPayLines([{ method: 'CASH', amount: 0, reference: '' }]);
+            }}>
+            Valider le paiement
+          </button>
         </div>
       )}
 
@@ -729,7 +829,7 @@ const DocumentDetailPanel: React.FC<{
 // ─── Page Principale ──────────────────────────────────────────────────────────
 
 export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFilter?: string }> = ({ initialType, initialStatusFilter }) => {
-  const { documents, selectedDocument, activeType, searchQuery, statusFilter, isLoading, setActiveType, setSearchQuery, setStatusFilter, loadDocuments, loadMoreDocuments, selectDocument, createDocument, addPayment, convertBL, convertQuote, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
+  const { documents, selectedDocument, activeType, searchQuery, statusFilter, isLoading, setActiveType, setSearchQuery, setStatusFilter, loadDocuments, loadMoreDocuments, selectDocument, createDocument, convertBL, convertQuote, deleteDocument, updateNotes, updateDocument, clearSelectedDocument } = useDocumentStore();
   const [showNewForm, setShowNewForm] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Document | null>(null);
@@ -767,11 +867,21 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
     }
   };
 
-  const handlePayment = async (amount: number, method: string) => {
+  // §B2 — encaissement en plusieurs lignes (modes) sur un même document.
+  const handlePayments = async (lines: Array<{ amount: number; payment_method: PaymentMethod; reference?: string | null }>) => {
     if (!selectedDocument) return;
     try {
-      await addPayment(selectedDocument.id, amount, method as PaymentMethod);
-      toast.success(`Paiement de ${amount.toFixed(2)} MAD encaissé.`);
+      const res = await window.api.documents.addPayments({
+        document_id: selectedDocument.id,
+        payments: lines,
+      });
+      if (!res.success) throw new Error(res.error);
+      toast.success(lines.length > 1
+        ? `Paiement réparti sur ${lines.length} modes encaissé.`
+        : `Paiement de ${lines[0].amount.toFixed(2)} MAD encaissé.`);
+      await loadDocuments();
+      const fresh = await window.api.documents.getById(selectedDocument.id);
+      if (fresh) await selectDocument(fresh);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       toast.error(message);
@@ -975,7 +1085,7 @@ export const InvoicePage: React.FC<{ initialType?: DocumentType; initialStatusFi
           ) : (
             <DocumentDetailPanel
               doc={selectedDocument}
-              onPayment={handlePayment}
+              onPayments={handlePayments}
               onConvert={selectedDocument.type === 'DELIVERY_NOTE' ? handleConvert : undefined}
               onConvertToBL={selectedDocument.type === 'QUOTE' ? () => setPendingConvert({ doc: selectedDocument, target: 'DELIVERY_NOTE' }) : undefined}
               onConvertToInvoice={selectedDocument.type === 'QUOTE' ? () => setPendingConvert({ doc: selectedDocument, target: 'INVOICE' }) : undefined}

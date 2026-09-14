@@ -393,6 +393,9 @@ function upgradeLegacyDatabase(): void {
   addColumnIfMissing('documents', 'discount_amount', 'REAL NOT NULL DEFAULT 0.0');
   addColumnIfMissing('customers', 'category', "TEXT NOT NULL DEFAULT 'DÉTAIL'");
   addColumnIfMissing('customers', 'status', "TEXT NOT NULL DEFAULT 'ACTIVE'");
+  // §B3 — Niveau de prix du client (RETAIL/WHOLESALE/VIP…). ADDITIF : 'RETAIL'
+  // par défaut → aucun changement de comportement sur les bases existantes.
+  addColumnIfMissing('customers', 'price_level', "TEXT NOT NULL DEFAULT 'RETAIL'");
   // §Fidélité — points cumulés (colonne ADDITIVE, 0 par défaut : les bases
   // existantes ne changent pas de comportement tant que le programme est
   // désactivé via `loyalty_mad_per_point = 0`).
@@ -418,6 +421,9 @@ function upgradeLegacyDatabase(): void {
   addColumnIfMissing('documents', 'dgi_status', 'TEXT DEFAULT NULL');
   addColumnIfMissing('documents', 'dgi_reference', 'TEXT DEFAULT NULL');
   addColumnIfMissing('documents', 'dgi_submitted_at', 'DATETIME DEFAULT NULL');
+  // §B4 — Vendeur/commercial associé à la vente (colonne ADDITIVE, NULL par
+  // défaut : les ventes existantes n'ont simplement aucun vendeur renseigné).
+  addColumnIfMissing('documents', 'seller_id', 'TEXT');
 
   // ── Anciennes bases avec FK vers `users` (audit_logs, stock_movements,
   //    client_credits, supplier_credits) → reconstruire sans cette FK ─────────
@@ -663,6 +669,8 @@ function upgradeLegacyDatabase(): void {
       CREATE INDEX IF NOT EXISTS idx_stock_movements_warehouse ON stock_movements (warehouse_id);
       CREATE INDEX IF NOT EXISTS idx_inventory_balances_warehouse ON inventory_balances (warehouse_id);
       CREATE INDEX IF NOT EXISTS idx_documents_dgi_status ON documents (dgi_status);
+      -- §B4 — index sur le vendeur (colonne ajoutée juste au-dessus sur base ancienne).
+      CREATE INDEX IF NOT EXISTS idx_documents_seller ON documents (seller_id);
       CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items (document_id);
       CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items (product_id);
       CREATE INDEX IF NOT EXISTS idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);

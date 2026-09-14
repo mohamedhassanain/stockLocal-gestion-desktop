@@ -132,6 +132,10 @@ CREATE TABLE IF NOT EXISTS customers (
     payment_conditions TEXT,
     credit_limit REAL DEFAULT 0.0,
     category TEXT NOT NULL DEFAULT 'DÉTAIL',
+    -- §B3 — Niveau de prix du client (RETAIL / WHOLESALE / VIP…). Détermine le
+    -- prix appliqué automatiquement en vente (voir domain/pricing/priceLevels).
+    -- Valeur ADDITIVE : 'RETAIL' par défaut → aucun changement de comportement.
+    price_level TEXT NOT NULL DEFAULT 'RETAIL',
     -- §Fidélité — points cumulés par le client sur ses achats. Alimenté
     -- automatiquement à la création d'une facture (1 point par tranche de
     -- `loyalty_mad_per_point` MAD TTC), échangé ensuite contre un crédit
@@ -192,6 +196,9 @@ CREATE TABLE IF NOT EXISTS documents (
     discount_amount REAL NOT NULL DEFAULT 0.0,
     status TEXT NOT NULL DEFAULT 'UNPAID', -- PAID, UNPAID, PARTIAL, CANCELLED
     notes TEXT,
+    -- §B4 — Vendeur/commercial ayant réalisé la vente (FICHE, pas un compte
+    -- utilisateur). NULL = non renseigné. Sert au calcul de la commission.
+    seller_id TEXT,
     -- ─── Conformité fiscale DGI (Maroc) — facturation électronique ─────────
     -- Préparation uniquement : aucune intégration réelle n'est branchée.
     -- dgi_status          : PENDING, SUBMITTED, CLEARED, REJECTED, NOT_APPLICABLE
@@ -582,3 +589,61 @@ CREATE INDEX IF NOT EXISTS idx_cash_movements_type ON cash_movements (movement_t
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (date);
 CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category);
 CREATE INDEX IF NOT EXISTS idx_expenses_session ON expenses (cash_session_id);
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §B4 — VENDEURS / COMMERCIAUX
+--
+-- ⚠️  Ce sont des FICHES (nom, téléphone, taux de commission, actif/inactif).
+--     Ce ne sont PAS des comptes utilisateurs : AUCUN mot de passe, AUCUNE
+--     authentification. Une vente référence un vendeur par `documents.seller_id`.
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS sellers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    -- Taux de commission en POURCENTAGE du chiffre d'affaires (0 = aucune).
+    commission_rate REAL NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1, -- 1 = actif, 0 = inactif
+    notes TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §B3 — NIVEAUX DE PRIX
+--
+--   product_price_levels : prix d'un produit pour UN niveau (RETAIL/WHOLESALE/VIP…).
+--   customer_prices      : prix NÉGOCIÉ d'un produit pour UN client (priorité MAX).
+--   customers.price_level: niveau du client (détermine le niveau appliqué).
+--
+-- Un prix absent à un niveau retombe sur le prix de vente standard.
+-- ═══════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS product_price_levels (
+    product_id TEXT NOT NULL,
+    level TEXT NOT NULL,
+    price REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (product_id, level),
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS customer_prices (
+    customer_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    price REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (customer_id, product_id),
+    FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sellers_name ON sellers (name);
+CREATE INDEX IF NOT EXISTS idx_sellers_active ON sellers (active);
+-- NB : l'index sur documents.seller_id est créé par le chemin d'UPGRADE
+-- (upgradeLegacyDatabase), APRÈS l'ajout de la colonne sur les bases anciennes.
+-- Le référencer ici casserait l'exécution intégrale du schéma sur une base
+-- ancienne dont la table `documents` n'a pas encore la colonne (même règle que
+-- pour idx_documents_dgi_status ci-dessus).
+CREATE INDEX IF NOT EXISTS idx_product_price_levels_product ON product_price_levels (product_id);
+CREATE INDEX IF NOT EXISTS idx_customer_prices_customer ON customer_prices (customer_id);

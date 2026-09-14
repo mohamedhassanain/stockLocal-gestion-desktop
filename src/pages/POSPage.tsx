@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useClientStore } from '../stores/useClientStore';
 import { toast } from '../stores/useToastStore';
 import type { Product } from '../repositories/ProductRepository';
-import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader, PageHeader } from '../components/ui';
+import { Button, Modal, ModalBody, ModalFooter, ModalHeader, PageHeader } from '../components/ui';
 import { stockLevelClass } from '../components/ui/statusMaps';
 import { toLocalDateString } from '../utils/date';
 import { resolveDiscount, findApplicableDiscount, describeVolumeDiscount, type VolumeDiscountRule } from '../utils/volumeDiscount';
@@ -27,9 +27,28 @@ interface CartItem {
   sale_unit: string;
   unit_factor: number;
   alt_units: { unit: string; factor: number }[];
+  // §B3 — origine du prix appliqué (affichée sur la ligne).
+  price_source?: string;
+  price_reason?: string;
 }
 
 type PaymentMethod = 'CASH' | 'CHECK' | 'TRANSFER';
+
+// §B2 — Une ligne de paiement (mode + montant). Plusieurs lignes = encaissement
+// réparti (ex. 500 espèces + 700 carte + 300 crédit).
+interface PaymentLine {
+  method: PaymentMethod;
+  amount: number;
+  reference: string;
+}
+
+// §B4 — fiche vendeur (aucun compte utilisateur).
+interface SellerOption {
+  id: string;
+  name: string;
+  commission_rate: number;
+  active: number;
+}
 
 // Le total TTC affiché/payé au POS est calculé par le MÊME moteur monétaire
 // que la facture (money.ts) : le montant affiché = le montant facturé, au centime.
@@ -50,9 +69,12 @@ export const POSPage: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
   const [showPayment, setShowPayment] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-  const [cashGiven, setCashGiven] = useState<number>(0);
+  // §B2 — lignes de paiement (défaut : une ligne espèces à 0).
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0, reference: '' }]);
   const [showReceipt, setShowReceipt] = useState(false);
+  // §B4 — vendeurs proposés + vendeur sélectionné (fiche, facultatif).
+  const [sellers, setSellers] = useState<SellerOption[]>([]);
+  const [selectedSellerId, setSelectedSellerId] = useState('');
   // Document imprimé à la validation : ticket de caisse 80 mm (défaut POS) ou facture A4 complète.
   const [printMode, setPrintMode] = useState<'receipt' | 'invoice'>('receipt');
   const [lastSale, setLastSale] = useState<{ docNumber: string; total: number; items: CartItem[] } | null>(null);
@@ -72,8 +94,47 @@ export const POSPage: React.FC = () => {
     window.api.discounts.getAll()
       .then((rules: VolumeDiscountRule[]) => setDiscountRules(rules ?? []))
       .catch(() => {});
+    // §B4 — vendeurs actifs proposés à la caisse (fiches, facultatif).
+    window.api.sellers.getActive()
+      .then((rows: SellerOption[]) => setSellers(rows ?? []))
+      .catch(() => {});
     searchRef.current?.focus();
   }, []);
+
+  // §B3 — résout le prix d'une ligne (priorité : client > niveau > quantité > standard)
+  // via le BACKEND. Aucune règle de prix n'est dupliquée dans le renderer.
+  const resolveLinePrice = useCallback(async (productId: string, quantity: number, clientId: string) => {
+    try {
+      const res = await window.api.pricing.resolve({ productId, customerId: clientId || null, quantity });
+      if (res?.success && res.data) {
+        return res.data as { unitPrice: number; discountPct: number; source: string; reason: string };
+      }
+    } catch { /* repli : prix standard conservé */ }
+    return null;
+  }, []);
+
+  // §B3 — changement de client : re-résout le prix de TOUTES les lignes.
+  const handleClientChange = async (clientId: string) => {
+    setSelectedClientId(clientId);
+    const snapshot = cart.map(c => ({ id: c.product_id, qty: c.quantity, manual: c.discountManual, discount: c.discount }));
+    if (snapshot.length === 0) return;
+    const results = await Promise.all(snapshot.map(async (s) => {
+      const data = await resolveLinePrice(s.id, s.qty, clientId);
+      return data ? { id: s.id, data, manual: s.manual, discount: s.discount } : null;
+    }));
+    const map = new Map(results.filter((r): r is NonNullable<typeof r> => r !== null).map(r => [r.id, r]));
+    setCart(prev => prev.map(c => {
+      const hit = map.get(c.product_id);
+      if (!hit) return c;
+      return {
+        ...c,
+        unit_price: hit.data.unitPrice,
+        discount: c.discountManual ? c.discount : hit.data.discountPct,
+        price_source: hit.data.source,
+        price_reason: hit.data.reason,
+      };
+    }));
+  };
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -114,34 +175,44 @@ export const POSPage: React.FC = () => {
       return;
     }
 
-    setCart(prev => {
-      const existing = prev.find(c => c.product_id === product.id);
-      if (existing) {
-        if (existing.quantity >= stock) {
-          toast.warning(`Stock insuffisant : "${product.designation}" n'a que ${stock} unité(s) disponible(s).`);
-          return prev;
+    void (async () => {
+      // §B3 — le prix d'une NOUVELLE ligne est résolu par le backend selon le
+      // client sélectionné (prix client > prix niveau > remise quantité > standard).
+      const priced = await resolveLinePrice(product.id, 1, selectedClientId);
+      const unitPrice = priced ? priced.unitPrice : product.selling_price;
+      const discountPct = priced ? priced.discountPct : 0;
+
+      setCart(prev => {
+        const existing = prev.find(c => c.product_id === product.id);
+        if (existing) {
+          if (existing.quantity >= stock) {
+            toast.warning(`Stock insuffisant : "${product.designation}" n'a que ${stock} unité(s) disponible(s).`);
+            return prev;
+          }
+          return prev.map(c =>
+            c.product_id === product.id ? { ...c, quantity: c.quantity + 1 } : c
+          );
         }
-        return prev.map(c =>
-          c.product_id === product.id ? { ...c, quantity: c.quantity + 1 } : c
-        );
-      }
-      return [...prev, {
-        product_id: product.id,
-        reference: product.reference,
-        designation: product.designation,
-        quantity: 1,
-        unit_price: product.selling_price,
-        discount: 0,
-        current_stock: stock,
-        vat_rate: product.vat_rate ?? 20,
-        discountManual: false,
-        base_unit: product.unit || 'PIÈCE',
-        sale_unit: product.unit || 'PIÈCE',
-        unit_factor: 1,
-        alt_units: [],
-      }];
-    });
-  }, []);
+        return [...prev, {
+          product_id: product.id,
+          reference: product.reference,
+          designation: product.designation,
+          quantity: 1,
+          unit_price: unitPrice,
+          discount: discountPct,
+          current_stock: stock,
+          vat_rate: product.vat_rate ?? 20,
+          discountManual: false,
+          base_unit: product.unit || 'PIÈCE',
+          sale_unit: product.unit || 'PIÈCE',
+          unit_factor: 1,
+          alt_units: [],
+          price_source: priced?.source ?? 'STANDARD',
+          price_reason: priced?.reason ?? 'Prix standard',
+        }];
+      });
+    })();
+  }, [resolveLinePrice, selectedClientId]);
 
   // Phase 6 : charge les unités alternatives d'un produit. Le FACTEUR de chaque
   // unité est calculé par le BACKEND (`conversions.convert`), jamais côté front.
@@ -184,15 +255,30 @@ export const POSPage: React.FC = () => {
   };
 
   const updateCartQuantity = (productId: string, qty: number) => {
+    let newQty = qty;
     setCart(prev => prev.map(c => {
       if (c.product_id !== productId) return c;
       const maxByStock = c.unit_factor > 0 ? Math.max(1, Math.floor(c.current_stock / c.unit_factor)) : c.current_stock;
-      const newQty = Math.max(1, Math.min(qty, maxByStock));
+      newQty = Math.max(1, Math.min(qty, maxByStock));
       // Phase 4 : recalcul automatique de la remise quantité (sauf remise manuelle).
       const resolved = resolveDiscount(discountRules, newQty, c.discountManual ? c.discount : null);
       const newDiscount = resolved.source === 'manual' ? c.discount : resolved.pct;
       return { ...c, quantity: newQty, discount: newDiscount };
     }));
+
+    // §B3 — la quantité change la remise applicable : on re-résout le prix côté
+    // backend (le prix de niveau / client reste prioritaire sur la remise quantité).
+    void (async () => {
+      const priced = await resolveLinePrice(productId, newQty, selectedClientId);
+      if (!priced) return;
+      setCart(prev => prev.map(c => c.product_id === productId ? {
+        ...c,
+        unit_price: priced.unitPrice,
+        discount: c.discountManual ? c.discount : priced.discountPct,
+        price_source: priced.source,
+        price_reason: priced.reason,
+      } : c));
+    })();
   };
 
   const updateCartDiscount = (productId: string, discount: number) => {
@@ -216,12 +302,31 @@ export const POSPage: React.FC = () => {
   const clearCart = () => {
     setCart([]);
     setSelectedClientId('');
-    setCashGiven(0);
+    setPaymentLines([{ method: 'CASH', amount: 0, reference: '' }]);
   };
 
   const subtotal = roundMoney(cart.reduce((sum, it) => sum + lineTotalTTC(it), 0));
-  const change = paymentMethod === 'CASH' ? Math.max(0, cashGiven - subtotal) : 0;
+  // §B2 — total encaissé = somme des lignes ; monnaie = excédent éventuel.
+  const totalPaidLines = roundMoney(paymentLines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0));
+  const change = Math.max(0, roundMoney(totalPaidLines - subtotal));
+  const remaining = Math.max(0, roundMoney(subtotal - totalPaidLines));
+  // On refuse un total encaissé STRICTEMENT supérieur au montant dû (sauf centime d'arrondi) :
+  // un trop-perçu relève d'un avoir/remboursement, pas d'une vente directe.
+  const paymentsOverpay = totalPaidLines > subtotal + 0.01;
   const canValidate = cart.length > 0;
+
+  // §B2 — gestion des lignes de paiement.
+  const addPaymentLine = () => setPaymentLines(prev => [...prev, { method: 'CASH', amount: 0, reference: '' }]);
+  const removePaymentLine = (idx: number) => setPaymentLines(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx));
+  const updatePaymentLine = (idx: number, patch: Partial<PaymentLine>) =>
+    setPaymentLines(prev => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  // Complète la ligne courante (dernière ligne) pour couvrir le reste dû.
+  const fillRemaining = () => setPaymentLines(prev => {
+    if (prev.length === 0) return prev;
+    const already = prev.slice(0, -1).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    const rest = Math.max(0, roundMoney(subtotal - already));
+    return prev.map((l, i) => (i === prev.length - 1 ? { ...l, amount: rest } : l));
+  });
 
   // §Phase 6 — mise en attente / reprise d'une vente (multi-clients au comptoir).
   // Le panier courant n'est JAMAIS perdu : s'il est non vide au moment de la
@@ -243,7 +348,7 @@ export const POSPage: React.FC = () => {
     }
     setCart(target.items.map(i => ({ ...i })));
     setSelectedClientId(target.clientId);
-    setCashGiven(0);
+    setPaymentLines([{ method: 'CASH', amount: 0, reference: '' }]);
     releaseHeldCart(heldId);
     toast.success('Vente reprise');
   };
@@ -292,13 +397,26 @@ export const POSPage: React.FC = () => {
 
   const handleValidateSale = async () => {
     if (cart.length === 0) return;
+    if (paymentsOverpay) {
+      toast.error('Le total encaissé dépasse le montant dû.');
+      return;
+    }
 
     try {
+      // Résumé des modes utilisés (pour la note du document).
+      const usedMethods = paymentLines
+        .filter(l => Number(l.amount) > 0)
+        .map(l => l.method)
+        .filter((m, i, a) => a.indexOf(m) === i)
+        .join('/') || 'CASH';
+
       const result = await window.api.documents.create({
         type: 'INVOICE',
         entity_id: selectedClientId || '',
         date: toLocalDateString(),
-        notes: `Vente caisse — ${paymentMethod}`,
+        notes: `Vente caisse — ${usedMethods}`,
+        // §B4 — vendeur/commercial associé (facultatif).
+        seller_id: selectedSellerId || null,
         items: cart.map(c => ({
           product_id: c.product_id,
           // Phase 6 : vente en unité alternative convertie en unité de base.
@@ -310,16 +428,17 @@ export const POSPage: React.FC = () => {
 
       if (!result.success) throw new Error(result.error);
 
-      // Encaissement : on enregistre le montant réellement reçu.
-      //  - Tous les modes (Espèces / Chèque / Virement) : montant saisi,
-      //    plafonné au total → PAID si suffisant, PARTIAL sinon.
-      const received = Math.min(Math.max(0, cashGiven), subtotal);
+      // §B2 — encaissement RÉPARTI : chaque ligne non nulle est enregistrée en
+      // une seule transaction côté service. Le service vérifie que la SOMME des
+      // lignes ne dépasse pas le reste dû.
+      const lines = paymentLines
+        .filter(l => Number(l.amount) > 0)
+        .map(l => ({ amount: Number(l.amount), payment_method: l.method, reference: l.reference || null }));
 
-      if (received > 0) {
-        const payResult = await window.api.documents.addPayment({
+      if (lines.length > 0) {
+        const payResult = await window.api.documents.addPayments({
           document_id: result.data.id,
-          amount: received,
-          payment_method: paymentMethod,
+          payments: lines,
         });
         if (!payResult.success) throw new Error(payResult.error);
       }
@@ -360,11 +479,23 @@ export const POSPage: React.FC = () => {
               className="input"
               style={{ width: 240 }}
               value={selectedClientId}
-              onChange={e => setSelectedClientId(e.target.value)}
+              onChange={e => { void handleClientChange(e.target.value); }}
             >
               <option value="">Client comptoir</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {sellers.length > 0 && (
+              <select
+                className="input"
+                style={{ width: 200 }}
+                value={selectedSellerId}
+                onChange={e => setSelectedSellerId(e.target.value)}
+                title="Vendeur / commercial associé à la vente"
+              >
+                <option value="">Vendeur : —</option>
+                {sellers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
             {heldCarts.length > 0 && (
               <select
                 className="input"
@@ -410,9 +541,12 @@ export const POSPage: React.FC = () => {
                       <div className="flex-1 item-info">
                         <div className="font-semibold">{item.reference}</div>
                         <div className="text-sm text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.designation}</div>
+                        {item.price_reason && (
+                          <div className="text-xs text-muted">{item.price_reason}</div>
+                        )}
                         {(() => {
                           const rule = !item.discountManual ? findApplicableDiscount(discountRules, item.quantity) : null;
-                          if (rule && rule.discount_pct > 0 && rule.discount_pct === item.discount) {
+                          if (rule && rule.discount_pct > 0 && rule.discount_pct === item.discount && !item.price_reason) {
                             return <div className="text-xs text-success">{describeVolumeDiscount(rule)}</div>;
                           }
                           return null;
@@ -536,7 +670,7 @@ export const POSPage: React.FC = () => {
         </div>
       </div>
 
-      <Modal open={showPayment} onClose={() => { setShowPayment(false); setCashGiven(0); }} width={480}>
+      <Modal open={showPayment} onClose={() => setShowPayment(false)} width={560}>
         <ModalHeader icon="💳" title="Encaissement" />
         <ModalBody>
           <div className="text-center mb-4">
@@ -544,35 +678,75 @@ export const POSPage: React.FC = () => {
             <div className="money" style={{ fontSize: 42, fontWeight: 800 }}>{subtotal.toFixed(2)} MAD</div>
           </div>
 
-          <div className="grid-3">
-            {([['CASH', '💵 Espèces'], ['CHECK', '🏦 Chèque'], ['TRANSFER', '📤 Virement']] as const).map(([method, label]) => (
-              <button
-                key={method}
-                type="button"
-                className={`btn ${paymentMethod === method ? 'btn-success' : 'btn-secondary'}`}
-                onClick={() => setPaymentMethod(method)}
-              >
-                {label}
-              </button>
+          <div className="text-sm text-muted" style={{ marginBottom: 6 }}>Modes de paiement (plusieurs lignes possibles)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {paymentLines.map((line, idx) => (
+              <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select
+                  className="input"
+                  style={{ width: 130 }}
+                  value={line.method}
+                  onChange={e => updatePaymentLine(idx, { method: e.target.value as PaymentMethod })}
+                >
+                  <option value="CASH">Espèces</option>
+                  <option value="CHECK">Chèque</option>
+                  <option value="TRANSFER">Virement</option>
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  className="input money"
+                  style={{ flex: 1, textAlign: 'right' }}
+                  placeholder="Montant"
+                  value={line.amount || ''}
+                  onChange={e => updatePaymentLine(idx, { amount: Number(e.target.value) })}
+                />
+                <input
+                  type="text"
+                  className="input"
+                  style={{ width: 140 }}
+                  placeholder="Référence"
+                  value={line.reference}
+                  onChange={e => updatePaymentLine(idx, { reference: e.target.value })}
+                />
+                <Button
+                  variant="ghost"
+                  icon
+                  title="Retirer la ligne"
+                  onClick={() => removePaymentLine(idx)}
+                  disabled={paymentLines.length === 1}
+                  style={{ color: 'var(--danger)', fontSize: 18 }}
+                >
+                  ×
+                </Button>
+              </div>
             ))}
           </div>
 
-          <Input
-            label="Montant reçu"
-            type="number"
-            min={0}
-            step={0.01}
-            value={cashGiven || ''}
-            onChange={e => setCashGiven(Number(e.target.value))}
-            placeholder={`Minimum : ${subtotal.toFixed(2)} MAD`}
-            inputSize="lg"
-            className="money"
-            autoFocus
-          />
-          {paymentMethod === 'CASH' && cashGiven >= subtotal && (
-            <div className="surface-success text-center" style={{ padding: 'var(--space-3)' }}>
+          <div className="flex" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <Button variant="secondary" onClick={addPaymentLine}>Ajouter un mode</Button>
+            <Button variant="secondary" onClick={fillRemaining} disabled={remaining <= 0}>
+              Compléter le reste ({remaining.toFixed(2)} MAD)
+            </Button>
+          </div>
+
+          <div className="surface-muted" style={{ display: 'flex', justifyContent: 'space-between', padding: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+            <span className="text-sm">Encaissé : <strong className="money">{totalPaidLines.toFixed(2)} MAD</strong></span>
+            <span className="text-sm">Reste : <strong className="money">{remaining.toFixed(2)} MAD</strong></span>
+          </div>
+
+          {paymentsOverpay && (
+            <div className="surface-danger text-center" style={{ padding: 'var(--space-3)', marginTop: 8 }}>
+              <span className="text-sm font-semibold">
+                Le total encaissé dépasse le montant dû. Corrigez les lignes.
+              </span>
+            </div>
+          )}
+          {!paymentsOverpay && change > 0 && (
+            <div className="surface-success text-center" style={{ padding: 'var(--space-3)', marginTop: 8 }}>
               <span className="text-sm text-success font-semibold">
-                💰 Monnaie : <strong className="money">{change.toFixed(2)} MAD</strong>
+                Rendu (monnaie) : <strong className="money">{change.toFixed(2)} MAD</strong>
               </span>
             </div>
           )}
@@ -585,22 +759,22 @@ export const POSPage: React.FC = () => {
                 style={{ flex: 1 }}
                 onClick={() => setPrintMode('receipt')}
               >
-                🧾 Ticket de caisse
+                Ticket de caisse
               </Button>
               <Button
                 variant={printMode === 'invoice' ? 'primary' : 'secondary'}
                 style={{ flex: 1 }}
                 onClick={() => setPrintMode('invoice')}
               >
-                📄 Facture complète
+                Facture complète
               </Button>
             </div>
           </div>
         </ModalBody>
         <ModalFooter>
-          <Button variant="secondary" onClick={() => { setShowPayment(false); setCashGiven(0); }}>Annuler</Button>
-          <Button variant="success" size="lg" onClick={handleValidateSale} disabled={!canValidate}>
-            ✓ Valider la vente
+          <Button variant="secondary" onClick={() => setShowPayment(false)}>Annuler</Button>
+          <Button variant="success" size="lg" onClick={handleValidateSale} disabled={!canValidate || paymentsOverpay}>
+            Valider la vente
           </Button>
         </ModalFooter>
       </Modal>

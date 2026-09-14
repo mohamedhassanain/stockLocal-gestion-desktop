@@ -46,6 +46,8 @@ export const ClientCreateSchema = z.object({
   // Catégorie libre : définie par l'utilisateur dans Paramètres → Catégories clients.
   // Défaut historique conservé pour compatibilité ('DÉTAIL').
   category: z.string().min(1, 'La catégorie est obligatoire.').max(50).default('DÉTAIL'),
+  // §B3 — Niveau de prix (RETAIL / WHOLESALE / VIP…). Défaut historique = RETAIL.
+  price_level: z.string().max(40).optional(),
 });
 
 export const ClientUpdateSchema = ClientCreateSchema.partial();
@@ -78,6 +80,8 @@ export const SaleSchema = z.object({
   date: z.string().min(1),
   due_date: z.string().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
+  // §B4 — vendeur/commercial associé (facultatif ; fiche, pas un compte).
+  seller_id: z.string().max(64).optional().nullable(),
   items: z.array(SaleItemSchema).min(1, 'Le document doit contenir au moins une ligne.'),
 });
 
@@ -95,6 +99,23 @@ export const PaymentSchema = z.object({
   amount: z.number().positive('Le montant du paiement doit être supérieur à 0.'),
   payment_method: z.enum(['CASH', 'CHECK', 'TRANSFER']),
   reference: z.string().max(100).optional().nullable(),
+});
+
+/** §B2 — Une ligne de paiement (mode + montant + référence). */
+export const PaymentLineSchema = z.object({
+  amount: z.number().positive('Le montant du paiement doit être supérieur à 0.'),
+  payment_method: z.enum(['CASH', 'CHECK', 'TRANSFER']),
+  reference: z.string().max(100).optional().nullable(),
+});
+
+/**
+ * §B2 — Paiement RÉPARTI sur plusieurs modes pour un même document
+ * (ex. 500 espèces + 700 carte + 300 crédit). La somme des lignes est
+ * contrôlée contre le reste dû en couche service (source de vérité).
+ */
+export const PaymentsBatchSchema = z.object({
+  document_id: z.string().min(1).max(64),
+  payments: z.array(PaymentLineSchema).min(1, 'Au moins une ligne de paiement est requise.').max(20),
 });
 
 // ─── Stock ───────────────────────────────────────────────────────────────────
@@ -422,6 +443,58 @@ export const TaxPeriodSchema = z.object({
   year: z.number().int().min(1900, 'Année invalide.').max(9999, 'Année invalide.').optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de début invalide (format AAAA-MM-JJ).').optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de fin invalide (format AAAA-MM-JJ).').optional(),
+});
+
+// ─── §B4 — Vendeurs / commerciaux (FICHES, pas de comptes utilisateurs) ──────
+
+export const SellerCreateSchema = z.object({
+  name: z.string().min(1, 'Le nom du vendeur est obligatoire.').max(200),
+  phone: z.string().max(30).optional().nullable(),
+  commission_rate: z.number().min(0, 'Le taux ne peut pas être négatif.').max(100, 'Le taux ne peut pas dépasser 100 %.'),
+  active: z.number().int().min(0).max(1).optional(),
+  notes: z.string().max(500).optional().nullable(),
+});
+
+export const SellerUpdateSchema = SellerCreateSchema.partial();
+
+/** Activation / désactivation d'un vendeur. */
+export const SellerActiveSchema = z.object({ active: z.boolean() });
+
+/** Période d'un rapport de commission vendeurs (mêmes règles que la TVA). */
+export const SellerPeriodSchema = TaxPeriodSchema;
+
+// ─── §B3 — Niveaux de prix ───────────────────────────────────────────────────
+
+/** Prix d'un produit pour un niveau (ex. WHOLESALE). */
+export const ProductLevelPriceSchema = z.object({
+  productId: z.string().min(1).max(64),
+  level: z.string().min(1, 'Le niveau est obligatoire.').max(40),
+  price: z.number().min(0, 'Le prix ne peut pas être négatif.'),
+});
+
+/** Prix spécifique négocié d'un produit pour un client. */
+export const CustomerPriceSchema = z.object({
+  customerId: z.string().min(1).max(64),
+  productId: z.string().min(1).max(64),
+  price: z.number().min(0, 'Le prix ne peut pas être négatif.'),
+});
+
+/** Suppression d'un prix (niveau produit ou client) — clé d'identification. */
+export const LevelKeySchema = z.object({
+  productId: z.string().min(1).max(64),
+  level: z.string().min(1).max(40),
+});
+
+export const CustomerProductKeySchema = z.object({
+  customerId: z.string().min(1).max(64),
+  productId: z.string().min(1).max(64),
+});
+
+/** Résolution du prix applicable (POS / facture). */
+export const ResolvePriceSchema = z.object({
+  productId: z.string().min(1).max(64),
+  customerId: z.string().max(64).optional().nullable(),
+  quantity: z.number().positive('La quantité doit être supérieure à 0.').optional(),
 });
 
 // ─── IDs ─────────────────────────────────────────────────────────────────────
