@@ -53,12 +53,19 @@ Le décompte de tests précédemment publié (**538 tests / 57 fichiers**) étai
 
 - Le décompte **réel et actuel est de 654 tests dans 65 fichiers** (§2), obtenu en
   exécutant réellement `npm test` dans cette session.
-- Les rapports antérieurs (`ARCHITECTURE_AUDIT.md`, `AUDIT_DB_RESULT.md`,
+- Les autres rapports ont été **vérifiés un par un** (recherche PowerShell sur
+  l'ensemble des `.md` du dépôt) et portent en tête le bandeau
+  `> [!WARNING] DOCUMENT HISTORIQUE - PERIME (Historical / superseded)` :
+  `ARCHITECTURE_AUDIT.md`, `AUDIT_DB_RESULT.md`, `CAHIER_DES_CHARGES.md`,
   `COMPLIANCE_AUDIT.md`, `FINAL_AUDIT.md`, `FINAL_AUDIT_REPORT.md`,
   `FINAL_HARDENING_REPORT.md`, `FINAL_REFACTORING_REPORT.md`,
-  `LIMITATIONS_FIXED.md`, `docs/IMPLEMENTATION_PHASES_1_6.md`) portent **tous** en
-  tête un bandeau `> [!WARNING] DOCUMENT HISTORIQUE - PERIME (Historical / superseded)`,
-  ce qui satisfait l'exigence « marquer clairement Historique / périmé ».
+  `LIMITATIONS_FIXED.md`, `REFACTORING_REPORT.md`, `SUMMARY.md`, `README.md`,
+  `docs/IMPLEMENTATION_PHASES_1_6.md`, `docs/PHASE5_MULTI_DEPOTS.md`
+  (soit **14 fichiers** en plus du présent document).
+- **`docs/DGI_COMPLIANCE_STATUS.md` est le seul `.md` du projet sans bandeau**, et
+  c'est volontaire : il **n'affiche aucun décompte global de tests** (il ne cite que
+  son propre test de module, `tests/dgi-ubl.test.ts`, dans une section « 5. Tests »).
+  Aucun chiffre obsolète à corriger, donc pas de marquage « périmé » trompeur.
 - Le bandeau de `ARCHITECTURE_AUDIT.md` a en outre été **rafraîchi** pour renvoyer
   explicitement au présent document pour l'état courant, sans y figer un décompte
   qui périmera à son tour.
